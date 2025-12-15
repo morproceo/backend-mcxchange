@@ -1,0 +1,340 @@
+import { Op, fn, col } from 'sequelize';
+import {
+  User,
+  Listing,
+  Offer,
+  Transaction,
+  Review,
+  SavedListing,
+  UnlockedListing,
+  RefreshToken,
+  UserRole,
+  UserStatus,
+} from '../models';
+import { NotFoundError, ForbiddenError } from '../middleware/errorHandler';
+import { getPaginationInfo } from '../utils/helpers';
+
+interface UpdateProfileData {
+  name?: string;
+  phone?: string;
+  avatar?: string;
+  companyName?: string;
+  companyAddress?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  ein?: string;
+}
+
+class UserService {
+  // Get user profile
+  async getProfile(userId: string) {
+    const user = await User.findByPk(userId, {
+      attributes: [
+        'id', 'email', 'name', 'phone', 'avatar', 'role', 'status',
+        'verified', 'verifiedAt', 'trustScore', 'memberSince', 'lastLoginAt',
+        'companyName', 'companyAddress', 'city', 'state', 'zipCode', 'ein',
+        'sellerVerified', 'sellerVerifiedAt', 'totalCredits', 'usedCredits',
+      ],
+    });
+
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    // Get counts
+    const [
+      listingsCount,
+      sentOffersCount,
+      receivedOffersCount,
+      buyerTransactionsCount,
+      sellerTransactionsCount,
+      reviewsReceivedCount,
+    ] = await Promise.all([
+      Listing.count({ where: { sellerId: userId } }),
+      Offer.count({ where: { buyerId: userId } }),
+      Offer.count({ where: { sellerId: userId } }),
+      Transaction.count({ where: { buyerId: userId } }),
+      Transaction.count({ where: { sellerId: userId } }),
+      Review.count({ where: { toUserId: userId } }),
+    ]);
+
+    return {
+      ...user.toJSON(),
+      _count: {
+        listings: listingsCount,
+        sentOffers: sentOffersCount,
+        receivedOffers: receivedOffersCount,
+        buyerTransactions: buyerTransactionsCount,
+        sellerTransactions: sellerTransactionsCount,
+        reviewsReceived: reviewsReceivedCount,
+      },
+    };
+  }
+
+  // Update user profile
+  async updateProfile(userId: string, data: UpdateProfileData) {
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    await user.update({
+      name: data.name,
+      phone: data.phone,
+      avatar: data.avatar,
+      companyName: data.companyName,
+      companyAddress: data.companyAddress,
+      city: data.city,
+      state: data.state,
+      zipCode: data.zipCode,
+      ein: data.ein,
+    });
+
+    return user;
+  }
+
+  // Get public user profile
+  async getPublicProfile(userId: string) {
+    const user = await User.findByPk(userId, {
+      attributes: [
+        'id', 'name', 'avatar', 'role', 'verified', 'trustScore',
+        'memberSince', 'companyName', 'city', 'state', 'sellerVerified',
+      ],
+    });
+
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    // Get counts
+    const [activeListings, reviewsCount] = await Promise.all([
+      Listing.count({ where: { sellerId: userId, status: 'ACTIVE' } }),
+      Review.count({ where: { toUserId: userId } }),
+    ]);
+
+    // Calculate average rating
+    const ratings = await Review.findOne({
+      where: { toUserId: userId },
+      attributes: [[fn('AVG', col('rating')), 'avgRating']],
+      raw: true,
+    }) as unknown as { avgRating: string | null };
+
+    return {
+      ...user.toJSON(),
+      _count: {
+        listings: activeListings,
+        reviewsReceived: reviewsCount,
+      },
+      averageRating: ratings?.avgRating ? parseFloat(ratings.avgRating) : 0,
+    };
+  }
+
+  // Get user's reviews
+  async getUserReviews(userId: string, page: number = 1, limit: number = 10) {
+    const offset = (page - 1) * limit;
+
+    const { rows: reviews, count: total } = await Review.findAndCountAll({
+      where: { toUserId: userId },
+      order: [['createdAt', 'DESC']],
+      offset,
+      limit,
+      include: [{
+        model: User,
+        as: 'fromUser',
+        attributes: ['id', 'name', 'avatar', 'verified'],
+      }],
+    });
+
+    return {
+      reviews,
+      pagination: getPaginationInfo(page, limit, total),
+    };
+  }
+
+  // Get user's public listings
+  async getUserListings(userId: string, page: number = 1, limit: number = 10) {
+    const offset = (page - 1) * limit;
+
+    const { rows: listings, count: total } = await Listing.findAndCountAll({
+      where: {
+        sellerId: userId,
+        status: 'ACTIVE',
+        visibility: 'PUBLIC',
+      },
+      order: [['createdAt', 'DESC']],
+      offset,
+      limit,
+      attributes: [
+        'id', 'mcNumber', 'dotNumber', 'title', 'price',
+        'city', 'state', 'isPremium', 'yearsActive',
+        'safetyRating', 'amazonStatus', 'views', 'createdAt',
+      ],
+    });
+
+    return {
+      listings,
+      pagination: getPaginationInfo(page, limit, total),
+    };
+  }
+
+  // Upload avatar
+  async updateAvatar(userId: string, avatarUrl: string) {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    await user.update({ avatar: avatarUrl });
+
+    return { id: user.id, avatar: user.avatar };
+  }
+
+  // Deactivate account
+  async deactivateAccount(userId: string) {
+    await User.update(
+      { status: UserStatus.SUSPENDED },
+      { where: { id: userId } }
+    );
+
+    // Invalidate all refresh tokens
+    await RefreshToken.destroy({
+      where: { userId },
+    });
+
+    return { success: true };
+  }
+
+  // Get dashboard stats for any user type
+  async getDashboardStats(userId: string, role: string) {
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    if (role === 'BUYER') {
+      return this.getBuyerDashboardStats(userId);
+    } else if (role === 'SELLER') {
+      return this.getSellerDashboardStats(userId);
+    }
+
+    throw new ForbiddenError('Invalid role');
+  }
+
+  // Buyer dashboard stats
+  private async getBuyerDashboardStats(userId: string) {
+    const [
+      totalOffers,
+      pendingOffers,
+      acceptedOffers,
+      activeTransactions,
+      completedTransactions,
+      savedListings,
+      unlockedListings,
+      creditBalance,
+    ] = await Promise.all([
+      Offer.count({ where: { buyerId: userId } }),
+      Offer.count({ where: { buyerId: userId, status: 'PENDING' } }),
+      Offer.count({ where: { buyerId: userId, status: 'ACCEPTED' } }),
+      Transaction.count({
+        where: {
+          buyerId: userId,
+          status: { [Op.notIn]: ['COMPLETED', 'CANCELLED'] },
+        },
+      }),
+      Transaction.count({
+        where: { buyerId: userId, status: 'COMPLETED' },
+      }),
+      SavedListing.count({ where: { userId } }),
+      UnlockedListing.count({ where: { userId } }),
+      User.findByPk(userId, {
+        attributes: ['totalCredits', 'usedCredits'],
+      }),
+    ]);
+
+    return {
+      offers: {
+        total: totalOffers,
+        pending: pendingOffers,
+        accepted: acceptedOffers,
+      },
+      transactions: {
+        active: activeTransactions,
+        completed: completedTransactions,
+      },
+      savedListings,
+      unlockedListings,
+      credits: {
+        total: creditBalance?.totalCredits || 0,
+        used: creditBalance?.usedCredits || 0,
+        available: (creditBalance?.totalCredits || 0) - (creditBalance?.usedCredits || 0),
+      },
+    };
+  }
+
+  // Seller dashboard stats
+  private async getSellerDashboardStats(userId: string) {
+    const [
+      totalListings,
+      activeListings,
+      pendingListings,
+      soldListings,
+      totalOffers,
+      pendingOffers,
+      activeTransactions,
+      completedTransactions,
+      totalViews,
+      totalSaves,
+    ] = await Promise.all([
+      Listing.count({ where: { sellerId: userId } }),
+      Listing.count({ where: { sellerId: userId, status: 'ACTIVE' } }),
+      Listing.count({ where: { sellerId: userId, status: 'PENDING_REVIEW' } }),
+      Listing.count({ where: { sellerId: userId, status: 'SOLD' } }),
+      Offer.count({ where: { sellerId: userId } }),
+      Offer.count({ where: { sellerId: userId, status: 'PENDING' } }),
+      Transaction.count({
+        where: {
+          sellerId: userId,
+          status: { [Op.notIn]: ['COMPLETED', 'CANCELLED'] },
+        },
+      }),
+      Transaction.count({
+        where: { sellerId: userId, status: 'COMPLETED' },
+      }),
+      Listing.sum('views', { where: { sellerId: userId } }),
+      Listing.sum('saves', { where: { sellerId: userId } }),
+    ]);
+
+    // Calculate total earnings from completed transactions
+    const earnings = await Transaction.sum('agreedPrice', {
+      where: { sellerId: userId, status: 'COMPLETED' },
+    });
+
+    return {
+      listings: {
+        total: totalListings,
+        active: activeListings,
+        pending: pendingListings,
+        sold: soldListings,
+      },
+      offers: {
+        total: totalOffers,
+        pending: pendingOffers,
+      },
+      transactions: {
+        active: activeTransactions,
+        completed: completedTransactions,
+      },
+      analytics: {
+        totalViews: totalViews || 0,
+        totalSaves: totalSaves || 0,
+      },
+      earnings: earnings || 0,
+    };
+  }
+}
+
+export const userService = new UserService();
+export default userService;

@@ -1,0 +1,517 @@
+import { Request, Response } from 'express';
+import Stripe from 'stripe';
+import { stripeService } from '../services/stripeService';
+import { creditService } from '../services/creditService';
+import { emailService } from '../services/emailService';
+import { notificationService } from '../services/notificationService';
+import {
+  User,
+  Payment,
+  Subscription,
+  Transaction,
+  PaymentStatus,
+  PaymentType,
+  SubscriptionPlan,
+  TransactionStatus
+} from '../models';
+import logger, { logError } from '../utils/logger';
+import { config } from '../config';
+
+// ============================================
+// Stripe Webhook Handler
+// ============================================
+
+export const handleStripeWebhook = async (req: Request, res: Response): Promise<void> => {
+  const signature = req.headers['stripe-signature'] as string;
+
+  if (!signature) {
+    logger.warn('Webhook received without signature');
+    res.status(400).json({ error: 'Missing stripe-signature header' });
+    return;
+  }
+
+  // Construct and verify the event
+  const event = stripeService.constructWebhookEvent(req.body, signature);
+
+  if (!event) {
+    res.status(400).json({ error: 'Invalid webhook signature' });
+    return;
+  }
+
+  logger.info('Stripe webhook received', {
+    type: event.type,
+    eventId: event.id,
+  });
+
+  try {
+    // Handle different event types
+    switch (event.type) {
+      // Payment Intent Events
+      case 'payment_intent.succeeded':
+        await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
+        break;
+
+      case 'payment_intent.payment_failed':
+        await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
+        break;
+
+      // Subscription Events
+      case 'customer.subscription.created':
+        await handleSubscriptionCreated(event.data.object as Stripe.Subscription);
+        break;
+
+      case 'customer.subscription.updated':
+        await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
+        break;
+
+      case 'customer.subscription.deleted':
+        await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+        break;
+
+      // Invoice Events
+      case 'invoice.paid':
+        await handleInvoicePaid(event.data.object as Stripe.Invoice);
+        break;
+
+      case 'invoice.payment_failed':
+        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
+        break;
+
+      // Charge Events
+      case 'charge.refunded':
+        await handleChargeRefunded(event.data.object as Stripe.Charge);
+        break;
+
+      case 'charge.dispute.created':
+        await handleChargeDisputeCreated(event.data.object as Stripe.Dispute);
+        break;
+
+      default:
+        logger.debug('Unhandled webhook event type', { type: event.type });
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    logError('Webhook handler error', error as Error, {
+      type: event.type,
+      eventId: event.id,
+    });
+    res.status(500).json({ error: 'Webhook handler error' });
+  }
+};
+
+// ============================================
+// Payment Intent Handlers
+// ============================================
+
+async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent): Promise<void> {
+  logger.info('Payment intent succeeded', {
+    paymentIntentId: paymentIntent.id,
+    amount: paymentIntent.amount,
+  });
+
+  const metadata = paymentIntent.metadata;
+  const userId = metadata?.userId;
+  const paymentType = metadata?.paymentType as PaymentType;
+  const transactionId = metadata?.transactionId;
+  const paymentId = metadata?.paymentId;
+
+  if (!userId) {
+    logger.warn('Payment intent missing userId metadata', {
+      paymentIntentId: paymentIntent.id,
+    });
+    return;
+  }
+
+  // Get user
+  const user = await User.findByPk(userId);
+  if (!user) {
+    logger.error('User not found for payment', { userId });
+    return;
+  }
+
+  // Update payment record if exists
+  if (paymentId) {
+    await Payment.update(
+      {
+        status: PaymentStatus.COMPLETED,
+        stripePaymentIntentId: paymentIntent.id,
+        paidAt: new Date(),
+      },
+      { where: { id: paymentId } }
+    );
+  }
+
+  // Handle based on payment type
+  switch (paymentType) {
+    case PaymentType.DEPOSIT:
+      await handleDepositPayment(transactionId, user, paymentIntent.amount);
+      break;
+
+    case PaymentType.FINAL_PAYMENT:
+      await handleFinalPayment(transactionId, user, paymentIntent.amount);
+      break;
+
+    case PaymentType.CREDIT_PURCHASE:
+      const credits = parseInt(metadata?.credits || '0');
+      await handleCreditPurchase(user, credits, paymentIntent.amount);
+      break;
+
+    case PaymentType.LISTING_FEE:
+      // Listing fee paid - listing can be activated
+      const listingId = metadata?.listingId;
+      if (listingId) {
+        logger.info('Listing fee paid', { listingId, userId });
+        // TODO: Update listing status if needed
+      }
+      break;
+
+    default:
+      logger.info('Payment completed without specific handler', {
+        paymentType,
+        paymentIntentId: paymentIntent.id,
+      });
+  }
+
+  // Send email notification
+  await emailService.sendPaymentReceived(user.email, {
+    userName: user.name,
+    mcNumber: metadata?.mcNumber || 'N/A',
+    amount: stripeService.centsToDollars(paymentIntent.amount),
+    paymentType: paymentType || 'payment',
+    transactionUrl: transactionId
+      ? `${config.frontendUrl}/transactions/${transactionId}`
+      : undefined,
+  });
+}
+
+async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent): Promise<void> {
+  logger.warn('Payment intent failed', {
+    paymentIntentId: paymentIntent.id,
+    failureCode: paymentIntent.last_payment_error?.code,
+    failureMessage: paymentIntent.last_payment_error?.message,
+  });
+
+  const metadata = paymentIntent.metadata;
+  const userId = metadata?.userId;
+  const paymentId = metadata?.paymentId;
+
+  // Update payment record
+  if (paymentId) {
+    await Payment.update(
+      {
+        status: PaymentStatus.FAILED,
+        failureReason: paymentIntent.last_payment_error?.message,
+      },
+      { where: { id: paymentId } }
+    );
+  }
+
+  // Notify user
+  if (userId) {
+    await notificationService.create({
+      userId,
+      type: 'PAYMENT',
+      title: 'Payment Failed',
+      message: 'Your payment could not be processed. Please try again or use a different payment method.',
+      data: { paymentIntentId: paymentIntent.id },
+    });
+  }
+}
+
+// ============================================
+// Subscription Handlers
+// ============================================
+
+async function handleSubscriptionCreated(subscription: Stripe.Subscription): Promise<void> {
+  logger.info('Subscription created', {
+    subscriptionId: subscription.id,
+    customerId: subscription.customer,
+  });
+
+  const userId = subscription.metadata?.userId;
+  if (!userId) {
+    logger.warn('Subscription created without userId metadata');
+    return;
+  }
+
+  // Update or create subscription record in our database
+  const plan = subscription.metadata?.plan as SubscriptionPlan || SubscriptionPlan.STARTER;
+
+  await Subscription.upsert({
+    userId,
+    stripeSubscriptionId: subscription.id,
+    stripeCustomerId: subscription.customer as string,
+    plan,
+    status: subscription.status,
+    currentPeriodStart: new Date(subscription.current_period_start * 1000),
+    currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+  });
+
+  // Grant initial credits
+  await creditService.grantSubscriptionCredits(userId, plan);
+}
+
+async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Promise<void> {
+  logger.info('Subscription updated', {
+    subscriptionId: subscription.id,
+    status: subscription.status,
+  });
+
+  // Find subscription in our database
+  const dbSubscription = await Subscription.findOne({
+    where: { stripeSubscriptionId: subscription.id },
+  });
+
+  if (!dbSubscription) {
+    logger.warn('Subscription not found in database', {
+      subscriptionId: subscription.id,
+    });
+    return;
+  }
+
+  // Update subscription record
+  await dbSubscription.update({
+    status: subscription.status,
+    currentPeriodStart: new Date(subscription.current_period_start * 1000),
+    currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    canceledAt: subscription.canceled_at
+      ? new Date(subscription.canceled_at * 1000)
+      : null,
+  });
+
+  // If subscription was renewed (new period started)
+  if (subscription.status === 'active') {
+    // Check if this is a renewal (billing_reason in invoice event is better)
+    // Credits are usually granted via invoice.paid event
+  }
+}
+
+async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Promise<void> {
+  logger.info('Subscription deleted', {
+    subscriptionId: subscription.id,
+  });
+
+  // Find and update subscription in our database
+  const dbSubscription = await Subscription.findOne({
+    where: { stripeSubscriptionId: subscription.id },
+  });
+
+  if (dbSubscription) {
+    await dbSubscription.update({
+      status: 'canceled',
+      canceledAt: new Date(),
+    });
+
+    // Notify user
+    await notificationService.create({
+      userId: dbSubscription.userId,
+      type: 'PAYMENT',
+      title: 'Subscription Cancelled',
+      message: 'Your subscription has been cancelled. You will retain access until the end of your billing period.',
+    });
+  }
+}
+
+// ============================================
+// Invoice Handlers
+// ============================================
+
+async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
+  logger.info('Invoice paid', {
+    invoiceId: invoice.id,
+    amount: invoice.amount_paid,
+    billingReason: invoice.billing_reason,
+  });
+
+  const subscription = invoice.subscription;
+  if (!subscription) return;
+
+  // Find subscription in our database
+  const dbSubscription = await Subscription.findOne({
+    where: {
+      stripeSubscriptionId: typeof subscription === 'string' ? subscription : subscription.id,
+    },
+  });
+
+  if (!dbSubscription) return;
+
+  // If this is a renewal (not first invoice), grant monthly credits
+  if (invoice.billing_reason === 'subscription_cycle') {
+    await creditService.grantSubscriptionCredits(
+      dbSubscription.userId,
+      dbSubscription.plan as SubscriptionPlan
+    );
+
+    logger.info('Monthly credits granted for subscription renewal', {
+      userId: dbSubscription.userId,
+      plan: dbSubscription.plan,
+    });
+  }
+}
+
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void> {
+  logger.warn('Invoice payment failed', {
+    invoiceId: invoice.id,
+    customerId: invoice.customer,
+  });
+
+  const subscription = invoice.subscription;
+  if (!subscription) return;
+
+  // Find subscription in our database
+  const dbSubscription = await Subscription.findOne({
+    where: {
+      stripeSubscriptionId: typeof subscription === 'string' ? subscription : subscription.id,
+    },
+  });
+
+  if (dbSubscription) {
+    // Notify user
+    await notificationService.create({
+      userId: dbSubscription.userId,
+      type: 'PAYMENT',
+      title: 'Payment Failed',
+      message: 'Your subscription payment failed. Please update your payment method to avoid service interruption.',
+    });
+  }
+}
+
+// ============================================
+// Charge Handlers
+// ============================================
+
+async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
+  logger.info('Charge refunded', {
+    chargeId: charge.id,
+    amount: charge.amount_refunded,
+  });
+
+  // Find payment by stripe payment intent
+  const paymentIntentId = typeof charge.payment_intent === 'string'
+    ? charge.payment_intent
+    : charge.payment_intent?.id;
+
+  if (paymentIntentId) {
+    await Payment.update(
+      { status: PaymentStatus.REFUNDED },
+      { where: { stripePaymentIntentId: paymentIntentId } }
+    );
+  }
+}
+
+async function handleChargeDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
+  logger.warn('Charge dispute created', {
+    disputeId: dispute.id,
+    chargeId: dispute.charge,
+    reason: dispute.reason,
+    amount: dispute.amount,
+  });
+
+  // This is a serious event - notify admin
+  // TODO: Implement admin notification system
+}
+
+// ============================================
+// Helper Functions
+// ============================================
+
+async function handleDepositPayment(
+  transactionId: string | undefined,
+  user: User,
+  amountCents: number
+): Promise<void> {
+  if (!transactionId) return;
+
+  // Update transaction status
+  const transaction = await Transaction.findByPk(transactionId);
+  if (transaction && transaction.status === TransactionStatus.AWAITING_DEPOSIT) {
+    await transaction.update({
+      status: TransactionStatus.DEPOSIT_RECEIVED,
+      depositAmount: stripeService.centsToDollars(amountCents),
+      depositPaidAt: new Date(),
+    });
+
+    logger.info('Transaction deposit received', {
+      transactionId,
+      amount: stripeService.centsToDollars(amountCents),
+    });
+
+    // Notify seller
+    await notificationService.notifyTransactionStatus(
+      transaction.sellerId,
+      'Deposit Received',
+      `The buyer has paid the deposit for your MC listing.`,
+      transactionId
+    );
+  }
+}
+
+async function handleFinalPayment(
+  transactionId: string | undefined,
+  user: User,
+  amountCents: number
+): Promise<void> {
+  if (!transactionId) return;
+
+  // Update transaction status
+  const transaction = await Transaction.findByPk(transactionId);
+  if (transaction && transaction.status === TransactionStatus.PAYMENT_PENDING) {
+    await transaction.update({
+      status: TransactionStatus.PAYMENT_RECEIVED,
+      finalPaymentAmount: stripeService.centsToDollars(amountCents),
+      finalPaymentPaidAt: new Date(),
+    });
+
+    logger.info('Transaction final payment received', {
+      transactionId,
+      amount: stripeService.centsToDollars(amountCents),
+    });
+
+    // Notify both parties
+    await notificationService.notifyTransactionStatus(
+      transaction.sellerId,
+      'Final Payment Received',
+      'The buyer has completed the final payment. The transaction is being finalized.',
+      transactionId
+    );
+
+    await notificationService.notifyTransactionStatus(
+      transaction.buyerId,
+      'Payment Confirmed',
+      'Your payment has been confirmed. The MC authority transfer will be processed shortly.',
+      transactionId
+    );
+  }
+}
+
+async function handleCreditPurchase(
+  user: User,
+  credits: number,
+  amountCents: number
+): Promise<void> {
+  if (credits <= 0) {
+    logger.warn('Invalid credit purchase amount', { credits });
+    return;
+  }
+
+  // Add credits to user
+  await creditService.addCredits(
+    user.id,
+    credits,
+    'PURCHASE',
+    `Purchased ${credits} credits`
+  );
+
+  logger.info('Credits purchased', {
+    userId: user.id,
+    credits,
+    amount: stripeService.centsToDollars(amountCents),
+  });
+}
+
+export default {
+  handleStripeWebhook,
+};

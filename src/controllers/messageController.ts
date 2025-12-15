@@ -1,0 +1,137 @@
+import { Response } from 'express';
+import { body, param } from 'express-validator';
+import { messageService } from '../services/messageService';
+import { asyncHandler } from '../middleware/errorHandler';
+import { AuthRequest } from '../types';
+import { parseIntParam } from '../utils/helpers';
+
+// Validation rules
+export const sendMessageValidation = [
+  body('receiverId').trim().notEmpty().withMessage('Receiver ID is required'),
+  body('content').trim().notEmpty().withMessage('Message content is required'),
+  body('listingId').optional().trim(),
+];
+
+// Get conversations
+export const getConversations = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const conversations = await messageService.getConversations(req.user.id);
+
+  res.json({
+    success: true,
+    data: conversations,
+  });
+});
+
+// Get messages in a conversation
+export const getMessages = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { partnerId } = req.params;
+  const page = parseIntParam(req.query.page as string) || 1;
+  const limit = parseIntParam(req.query.limit as string) || 50;
+
+  const result = await messageService.getMessages(req.user.id, partnerId, page, limit);
+
+  res.json({
+    success: true,
+    data: result.messages,
+    pagination: result.pagination,
+  });
+});
+
+// Send a message
+export const sendMessage = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { receiverId, content, listingId } = req.body;
+
+  const message = await messageService.sendMessage(
+    req.user.id,
+    receiverId,
+    content,
+    listingId
+  );
+
+  res.status(201).json({
+    success: true,
+    data: message,
+    message: 'Message sent',
+  });
+});
+
+// Mark message as read
+export const markAsRead = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+
+  await messageService.markAsRead(id, req.user.id);
+
+  res.json({
+    success: true,
+    message: 'Message marked as read',
+  });
+});
+
+// Mark conversation as read
+export const markConversationAsRead = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { partnerId } = req.params;
+
+  await messageService.markConversationAsRead(req.user.id, partnerId);
+
+  res.json({
+    success: true,
+    message: 'Conversation marked as read',
+  });
+});
+
+// Get unread count
+export const getUnreadCount = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const count = await messageService.getUnreadCount(req.user.id);
+
+  res.json({
+    success: true,
+    data: { count },
+  });
+});
+
+// Delete message
+export const deleteMessage = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+
+  await messageService.deleteMessage(id, req.user.id);
+
+  res.json({
+    success: true,
+    message: 'Message deleted',
+  });
+});

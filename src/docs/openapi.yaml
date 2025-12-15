@@ -1,0 +1,1256 @@
+openapi: 3.0.3
+info:
+  title: MC Exchange API
+  description: |
+    API documentation for MC Exchange - A B2B marketplace for buying and selling Motor Carrier (MC) Authorities.
+
+    ## Authentication
+    Most endpoints require JWT authentication. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <your-token>
+    ```
+
+    ## Rate Limiting
+    - Global: 100 requests per 15 minutes
+    - Auth endpoints: 5 requests per 15 minutes
+    - FMCSA lookups: 30 requests per minute
+
+    ## Real-time Updates
+    Connect to WebSocket at `/socket.io` for real-time notifications.
+  version: 1.0.0
+  contact:
+    name: MC Exchange Support
+    email: support@mcexchange.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:3000/api
+    description: Development server
+  - url: https://api.mcexchange.com/api
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Users
+    description: User profile management
+  - name: Listings
+    description: MC Authority listings
+  - name: Offers
+    description: Offer management
+  - name: Transactions
+    description: Transaction management
+  - name: Credits
+    description: Credit and subscription management
+  - name: Messages
+    description: User messaging
+  - name: Notifications
+    description: User notifications
+  - name: Admin
+    description: Admin operations
+  - name: Health
+    description: Service health checks
+
+paths:
+  # ============================================
+  # Health Endpoints
+  # ============================================
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Basic health check
+      description: Returns basic server health status
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness check
+      description: Returns detailed health status including database and Redis connectivity
+      responses:
+        '200':
+          description: Server is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessCheck'
+        '503':
+          description: Server is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessCheck'
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Simple check that the process is alive
+      responses:
+        '200':
+          description: Server is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: alive
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  # ============================================
+  # Authentication Endpoints
+  # ============================================
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      description: Create a new user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and get tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: Get new access token using refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Tokens refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: User logout
+      description: Invalidate refresh token
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /auth/forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Request password reset
+      description: Send password reset email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Reset email sent (if account exists)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /auth/reset-password:
+    post:
+      tags:
+        - Authentication
+      summary: Reset password
+      description: Reset password using token from email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - password
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/verify-email:
+    post:
+      tags:
+        - Authentication
+      summary: Verify email
+      description: Verify email address using token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Email verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ============================================
+  # User Endpoints
+  # ============================================
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Get current user profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      tags:
+        - Users
+      summary: Update current user profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+
+  # ============================================
+  # Listings Endpoints
+  # ============================================
+  /listings:
+    get:
+      tags:
+        - Listings
+      summary: Get all active listings
+      description: Browse marketplace listings with filters
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, pending, sold]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [price, createdAt, views]
+        - name: sortOrder
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        '200':
+          description: List of listings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingsResponse'
+
+    post:
+      tags:
+        - Listings
+      summary: Create new listing
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateListingRequest'
+      responses:
+        '201':
+          description: Listing created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Insufficient credits or seller not verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /listings/{id}:
+    get:
+      tags:
+        - Listings
+      summary: Get listing details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Listing details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Listings
+      summary: Update listing
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateListingRequest'
+      responses:
+        '200':
+          description: Listing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingResponse'
+
+    delete:
+      tags:
+        - Listings
+      summary: Delete listing
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Listing deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  # ============================================
+  # Offers Endpoints
+  # ============================================
+  /offers:
+    post:
+      tags:
+        - Offers
+      summary: Create new offer
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOfferRequest'
+      responses:
+        '201':
+          description: Offer created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferResponse'
+
+  /offers/{id}:
+    get:
+      tags:
+        - Offers
+      summary: Get offer details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Offer details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferResponse'
+
+  /offers/{id}/accept:
+    post:
+      tags:
+        - Offers
+      summary: Accept offer
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Offer accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferResponse'
+
+  /offers/{id}/reject:
+    post:
+      tags:
+        - Offers
+      summary: Reject offer
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Offer rejected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferResponse'
+
+  /offers/{id}/counter:
+    post:
+      tags:
+        - Offers
+      summary: Counter offer
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+              properties:
+                amount:
+                  type: number
+                message:
+                  type: string
+      responses:
+        '200':
+          description: Counter offer sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferResponse'
+
+  # ============================================
+  # Credits Endpoints
+  # ============================================
+  /credits/balance:
+    get:
+      tags:
+        - Credits
+      summary: Get credit balance
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Credit balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditBalance'
+
+  /credits/history:
+    get:
+      tags:
+        - Credits
+      summary: Get credit history
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Credit transaction history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditHistoryResponse'
+
+  /credits/plans:
+    get:
+      tags:
+        - Credits
+      summary: Get subscription plans
+      responses:
+        '200':
+          description: Available subscription plans
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionPlans'
+
+  /credits/subscribe:
+    post:
+      tags:
+        - Credits
+      summary: Subscribe to plan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - plan
+              properties:
+                plan:
+                  type: string
+                  enum: [STARTER, PROFESSIONAL, ENTERPRISE]
+                isYearly:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Subscription checkout URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      checkoutUrl:
+                        type: string
+                      sessionId:
+                        type: string
+
+  # ============================================
+  # FMCSA Endpoints
+  # ============================================
+  /fmcsa/lookup/{mcNumber}:
+    get:
+      tags:
+        - FMCSA
+      summary: Lookup MC Authority
+      description: Get FMCSA data for an MC number
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: mcNumber
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{1,8}$'
+      responses:
+        '200':
+          description: FMCSA data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FMCSAData'
+        '404':
+          description: MC number not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    Success:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+
+    HealthCheck:
+      type: object
+      properties:
+        success:
+          type: boolean
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+
+    ReadinessCheck:
+      type: object
+      properties:
+        success:
+          type: boolean
+        status:
+          type: string
+          enum: [ready, unhealthy]
+        timestamp:
+          type: string
+          format: date-time
+        uptime:
+          type: number
+        responseTime:
+          type: number
+        services:
+          type: object
+          properties:
+            database:
+              type: object
+              properties:
+                status:
+                  type: string
+                latency:
+                  type: number
+            redis:
+              type: object
+              properties:
+                status:
+                  type: string
+                latency:
+                  type: number
+                required:
+                  type: boolean
+        memory:
+          type: object
+          properties:
+            used:
+              type: number
+            total:
+              type: number
+            unit:
+              type: string
+
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - firstName
+        - lastName
+        - role
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [buyer, seller]
+        companyName:
+          type: string
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            accessToken:
+              type: string
+            refreshToken:
+              type: string
+
+    TokenResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            accessToken:
+              type: string
+            refreshToken:
+              type: string
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        role:
+          type: string
+        status:
+          type: string
+        emailVerified:
+          type: boolean
+        avatar:
+          type: string
+        totalCredits:
+          type: integer
+        usedCredits:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    UserResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+        companyName:
+          type: string
+        bio:
+          type: string
+
+    Listing:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sellerId:
+          type: string
+        mcNumber:
+          type: string
+        companyName:
+          type: string
+        dotNumber:
+          type: string
+        status:
+          type: string
+          enum: [draft, pending_review, active, sold, cancelled]
+        askingPrice:
+          type: number
+        description:
+          type: string
+        yearsInBusiness:
+          type: integer
+        fleetSize:
+          type: integer
+        operatingAuthority:
+          type: array
+          items:
+            type: string
+        views:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    ListingResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            listing:
+              $ref: '#/components/schemas/Listing'
+
+    ListingsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            listings:
+              type: array
+              items:
+                $ref: '#/components/schemas/Listing'
+            pagination:
+              $ref: '#/components/schemas/Pagination'
+
+    CreateListingRequest:
+      type: object
+      required:
+        - mcNumber
+        - askingPrice
+      properties:
+        mcNumber:
+          type: string
+        askingPrice:
+          type: number
+        description:
+          type: string
+        yearsInBusiness:
+          type: integer
+        fleetSize:
+          type: integer
+        operatingAuthority:
+          type: array
+          items:
+            type: string
+
+    UpdateListingRequest:
+      type: object
+      properties:
+        askingPrice:
+          type: number
+        description:
+          type: string
+
+    Offer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        listingId:
+          type: string
+        buyerId:
+          type: string
+        sellerId:
+          type: string
+        amount:
+          type: number
+        status:
+          type: string
+          enum: [pending, accepted, rejected, countered, expired, withdrawn]
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    OfferResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            offer:
+              $ref: '#/components/schemas/Offer'
+
+    CreateOfferRequest:
+      type: object
+      required:
+        - listingId
+        - amount
+      properties:
+        listingId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+        message:
+          type: string
+
+    CreditBalance:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            totalCredits:
+              type: integer
+            usedCredits:
+              type: integer
+            availableCredits:
+              type: integer
+
+    CreditHistoryResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            transactions:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  type:
+                    type: string
+                    enum: [purchase, usage, bonus, refund]
+                  amount:
+                    type: integer
+                  balance:
+                    type: integer
+                  description:
+                    type: string
+                  createdAt:
+                    type: string
+                    format: date-time
+            pagination:
+              $ref: '#/components/schemas/Pagination'
+
+    SubscriptionPlans:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            plans:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  credits:
+                    type: integer
+                  priceMonthly:
+                    type: number
+                  priceYearly:
+                    type: number
+                  pricePerCreditMonthly:
+                    type: number
+                  pricePerCreditYearly:
+                    type: number
+
+    FMCSAData:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            mcNumber:
+              type: string
+            dotNumber:
+              type: string
+            legalName:
+              type: string
+            dbaName:
+              type: string
+            physicalAddress:
+              type: object
+              properties:
+                street:
+                  type: string
+                city:
+                  type: string
+                state:
+                  type: string
+                zip:
+                  type: string
+            operatingStatus:
+              type: string
+            safetyRating:
+              type: string
+            totalDrivers:
+              type: integer
+            totalPowerUnits:
+              type: integer
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
