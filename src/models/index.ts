@@ -127,7 +127,8 @@ export enum CreditTransactionType {
   USAGE = 'USAGE',
   REFUND = 'REFUND',
   BONUS = 'BONUS',
-  EXPIRED = 'EXPIRED'
+  EXPIRED = 'EXPIRED',
+  SUBSCRIPTION = 'SUBSCRIPTION'
 }
 
 export enum NotificationType {

@@ -139,9 +139,10 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
   let responseBody: any;
 
   // Override res.end to capture response
-  res.end = function(chunk?: any, ...args: any[]): Response {
+  const self = res;
+  res.end = function(this: Response, chunk?: any, encoding?: BufferEncoding | (() => void), callback?: () => void): Response {
     // Try to capture response body for logging (only small JSON responses)
-    if (chunk && res.getHeader('content-type')?.toString().includes('application/json')) {
+    if (chunk && self.getHeader('content-type')?.toString().includes('application/json')) {
       try {
         const bodyStr = chunk.toString();
         if (bodyStr.length < 1000) {
@@ -152,9 +153,9 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
       }
     }
 
-    // Call original end
-    return originalEnd.call(this, chunk, ...args);
-  };
+    // Call original end - use any to bypass strict overload checking
+    return (originalEnd as any).call(self, chunk, encoding, callback);
+  } as typeof res.end;
 
   // Log response when finished
   res.on('finish', () => {

@@ -82,7 +82,7 @@ export interface PaymentData {
   userName: string;
   mcNumber: string;
   amount: number;
-  paymentType: 'deposit' | 'final' | 'subscription';
+  paymentType: string;
   transactionUrl?: string;
 }
 
@@ -406,7 +406,7 @@ class EmailService {
 
           Listing: {{listingTitle}}
           MC Number: {{mcNumber}}
-          Offer Amount: ${{offerAmount}}
+          Offer Amount: \${{offerAmount}}
           Buyer: {{buyerName}}
 
           Review the offer: {{offerUrl}}
@@ -456,7 +456,7 @@ class EmailService {
 
           Listing: {{listingTitle}}
           MC Number: {{mcNumber}}
-          Accepted Amount: ${{offerAmount}}
+          Accepted Amount: \${{offerAmount}}
 
           Next Steps:
           1. A transaction room has been created
@@ -505,7 +505,7 @@ class EmailService {
 
           Listing: {{listingTitle}}
           MC Number: {{mcNumber}}
-          Your Offer: ${{offerAmount}}
+          Your Offer: \${{offerAmount}}
 
           Browse more listings: {{actionUrl}}
         `,
@@ -550,8 +550,8 @@ class EmailService {
 
           Listing: {{listingTitle}}
           MC Number: {{mcNumber}}
-          Your Offer: ${{offerAmount}}
-          Counter Offer: ${{counterAmount}}
+          Your Offer: \${{offerAmount}}
+          Counter Offer: \${{counterAmount}}
 
           Review counter offer: {{actionUrl}}
         `,
@@ -726,7 +726,7 @@ class EmailService {
 
           We've received your payment.
 
-          Amount: ${{amount}}
+          Amount: \${{amount}}
           Type: {{paymentType}}
           MC Number: {{mcNumber}}
 

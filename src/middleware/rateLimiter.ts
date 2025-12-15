@@ -45,7 +45,7 @@ const createStore = async () => {
   if (redisHealthy) {
     logger.info('Rate limiter using Redis store');
     return new RedisStore({
-      sendCommand: (...args: string[]) => getRedisClient().call(...args) as any,
+      sendCommand: (command: string, ...args: string[]) => getRedisClient().call(command, ...args) as any,
       prefix: 'ratelimit:',
     });
   }

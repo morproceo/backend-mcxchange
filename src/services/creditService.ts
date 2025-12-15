@@ -235,22 +235,26 @@ class CreditService {
     }
 
     // Create Stripe checkout session for subscription
-    const session = await stripeService.createSubscription(stripeCustomerId, priceId, {
-      userId: user.id,
-      plan,
-      isYearly: String(isYearly),
+    const session = await stripeService.createSubscription({
+      customerId: stripeCustomerId,
+      priceId,
+      metadata: {
+        userId: user.id,
+        plan,
+        isYearly: String(isYearly),
+      },
     });
 
     logger.info('Subscription checkout session created', {
       userId,
       plan,
       isYearly,
-      sessionId: session.id,
+      sessionId: session.subscriptionId,
     });
 
     return {
-      checkoutUrl: session.url || '',
-      sessionId: session.id,
+      checkoutUrl: session.clientSecret || '',
+      sessionId: session.subscriptionId || '',
     };
   }
 
@@ -285,30 +289,30 @@ class CreditService {
     }
 
     // Create payment intent
-    const paymentIntent = await stripeService.createPaymentIntent(
-      priceInCents,
-      'usd',
-      stripeCustomerId,
-      {
+    const paymentIntent = await stripeService.createPaymentIntent({
+      amount: priceInCents,
+      currency: 'usd',
+      customerId: stripeCustomerId,
+      metadata: {
         type: 'subscription',
         userId: user.id,
         plan,
         isYearly: String(isYearly),
         credits: String(planDetails.credits),
-      }
-    );
+      },
+    });
 
     // For one-time payments, we'll create a simple payment link
     // In production, you'd use Stripe Checkout Session
     logger.info('One-time payment intent created for subscription', {
       userId,
       plan,
-      paymentIntentId: paymentIntent.id,
+      paymentIntentId: paymentIntent.paymentIntentId,
     });
 
     return {
-      checkoutUrl: `${config.frontendUrl}/checkout?payment_intent=${paymentIntent.id}&client_secret=${paymentIntent.client_secret}`,
-      sessionId: paymentIntent.id,
+      checkoutUrl: `${config.frontendUrl}/checkout?payment_intent=${paymentIntent.paymentIntentId}&client_secret=${paymentIntent.clientSecret}`,
+      sessionId: paymentIntent.paymentIntentId || '',
     };
   }
 
@@ -422,10 +426,11 @@ class CreditService {
 
       // Send confirmation email
       try {
-        await emailService.sendPaymentReceived(user, {
+        await emailService.sendPaymentReceived(user.email, {
+          userName: user.name,
+          mcNumber: 'N/A',
           amount: price,
-          description: `${planDetails.name} Subscription`,
-          credits: planDetails.credits,
+          paymentType: 'subscription',
         });
       } catch (emailError) {
         logger.error('Failed to send subscription confirmation email', { userId, error: emailError });
@@ -560,8 +565,8 @@ class CreditService {
       throw new NotFoundError('User');
     }
 
-    // Calculate price (use base rate from config or fixed pricing)
-    const pricePerCredit = config.credits?.pricePerCredit || 5; // $5 per credit default
+    // Calculate price (use base rate - $5 per credit default)
+    const pricePerCredit = 5;
     const totalPrice = creditAmount * pricePerCredit;
     const priceInCents = Math.round(totalPrice * 100);
 
@@ -578,28 +583,27 @@ class CreditService {
     }
 
     // Create payment intent
-    const paymentIntent = await stripeService.createPaymentIntent(
-      priceInCents,
-      'usd',
-      stripeCustomerId,
-      {
+    const paymentIntent = await stripeService.createPaymentIntent({
+      amount: priceInCents,
+      currency: 'usd',
+      customerId: stripeCustomerId,
+      metadata: {
         type: 'credit_purchase',
         userId: user.id,
         creditAmount: String(creditAmount),
       },
-      paymentMethodId
-    );
+    });
 
     logger.info('Credit purchase payment intent created', {
       userId,
       creditAmount,
       totalPrice,
-      paymentIntentId: paymentIntent.id,
+      paymentIntentId: paymentIntent.paymentIntentId,
     });
 
     return {
-      paymentIntentId: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret || '',
+      paymentIntentId: paymentIntent.paymentIntentId || '',
+      clientSecret: paymentIntent.clientSecret || '',
     };
   }
 
@@ -646,7 +650,7 @@ class CreditService {
         {
           userId,
           type: PaymentType.CREDIT_PURCHASE,
-          amount: credits * (config.credits?.pricePerCredit || 5),
+          amount: credits * 5,
           status: PaymentStatus.COMPLETED,
           stripePaymentId: paymentIntentId,
           description: `Credit purchase - ${credits} credits`,
@@ -804,7 +808,8 @@ class CreditService {
 
       await t.commit();
 
-      logger.audit('admin_add_bonus_credits', adminId, {
+      logger.info('admin_add_bonus_credits', {
+        adminId,
         targetUserId: userId,
         amount,
         reason,
@@ -960,6 +965,61 @@ class CreditService {
     }
 
     return expiredSubscriptions.length;
+  }
+
+  /**
+   * Grant subscription credits (used by webhooks)
+   */
+  async grantSubscriptionCredits(userId: string, plan: SubscriptionPlan): Promise<void> {
+    const planDetails = SUBSCRIPTION_PLANS[plan];
+    if (!planDetails) {
+      logger.error('Invalid subscription plan', { userId, plan });
+      return;
+    }
+
+    const credits = planDetails.credits;
+    await this.addCredits(userId, credits, CreditTransactionType.SUBSCRIPTION, `Monthly credits for ${plan} plan`);
+
+    logger.info('Subscription credits granted', { userId, plan, credits });
+  }
+
+  /**
+   * Add credits to user account (used by webhooks)
+   */
+  async addCredits(
+    userId: string,
+    amount: number,
+    type: CreditTransactionType | string = CreditTransactionType.BONUS,
+    description: string = 'Credits added'
+  ): Promise<void> {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    const newTotal = user.totalCredits + amount;
+    const t = await sequelize.transaction();
+
+    try {
+      await user.update({ totalCredits: newTotal }, { transaction: t });
+
+      await CreditTransaction.create(
+        {
+          userId,
+          type: type as CreditTransactionType,
+          amount,
+          balance: newTotal - user.usedCredits,
+          description,
+        },
+        { transaction: t }
+      );
+
+      await t.commit();
+      logger.info('Credits added', { userId, amount, type, newBalance: newTotal - user.usedCredits });
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 }
 

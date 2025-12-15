@@ -110,6 +110,7 @@ interface ErrorResponse extends ApiResponse {
   timestamp?: string;
   path?: string;
   stack?: string;
+  retryAfter?: number;
 }
 
 const buildErrorResponse = (

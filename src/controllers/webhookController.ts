@@ -178,7 +178,7 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
     userName: user.name,
     mcNumber: metadata?.mcNumber || 'N/A',
     amount: stripeService.centsToDollars(paymentIntent.amount),
-    paymentType: paymentType || 'payment',
+    paymentType: paymentType as string || 'payment',
     transactionUrl: transactionId
       ? `${config.frontendUrl}/transactions/${transactionId}`
       : undefined,
@@ -211,10 +211,10 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent): P
   if (userId) {
     await notificationService.create({
       userId,
-      type: 'PAYMENT',
+      type: 'PAYMENT' as any,
       title: 'Payment Failed',
       message: 'Your payment could not be processed. Please try again or use a different payment method.',
-      data: { paymentIntentId: paymentIntent.id },
+      metadata: { paymentIntentId: paymentIntent.id },
     });
   }
 }
@@ -244,8 +244,8 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription): Pro
     stripeCustomerId: subscription.customer as string,
     plan,
     status: subscription.status,
-    currentPeriodStart: new Date(subscription.current_period_start * 1000),
-    currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+    currentPeriodStart: new Date((subscription as any).current_period_start * 1000),
+    currentPeriodEnd: new Date((subscription as any).current_period_end * 1000),
     cancelAtPeriodEnd: subscription.cancel_at_period_end,
   });
 
@@ -274,8 +274,8 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Pro
   // Update subscription record
   await dbSubscription.update({
     status: subscription.status,
-    currentPeriodStart: new Date(subscription.current_period_start * 1000),
-    currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+    currentPeriodStart: new Date((subscription as any).current_period_start * 1000),
+    currentPeriodEnd: new Date((subscription as any).current_period_end * 1000),
     cancelAtPeriodEnd: subscription.cancel_at_period_end,
     canceledAt: subscription.canceled_at
       ? new Date(subscription.canceled_at * 1000)
@@ -308,7 +308,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Pro
     // Notify user
     await notificationService.create({
       userId: dbSubscription.userId,
-      type: 'PAYMENT',
+      type: 'PAYMENT' as any,
       title: 'Subscription Cancelled',
       message: 'Your subscription has been cancelled. You will retain access until the end of your billing period.',
     });
@@ -326,7 +326,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
     billingReason: invoice.billing_reason,
   });
 
-  const subscription = invoice.subscription;
+  const subscription = (invoice as any).subscription;
   if (!subscription) return;
 
   // Find subscription in our database
@@ -358,7 +358,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
     customerId: invoice.customer,
   });
 
-  const subscription = invoice.subscription;
+  const subscription = (invoice as any).subscription;
   if (!subscription) return;
 
   // Find subscription in our database
@@ -372,7 +372,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
     // Notify user
     await notificationService.create({
       userId: dbSubscription.userId,
-      type: 'PAYMENT',
+      type: 'PAYMENT' as any,
       title: 'Payment Failed',
       message: 'Your subscription payment failed. Please update your payment method to avoid service interruption.',
     });

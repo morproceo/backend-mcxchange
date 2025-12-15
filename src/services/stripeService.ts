@@ -6,7 +6,7 @@ import { BadRequestError, PaymentRequiredError } from '../middleware/errorHandle
 // Initialize Stripe client
 const stripe = config.stripe.secretKey
   ? new Stripe(config.stripe.secretKey, {
-      apiVersion: '2024-11-20.acacia',
+      apiVersion: '2025-11-17.clover' as const,
       typescript: true,
     })
   : null;
@@ -322,7 +322,7 @@ class StripeService {
       });
 
       const invoice = subscription.latest_invoice as Stripe.Invoice;
-      const paymentIntent = invoice.payment_intent as Stripe.PaymentIntent;
+      const paymentIntent = (invoice as any).payment_intent as Stripe.PaymentIntent;
 
       logger.info('Subscription created', {
         subscriptionId: subscription.id,

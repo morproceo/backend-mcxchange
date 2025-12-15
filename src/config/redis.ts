@@ -1,9 +1,9 @@
-import Redis from 'ioredis';
+import Redis, { RedisOptions } from 'ioredis';
 import { config } from './index';
 import logger from '../utils/logger';
 
 // Redis connection options
-const redisOptions: Redis.RedisOptions = {
+const redisOptions: RedisOptions = {
   host: config.redis?.host || 'localhost',
   port: config.redis?.port || 6379,
   password: config.redis?.password || undefined,
@@ -27,7 +27,11 @@ let redis: Redis | null = null;
 
 export const getRedisClient = (): Redis => {
   if (!redis) {
-    redis = new Redis(config.redis?.url || redisOptions);
+    if (config.redis?.url) {
+      redis = new Redis(config.redis.url);
+    } else {
+      redis = new Redis(redisOptions);
+    }
 
     redis.on('connect', () => {
       logger.info('Redis client connecting...');

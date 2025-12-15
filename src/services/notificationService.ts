@@ -15,6 +15,11 @@ interface CreateNotificationData {
 }
 
 class NotificationService {
+  // Alias for createNotification (used by webhookController)
+  async create(data: CreateNotificationData) {
+    return this.createNotification(data);
+  }
+
   // Get user's notifications
   async getNotifications(
     userId: string,
