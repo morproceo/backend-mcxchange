@@ -1,33 +1,50 @@
 import { config } from '../config';
 import { FMCSACarrierData, FMCSAAuthorityHistory, FMCSAInsuranceHistory } from '../types';
 
-interface FMCSAResponse {
-  content?: {
-    carrier?: {
-      dotNumber: string;
-      legalName: string;
-      dbaName?: string;
-      carrierOperation: {
-        carrierOperationDesc: string;
-      };
-      phyCity: string;
-      phyState: string;
-      phyStreet: string;
-      phone: string;
-      safetyRating?: string;
-      safetyRatingDate?: string;
-      totalDrivers: number;
-      totalPowerUnits: number;
-      mcs150FormDate?: string;
-      allowedToOperate: string;
-      bipdRequiredAmount: number;
-      cargoRequiredAmount: number;
-      bondRequiredAmount: number;
-      bipdInsuranceOnFile: number;
-      cargoInsuranceOnFile: number;
-      bondInsuranceOnFile: number;
-    };
+interface FMCSACarrierRaw {
+  dotNumber: number | string;
+  legalName: string;
+  dbaName?: string | null;
+  carrierOperation?: {
+    carrierOperationCode?: string;
+    carrierOperationDesc?: string;
   };
+  phyCity: string;
+  phyState: string;
+  phyStreet: string;
+  phyZipcode?: string;
+  phone?: string;
+  safetyRating?: string | null;
+  safetyRatingDate?: string | null;
+  totalDrivers: number;
+  totalPowerUnits: number;
+  mcs150FormDate?: string;
+  allowedToOperate: string;
+  bipdRequiredAmount?: number | string;
+  cargoRequiredAmount?: number | string;
+  bondRequiredAmount?: number | string;
+  bipdInsuranceOnFile?: number | string;
+  cargoInsuranceOnFile?: number | string;
+  bondInsuranceOnFile?: number | string;
+  // Additional fields from actual API
+  ein?: number;
+  commonAuthorityStatus?: string;
+  contractAuthorityStatus?: string;
+  brokerAuthorityStatus?: string;
+}
+
+// Response for single carrier lookup (by DOT)
+interface FMCSASingleResponse {
+  content?: {
+    carrier?: FMCSACarrierRaw;
+  };
+}
+
+// Response for docket-number lookup (by MC) - returns array
+interface FMCSAArrayResponse {
+  content?: Array<{
+    carrier?: FMCSACarrierRaw;
+  }>;
 }
 
 class FMCSAService {
@@ -43,6 +60,7 @@ class FMCSAService {
   async lookupByDOT(dotNumber: string): Promise<FMCSACarrierData | null> {
     try {
       const url = `${this.baseUrl}/carriers/${dotNumber}?webKey=${this.apiKey}`;
+      console.log('FMCSA DOT lookup URL:', url);
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -50,7 +68,8 @@ class FMCSAService {
         return null;
       }
 
-      const data = await response.json() as FMCSAResponse;
+      const data = await response.json() as FMCSASingleResponse;
+      console.log('FMCSA DOT response:', JSON.stringify(data).substring(0, 500));
 
       if (!data.content?.carrier) {
         return null;
@@ -66,8 +85,9 @@ class FMCSAService {
   // Lookup carrier by MC number
   async lookupByMC(mcNumber: string): Promise<FMCSACarrierData | null> {
     try {
-      // MC lookup requires a different endpoint
+      // MC lookup requires a different endpoint - returns array
       const url = `${this.baseUrl}/carriers/docket-number/${mcNumber}?webKey=${this.apiKey}`;
+      console.log('FMCSA MC lookup URL:', url);
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -75,13 +95,23 @@ class FMCSAService {
         return null;
       }
 
-      const data = await response.json() as FMCSAResponse;
+      const data = await response.json() as FMCSAArrayResponse;
+      console.log('FMCSA MC response:', JSON.stringify(data).substring(0, 500));
 
-      if (!data.content?.carrier) {
+      // MC lookup returns an array in content
+      if (!data.content || !Array.isArray(data.content) || data.content.length === 0) {
+        console.log('FMCSA: No carriers found for MC number');
         return null;
       }
 
-      return this.mapCarrierData(data.content.carrier);
+      // Get the first carrier from the array
+      const carrierData = data.content[0]?.carrier;
+      if (!carrierData) {
+        console.log('FMCSA: Carrier data missing from response');
+        return null;
+      }
+
+      return this.mapCarrierData(carrierData);
     } catch (error) {
       console.error('FMCSA lookup error:', error);
       return null;
@@ -196,33 +226,40 @@ class FMCSAService {
   }
 
   // Map raw API response to our data structure
-  private mapCarrierData(rawCarrier: NonNullable<FMCSAResponse['content']>['carrier']): FMCSACarrierData {
+  private mapCarrierData(rawCarrier: FMCSACarrierRaw): FMCSACarrierData {
     if (!rawCarrier) {
       throw new Error('Invalid carrier data');
     }
 
+    // Helper to parse numbers from string or number
+    const toNumber = (val: string | number | undefined | null): number => {
+      if (val === null || val === undefined) return 0;
+      const num = typeof val === 'string' ? parseFloat(val) : val;
+      return isNaN(num) ? 0 : num;
+    };
+
     return {
-      dotNumber: rawCarrier.dotNumber,
+      dotNumber: String(rawCarrier.dotNumber),
       legalName: rawCarrier.legalName,
-      dbaName: rawCarrier.dbaName,
+      dbaName: rawCarrier.dbaName || undefined,
       carrierOperation: rawCarrier.carrierOperation?.carrierOperationDesc || 'Unknown',
       hqCity: rawCarrier.phyCity,
       hqState: rawCarrier.phyState,
       physicalAddress: rawCarrier.phyStreet,
-      phone: rawCarrier.phone,
+      phone: rawCarrier.phone || '',
       safetyRating: rawCarrier.safetyRating || 'None',
-      safetyRatingDate: rawCarrier.safetyRatingDate,
+      safetyRatingDate: rawCarrier.safetyRatingDate || undefined,
       totalDrivers: rawCarrier.totalDrivers || 0,
       totalPowerUnits: rawCarrier.totalPowerUnits || 0,
       mcs150Date: rawCarrier.mcs150FormDate,
       allowedToOperate: rawCarrier.allowedToOperate,
-      bipdRequired: rawCarrier.bipdRequiredAmount || 0,
-      cargoRequired: rawCarrier.cargoRequiredAmount || 0,
-      bondRequired: rawCarrier.bondRequiredAmount || 0,
-      insuranceOnFile: rawCarrier.bipdInsuranceOnFile > 0,
-      bipdOnFile: rawCarrier.bipdInsuranceOnFile || 0,
-      cargoOnFile: rawCarrier.cargoInsuranceOnFile || 0,
-      bondOnFile: rawCarrier.bondInsuranceOnFile || 0,
+      bipdRequired: toNumber(rawCarrier.bipdRequiredAmount),
+      cargoRequired: toNumber(rawCarrier.cargoRequiredAmount),
+      bondRequired: toNumber(rawCarrier.bondRequiredAmount),
+      insuranceOnFile: toNumber(rawCarrier.bipdInsuranceOnFile) > 0,
+      bipdOnFile: toNumber(rawCarrier.bipdInsuranceOnFile),
+      cargoOnFile: toNumber(rawCarrier.cargoInsuranceOnFile),
+      bondOnFile: toNumber(rawCarrier.bondInsuranceOnFile),
       cargoTypes: [], // Would need additional API call to get cargo types
     };
   }

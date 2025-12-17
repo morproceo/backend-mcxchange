@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { sellerService } from '../services/sellerService';
-import { asyncHandler } from '../middleware/errorHandler';
+import { stripeService } from '../services/stripeService';
+import { asyncHandler, BadRequestError } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { ListingStatus } from '../models';
 import { parseIntParam } from '../utils/helpers';
@@ -128,5 +129,56 @@ export const getAnalytics = asyncHandler(async (req: AuthRequest, res: Response)
   res.json({
     success: true,
     data: analytics,
+  });
+});
+
+// Create listing fee checkout session
+export const createListingFeeCheckout = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { mcNumber, successUrl, cancelUrl } = req.body;
+
+  if (!mcNumber) {
+    throw new BadRequestError('MC number is required');
+  }
+
+  if (!successUrl || !cancelUrl) {
+    throw new BadRequestError('Success and cancel URLs are required');
+  }
+
+  // Get or create Stripe customer for this user
+  const customer = await stripeService.getOrCreateCustomer(
+    req.user.id,
+    req.user.email,
+    req.user.name || req.user.email
+  );
+
+  // Create the checkout session for $35 listing fee
+  const result = await stripeService.createListingFeeCheckout({
+    customerId: customer.id,
+    amount: 3500, // $35.00 in cents
+    sellerId: req.user.id,
+    mcNumber: mcNumber,
+    successUrl,
+    cancelUrl,
+    metadata: {
+      userId: req.user.id,
+      userEmail: req.user.email,
+    },
+  });
+
+  if (!result.success) {
+    throw new BadRequestError(result.error || 'Failed to create checkout session');
+  }
+
+  res.json({
+    success: true,
+    data: {
+      sessionId: result.sessionId,
+      url: result.url,
+    },
   });
 });

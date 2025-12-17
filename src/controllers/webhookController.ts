@@ -77,6 +77,11 @@ export const handleStripeWebhook = async (req: Request, res: Response): Promise<
         await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
         break;
 
+      // Checkout Session Events
+      case 'checkout.session.completed':
+        await handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
+        break;
+
       // Charge Events
       case 'charge.refunded':
         await handleChargeRefunded(event.data.object as Stripe.Charge);
@@ -412,6 +417,96 @@ async function handleChargeDisputeCreated(dispute: Stripe.Dispute): Promise<void
 
   // This is a serious event - notify admin
   // TODO: Implement admin notification system
+}
+
+// ============================================
+// Checkout Session Handlers
+// ============================================
+
+async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session): Promise<void> {
+  logger.info('Checkout session completed', {
+    sessionId: session.id,
+    paymentStatus: session.payment_status,
+  });
+
+  // Only process if payment was successful
+  if (session.payment_status !== 'paid') {
+    logger.info('Checkout session not yet paid', { sessionId: session.id });
+    return;
+  }
+
+  const metadata = session.metadata;
+  const type = metadata?.type;
+
+  // Handle deposit payments from checkout
+  if (type === 'deposit') {
+    const transactionId = metadata?.transactionId;
+    const buyerId = metadata?.buyerId;
+    const mcNumber = metadata?.mcNumber;
+
+    if (!transactionId || !buyerId) {
+      logger.warn('Deposit checkout missing required metadata', {
+        sessionId: session.id,
+        metadata,
+      });
+      return;
+    }
+
+    // Get buyer
+    const buyer = await User.findByPk(buyerId);
+    if (!buyer) {
+      logger.error('Buyer not found for deposit payment', { buyerId });
+      return;
+    }
+
+    // Update transaction status
+    const transaction = await Transaction.findByPk(transactionId);
+    if (transaction && transaction.status === TransactionStatus.AWAITING_DEPOSIT) {
+      const amountPaid = session.amount_total ? session.amount_total / 100 : 1000;
+
+      await transaction.update({
+        status: TransactionStatus.DEPOSIT_RECEIVED,
+        depositAmount: amountPaid,
+        depositPaidAt: new Date(),
+      });
+
+      logger.info('Transaction deposit received via checkout', {
+        transactionId,
+        amount: amountPaid,
+        buyerId,
+      });
+
+      // Notify seller
+      await notificationService.notifyTransactionStatus(
+        transaction.sellerId,
+        'Deposit Received',
+        `The buyer has paid the $${amountPaid.toLocaleString()} deposit for MC #${mcNumber || 'N/A'}.`,
+        transactionId
+      );
+
+      // Notify buyer
+      await notificationService.notifyTransactionStatus(
+        buyerId,
+        'Deposit Confirmed',
+        `Your deposit of $${amountPaid.toLocaleString()} has been received. The transaction room is now active.`,
+        transactionId
+      );
+
+      // Send email to buyer
+      await emailService.sendPaymentReceived(buyer.email, {
+        userName: buyer.name,
+        mcNumber: mcNumber || 'N/A',
+        amount: amountPaid,
+        paymentType: 'deposit',
+        transactionUrl: `${config.frontendUrl}/transaction/${transactionId}`,
+      });
+    } else {
+      logger.warn('Transaction not found or not awaiting deposit', {
+        transactionId,
+        currentStatus: transaction?.status,
+      });
+    }
+  }
 }
 
 // ============================================

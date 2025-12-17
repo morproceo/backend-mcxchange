@@ -34,9 +34,10 @@ export const connectDatabase = async (): Promise<void> => {
     await sequelize.authenticate();
     console.log('Database connected successfully');
 
-    // Sync models (in development, use alter: true; in production use migrations)
+    // Sync models - use force: false to only create missing tables
+    // Using alter: true causes duplicate index issues in MySQL
     if (config.nodeEnv === 'development') {
-      await sequelize.sync({ alter: true });
+      await sequelize.sync({ force: false });
       console.log('Database models synchronized');
     }
   } catch (error) {

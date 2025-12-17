@@ -1,4 +1,5 @@
 import { Op } from 'sequelize';
+import sequelize from '../config/database';
 import {
   User,
   Listing,
@@ -9,8 +10,15 @@ import {
   Subscription,
   CreditTransaction,
   Document,
+  SubscriptionStatus,
+  SubscriptionPlan,
+  CreditTransactionType,
 } from '../models';
 import { getPaginationInfo } from '../utils/helpers';
+import { stripeService } from './stripeService';
+import { NotFoundError, BadRequestError } from '../middleware/errorHandler';
+import { SUBSCRIPTION_PLANS } from '../types';
+import logger from '../utils/logger';
 
 class BuyerService {
   // Get buyer dashboard stats
@@ -290,6 +298,184 @@ class BuyerService {
       transactions,
       pagination: getPaginationInfo(page, limit, total),
     };
+  }
+
+  // Cancel subscription
+  async cancelSubscription(buyerId: string) {
+    const subscription = await Subscription.findOne({
+      where: { userId: buyerId },
+    });
+
+    if (!subscription) {
+      throw new NotFoundError('No active subscription found');
+    }
+
+    if (subscription.status !== 'ACTIVE') {
+      throw new BadRequestError('Subscription is not active');
+    }
+
+    // Cancel in Stripe
+    if (subscription.stripeSubId) {
+      const cancelled = await stripeService.cancelSubscription(subscription.stripeSubId, false);
+      if (!cancelled) {
+        throw new BadRequestError('Failed to cancel subscription');
+      }
+    }
+
+    // Update subscription status
+    await subscription.update({
+      status: 'CANCELLED',
+      cancelledAt: new Date(),
+    });
+
+    return {
+      message: 'Subscription cancelled successfully',
+      subscription,
+    };
+  }
+
+  // Verify and fulfill subscription after Stripe checkout
+  // This checks Stripe for the user's subscription and adds credits if not already processed
+  async verifyAndFulfillSubscription(buyerId: string) {
+    const user = await User.findByPk(buyerId);
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    // Check if user has a Stripe customer ID
+    if (!user.stripeCustomerId) {
+      logger.info('User has no Stripe customer ID', { buyerId });
+      return { fulfilled: false, message: 'No Stripe customer found' };
+    }
+
+    // Get the Stripe instance
+    const stripe = stripeService.getStripe();
+    if (!stripe) {
+      throw new BadRequestError('Stripe service not available');
+    }
+
+    // Get user's subscriptions from Stripe
+    const stripeSubscriptions = await stripe.subscriptions.list({
+      customer: user.stripeCustomerId,
+      status: 'active',
+      limit: 1,
+    });
+
+    if (stripeSubscriptions.data.length === 0) {
+      logger.info('No active Stripe subscription found', { buyerId, customerId: user.stripeCustomerId });
+      return { fulfilled: false, message: 'No active subscription found in Stripe' };
+    }
+
+    const stripeSubscription = stripeSubscriptions.data[0];
+    const metadata = stripeSubscription.metadata;
+    // Plan in metadata is lowercase (starter, professional, enterprise) but SUBSCRIPTION_PLANS keys are uppercase
+    const planFromMetadata = (metadata?.plan || 'starter').toUpperCase();
+    const plan = planFromMetadata as SubscriptionPlan;
+    const isYearly = metadata?.isYearly === 'true';
+
+    // Calculate renewal date from Stripe subscription period end
+    // Stripe returns timestamps in seconds, we need milliseconds
+    const periodEnd = stripeSubscription.current_period_end;
+    const renewalDate = periodEnd && typeof periodEnd === 'number'
+      ? new Date(periodEnd * 1000)
+      : new Date(Date.now() + (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000); // Fallback: 30 days or 1 year from now
+
+    logger.info('Stripe subscription details', {
+      buyerId,
+      periodEnd,
+      renewalDate: renewalDate.toISOString(),
+      plan,
+      isYearly,
+    });
+
+    // Check if we already have this subscription in our database
+    let subscription = await Subscription.findOne({
+      where: { userId: buyerId },
+    });
+
+    // If subscription already active with credits, don't fulfill again
+    if (subscription && subscription.status === SubscriptionStatus.ACTIVE && subscription.stripeSubId === stripeSubscription.id) {
+      logger.info('Subscription already fulfilled', { buyerId, subscriptionId: subscription.id });
+      return {
+        fulfilled: true,
+        message: 'Subscription already active',
+        subscription: await this.getSubscription(buyerId),
+      };
+    }
+
+    // Get plan details - use type assertion for SUBSCRIPTION_PLANS index
+    const planDetails = SUBSCRIPTION_PLANS[plan as keyof typeof SUBSCRIPTION_PLANS];
+    if (!planDetails) {
+      logger.error('Invalid plan from Stripe metadata', { plan, buyerId });
+      throw new BadRequestError('Invalid subscription plan');
+    }
+
+    const t = await sequelize.transaction();
+
+    try {
+      // Create or update subscription in our database
+      if (subscription) {
+        await subscription.update({
+          plan,
+          status: SubscriptionStatus.ACTIVE,
+          priceMonthly: planDetails.priceMonthly,
+          priceYearly: planDetails.priceYearly,
+          isYearly,
+          creditsPerMonth: planDetails.credits,
+          creditsRemaining: planDetails.credits,
+          startDate: new Date(),
+          renewalDate,
+          stripeSubId: stripeSubscription.id,
+          cancelledAt: null,
+        }, { transaction: t });
+      } else {
+        subscription = await Subscription.create({
+          userId: buyerId,
+          plan,
+          status: SubscriptionStatus.ACTIVE,
+          priceMonthly: planDetails.priceMonthly,
+          priceYearly: planDetails.priceYearly,
+          isYearly,
+          creditsPerMonth: planDetails.credits,
+          creditsRemaining: planDetails.credits,
+          renewalDate,
+          stripeSubId: stripeSubscription.id,
+        }, { transaction: t });
+      }
+
+      // Add credits to user
+      const newTotal = user.totalCredits + planDetails.credits;
+      await user.update({ totalCredits: newTotal }, { transaction: t });
+
+      // Record credit transaction
+      await CreditTransaction.create({
+        userId: buyerId,
+        type: CreditTransactionType.SUBSCRIPTION,
+        amount: planDetails.credits,
+        balance: newTotal - user.usedCredits,
+        description: `${planDetails.name} subscription - ${planDetails.credits} credits`,
+        reference: subscription.id,
+      }, { transaction: t });
+
+      await t.commit();
+
+      logger.info('Subscription fulfilled successfully', {
+        buyerId,
+        plan,
+        credits: planDetails.credits,
+        stripeSubscriptionId: stripeSubscription.id,
+      });
+
+      return {
+        fulfilled: true,
+        message: 'Subscription activated and credits added',
+        subscription: await this.getSubscription(buyerId),
+      };
+    } catch (error) {
+      await t.rollback();
+      logger.error('Failed to fulfill subscription', { buyerId, error });
+      throw error;
+    }
   }
 }
 

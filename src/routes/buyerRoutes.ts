@@ -7,8 +7,11 @@ import {
   getUnlockedListings,
   getSubscription,
   getTransactions,
+  createSubscriptionCheckout,
+  cancelSubscription,
+  verifySubscription,
 } from '../controllers/buyerController';
-import { authenticate, buyerOnly } from '../middleware/auth';
+import { authenticate, buyerOnly, requireSubscription } from '../middleware/auth';
 
 const router = Router();
 
@@ -16,25 +19,20 @@ const router = Router();
 router.use(authenticate);
 router.use(buyerOnly);
 
-// Dashboard
+// Subscription routes - no subscription required (so users can subscribe)
+router.get('/subscription', getSubscription);
+router.post('/subscription/checkout', createSubscriptionCheckout);
+router.post('/subscription/cancel', cancelSubscription);
+router.post('/subscription/verify', verifySubscription);
+
+// Dashboard - no subscription required (shows subscription status)
 router.get('/dashboard', getDashboardStats);
 
-// Offers
-router.get('/offers', getOffers);
-
-// Purchases
-router.get('/purchases', getPurchases);
-
-// Saved listings
-router.get('/saved', getSavedListings);
-
-// Unlocked listings
-router.get('/unlocked', getUnlockedListings);
-
-// Subscription
-router.get('/subscription', getSubscription);
-
-// Transactions
-router.get('/transactions', getTransactions);
+// Routes that require active subscription
+router.get('/offers', requireSubscription, getOffers);
+router.get('/purchases', requireSubscription, getPurchases);
+router.get('/saved', requireSubscription, getSavedListings);
+router.get('/unlocked', requireSubscription, getUnlockedListings);
+router.get('/transactions', requireSubscription, getTransactions);
 
 export default router;

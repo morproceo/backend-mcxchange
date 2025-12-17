@@ -132,6 +132,7 @@ export interface CreateOfferData {
   amount: number;
   message?: string;
   expiresAt?: Date;
+  isBuyNow?: boolean;
 }
 
 // Listing Data

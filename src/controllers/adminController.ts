@@ -335,3 +335,87 @@ export const broadcastMessage = asyncHandler(async (req: AuthRequest, res: Respo
     message: `Message sent to ${result.recipientCount} users`,
   });
 });
+
+// Get single listing by ID (admin - returns any status)
+export const getListingById = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+
+  const listing = await adminService.getListingById(id);
+
+  res.json({
+    success: true,
+    data: listing,
+  });
+});
+
+// Update listing (admin - can update any field)
+export const updateListing = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+  const data = req.body;
+
+  const listing = await adminService.updateListing(id, req.user.id, data);
+
+  res.json({
+    success: true,
+    data: listing,
+    message: 'Listing updated',
+  });
+});
+
+// Get all offers (admin)
+export const getAllOffers = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const result = await adminService.getAllOffers({
+    page: parseIntParam(req.query.page as string),
+    limit: parseIntParam(req.query.limit as string),
+    status: req.query.status as string,
+  });
+
+  res.json({
+    success: true,
+    data: result.offers,
+    pagination: result.pagination,
+  });
+});
+
+// Approve offer (admin)
+export const adminApproveOffer = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+  const { notes } = req.body;
+
+  const offer = await adminService.approveOffer(id, req.user.id, notes);
+
+  res.json({
+    success: true,
+    data: offer,
+    message: 'Offer approved. Buyer will be notified to pay deposit.',
+  });
+});
+
+// Reject offer (admin)
+export const adminRejectOffer = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  const offer = await adminService.rejectOffer(id, req.user.id, reason);
+
+  res.json({
+    success: true,
+    data: offer,
+    message: 'Offer rejected. Buyer will be notified.',
+  });
+});

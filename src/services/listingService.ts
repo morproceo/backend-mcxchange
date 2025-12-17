@@ -17,6 +17,40 @@ import { ListingQueryParams, CreateListingData, PaginationInfo } from '../types'
 import { NotFoundError, ForbiddenError } from '../middleware/errorHandler';
 import { getPaginationInfo } from '../utils/helpers';
 
+// Helper function to normalize safety rating to valid enum value
+function normalizeSafetyRating(rating: string | undefined | null): SafetyRating {
+  if (!rating) return SafetyRating.NONE;
+
+  const normalized = rating.toUpperCase().trim();
+
+  // Map common variations to valid enum values
+  if (normalized === 'SATISFACTORY' || normalized === 'SAT') {
+    return SafetyRating.SATISFACTORY;
+  }
+  if (normalized === 'CONDITIONAL' || normalized === 'COND') {
+    return SafetyRating.CONDITIONAL;
+  }
+  if (normalized === 'UNSATISFACTORY' || normalized === 'UNSAT') {
+    return SafetyRating.UNSATISFACTORY;
+  }
+
+  // Default to NONE for any other value (including "None", "N/A", "NOT RATED", etc.)
+  return SafetyRating.NONE;
+}
+
+// Helper function to normalize Amazon relay status to valid enum value
+function normalizeAmazonStatus(status: string | undefined | null): AmazonRelayStatus {
+  if (!status) return AmazonRelayStatus.NONE;
+
+  const normalized = status.toUpperCase().trim();
+
+  if (normalized === 'ACTIVE') return AmazonRelayStatus.ACTIVE;
+  if (normalized === 'PENDING') return AmazonRelayStatus.PENDING;
+  if (normalized === 'SUSPENDED') return AmazonRelayStatus.SUSPENDED;
+
+  return AmazonRelayStatus.NONE;
+}
+
 class ListingService {
   // Get all listings with filters and pagination
   async getListings(params: ListingQueryParams) {
@@ -216,7 +250,10 @@ class ListingService {
   }
 
   // Create new listing
-  async createListing(sellerId: string, data: CreateListingData) {
+  async createListing(sellerId: string, data: CreateListingData & { submitForReview?: boolean }) {
+    // If payment was made (submitForReview flag), set status to PENDING_REVIEW
+    const initialStatus = data.submitForReview ? ListingStatus.PENDING_REVIEW : ListingStatus.DRAFT;
+
     const listing = await Listing.create({
       sellerId,
       mcNumber: data.mcNumber,
@@ -232,12 +269,12 @@ class ListingService {
       yearsActive: data.yearsActive || 0,
       fleetSize: data.fleetSize || 0,
       totalDrivers: data.totalDrivers || 0,
-      safetyRating: (data.safetyRating?.toUpperCase() as SafetyRating) || SafetyRating.NONE,
+      safetyRating: normalizeSafetyRating(data.safetyRating),
       insuranceOnFile: data.insuranceOnFile || false,
       bipdCoverage: data.bipdCoverage,
       cargoCoverage: data.cargoCoverage,
       bondAmount: data.bondAmount,
-      amazonStatus: (data.amazonStatus?.toUpperCase() as AmazonRelayStatus) || AmazonRelayStatus.NONE,
+      amazonStatus: normalizeAmazonStatus(data.amazonStatus),
       amazonRelayScore: data.amazonRelayScore,
       highwaySetup: data.highwaySetup || false,
       sellingWithEmail: data.sellingWithEmail || false,
@@ -247,7 +284,7 @@ class ListingService {
       cargoTypes: data.cargoTypes ? JSON.stringify(data.cargoTypes) : null,
       visibility: (data.visibility?.toUpperCase() as ListingVisibility) || ListingVisibility.PUBLIC,
       isPremium: data.isPremium || false,
-      status: ListingStatus.DRAFT,
+      status: initialStatus,
     });
 
     const listingWithSeller = await Listing.findByPk(listing.id, {
@@ -287,11 +324,11 @@ class ListingService {
       ...(data.yearsActive !== undefined && { yearsActive: data.yearsActive }),
       ...(data.fleetSize !== undefined && { fleetSize: data.fleetSize }),
       ...(data.totalDrivers !== undefined && { totalDrivers: data.totalDrivers }),
-      ...(data.safetyRating && { safetyRating: data.safetyRating.toUpperCase() }),
+      ...(data.safetyRating && { safetyRating: normalizeSafetyRating(data.safetyRating) }),
       ...(data.insuranceOnFile !== undefined && { insuranceOnFile: data.insuranceOnFile }),
       ...(data.bipdCoverage !== undefined && { bipdCoverage: data.bipdCoverage }),
       ...(data.cargoCoverage !== undefined && { cargoCoverage: data.cargoCoverage }),
-      ...(data.amazonStatus && { amazonStatus: data.amazonStatus.toUpperCase() }),
+      ...(data.amazonStatus && { amazonStatus: normalizeAmazonStatus(data.amazonStatus) }),
       ...(data.amazonRelayScore !== undefined && { amazonRelayScore: data.amazonRelayScore }),
       ...(data.highwaySetup !== undefined && { highwaySetup: data.highwaySetup }),
       ...(data.sellingWithEmail !== undefined && { sellingWithEmail: data.sellingWithEmail }),

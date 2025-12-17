@@ -1,9 +1,11 @@
 import { Response } from 'express';
 import { body } from 'express-validator';
 import { transactionService } from '../services/transactionService';
-import { asyncHandler } from '../middleware/errorHandler';
+import stripeService from '../services/stripeService';
+import { asyncHandler, NotFoundError, ForbiddenError, BadRequestError } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
-import { PaymentMethod, TransactionStatus } from '../models';
+import { PaymentMethod, TransactionStatus, Transaction, Listing, User } from '../models';
+import { config } from '../config';
 
 // Validation rules
 export const paymentValidation = [
@@ -306,5 +308,88 @@ export const updateStatus = asyncHandler(async (req: AuthRequest, res: Response)
     success: true,
     data: transaction,
     message: 'Status updated',
+  });
+});
+
+// Create deposit checkout session (Stripe) for a transaction
+export const createDepositCheckout = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+
+  // Get the transaction with listing
+  const transaction = await Transaction.findByPk(id, {
+    include: [
+      {
+        model: Listing,
+        as: 'listing',
+      },
+    ],
+  });
+
+  if (!transaction) {
+    throw new NotFoundError('Transaction not found');
+  }
+
+  // Verify the buyer owns this transaction
+  if (transaction.buyerId !== req.user.id) {
+    throw new ForbiddenError('You do not have permission to pay for this transaction');
+  }
+
+  // Verify transaction is awaiting deposit
+  if (transaction.status !== TransactionStatus.AWAITING_DEPOSIT) {
+    throw new BadRequestError('Transaction is not awaiting deposit payment');
+  }
+
+  // Get buyer info
+  const buyer = await User.findByPk(req.user.id);
+  if (!buyer) {
+    throw new NotFoundError('Buyer not found');
+  }
+
+  // Get or create Stripe customer for the buyer
+  let stripeCustomerId = buyer.stripeCustomerId;
+  if (!stripeCustomerId) {
+    const customer = await stripeService.getOrCreateCustomer(
+      buyer.id,
+      buyer.email,
+      buyer.name
+    );
+    stripeCustomerId = customer.id;
+    await buyer.update({ stripeCustomerId });
+  }
+
+  // Deposit is $1,000 = 100000 cents
+  const depositAmountCents = 100000;
+
+  // Get MC number from listing
+  const mcNumber = transaction.listing?.mcNumber || 'Unknown';
+
+  // Create Stripe checkout session
+  const frontendUrl = config.frontendUrl || 'http://localhost:5173';
+  const result = await stripeService.createDepositCheckout({
+    customerId: stripeCustomerId,
+    amount: depositAmountCents,
+    buyerId: req.user.id,
+    transactionId: transaction.id,
+    offerId: transaction.offerId || '',
+    mcNumber: mcNumber,
+    successUrl: `${frontendUrl}/transaction/${transaction.id}?deposit=success`,
+    cancelUrl: `${frontendUrl}/transaction/${transaction.id}?deposit=cancelled`,
+  });
+
+  if (!result.success) {
+    throw new BadRequestError(result.error || 'Failed to create checkout session');
+  }
+
+  res.json({
+    success: true,
+    data: {
+      sessionId: result.sessionId,
+      url: result.url,
+    },
   });
 });

@@ -53,6 +53,21 @@ export interface SubscriptionResult {
   error?: string;
 }
 
+export interface CheckoutSessionParams {
+  customerId: string;
+  priceId: string;
+  successUrl: string;
+  cancelUrl: string;
+  metadata?: Record<string, string>;
+}
+
+export interface CheckoutSessionResult {
+  success: boolean;
+  sessionId?: string;
+  url?: string;
+  error?: string;
+}
+
 // Stripe price IDs for subscription plans (configure in Stripe dashboard)
 export const SUBSCRIPTION_PRICE_IDS = {
   starter: {
@@ -337,6 +352,196 @@ class StripeService {
       };
     } catch (error) {
       logError('Failed to create subscription', error as Error, {
+        customerId: params.customerId,
+      });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Create a Stripe Checkout Session for one-time payment (listing fee)
+   */
+  async createListingFeeCheckout(params: {
+    customerId: string;
+    amount: number; // in cents
+    sellerId: string;
+    mcNumber: string;
+    successUrl: string;
+    cancelUrl: string;
+    metadata?: Record<string, string>;
+  }): Promise<CheckoutSessionResult> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        customer: params.customerId,
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: 'MC Authority Listing Fee',
+                description: `Listing activation fee for MC #${params.mcNumber}`,
+              },
+              unit_amount: params.amount,
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: params.successUrl,
+        cancel_url: params.cancelUrl,
+        metadata: {
+          type: 'listing_fee',
+          sellerId: params.sellerId,
+          mcNumber: params.mcNumber,
+          ...params.metadata,
+        },
+      });
+
+      logger.info('Listing fee checkout session created', {
+        sessionId: session.id,
+        customerId: params.customerId,
+        sellerId: params.sellerId,
+        mcNumber: params.mcNumber,
+      });
+
+      return {
+        success: true,
+        sessionId: session.id,
+        url: session.url || undefined,
+      };
+    } catch (error) {
+      logError('Failed to create listing fee checkout session', error as Error, {
+        customerId: params.customerId,
+        sellerId: params.sellerId,
+      });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Create a Stripe Checkout Session for MC deposit payment
+   */
+  async createDepositCheckout(params: {
+    customerId: string;
+    amount: number; // in cents (default 100000 = $1000)
+    buyerId: string;
+    transactionId: string;
+    offerId: string;
+    mcNumber: string;
+    successUrl: string;
+    cancelUrl: string;
+    metadata?: Record<string, string>;
+  }): Promise<CheckoutSessionResult> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        customer: params.customerId,
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: 'MC Authority Deposit',
+                description: `Refundable deposit for MC #${params.mcNumber} purchase`,
+              },
+              unit_amount: params.amount,
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: params.successUrl,
+        cancel_url: params.cancelUrl,
+        metadata: {
+          type: 'deposit',
+          buyerId: params.buyerId,
+          transactionId: params.transactionId,
+          offerId: params.offerId,
+          mcNumber: params.mcNumber,
+          ...params.metadata,
+        },
+      });
+
+      logger.info('Deposit checkout session created', {
+        sessionId: session.id,
+        customerId: params.customerId,
+        buyerId: params.buyerId,
+        transactionId: params.transactionId,
+        mcNumber: params.mcNumber,
+      });
+
+      return {
+        success: true,
+        sessionId: session.id,
+        url: session.url || undefined,
+      };
+    } catch (error) {
+      logError('Failed to create deposit checkout session', error as Error, {
+        customerId: params.customerId,
+        buyerId: params.buyerId,
+        transactionId: params.transactionId,
+      });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Create a Stripe Checkout Session for subscription
+   */
+  async createCheckoutSession(params: CheckoutSessionParams): Promise<CheckoutSessionResult> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        customer: params.customerId,
+        mode: 'subscription',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: params.priceId,
+            quantity: 1,
+          },
+        ],
+        success_url: params.successUrl,
+        cancel_url: params.cancelUrl,
+        metadata: params.metadata,
+        subscription_data: {
+          metadata: params.metadata,
+        },
+      });
+
+      logger.info('Checkout session created', {
+        sessionId: session.id,
+        customerId: params.customerId,
+      });
+
+      return {
+        success: true,
+        sessionId: session.id,
+        url: session.url || undefined,
+      };
+    } catch (error) {
+      logError('Failed to create checkout session', error as Error, {
         customerId: params.customerId,
       });
       return {

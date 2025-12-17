@@ -5,7 +5,7 @@ import { getRedisClient, isRedisHealthy } from '../config/redis';
 import logger, { logSecurity } from '../utils/logger';
 import { config } from '../config';
 
-// Helper to get client identifier
+// Helper to get client identifier - uses user ID if authenticated, otherwise IP
 const getClientIdentifier = (req: Request): string => {
   // Use user ID if authenticated, otherwise use IP
   const userId = (req as any).user?.id;
@@ -13,13 +13,8 @@ const getClientIdentifier = (req: Request): string => {
     return `user:${userId}`;
   }
 
-  // Get IP address (handle proxies)
-  const forwarded = req.headers['x-forwarded-for'];
-  const ip = forwarded
-    ? (typeof forwarded === 'string' ? forwarded : forwarded[0]).split(',')[0].trim()
-    : req.ip || req.socket.remoteAddress || 'unknown';
-
-  return `ip:${ip}`;
+  // Use req.ip which handles proxies properly when trust proxy is set
+  return req.ip || 'unknown';
 };
 
 // Standard rate limit response
@@ -60,11 +55,14 @@ const createStore = async () => {
 
 /**
  * Global rate limiter - applies to all routes
- * 100 requests per 15 minutes per IP
+ * Production: 100 requests per 15 minutes per IP
+ * Development: 1000 requests per 15 minutes per IP (more lenient for testing)
  */
 export const globalLimiter = rateLimit({
   windowMs: parseInt(config.rateLimit?.windowMs || '900000'), // 15 minutes
-  max: parseInt(config.rateLimit?.maxRequests || '100'),
+  max: config.isDevelopment
+    ? 1000  // Much higher limit for development
+    : parseInt(config.rateLimit?.maxRequests || '100'),
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -74,16 +72,17 @@ export const globalLimiter = rateLimit({
     // Skip rate limiting for health checks
     return req.path === '/api/health' || req.path === '/api/health/ready';
   },
-  validate: { xForwardedForHeader: false },
+  validate: { xForwardedForHeader: false, keyGeneratorIpFallback: false },
 });
 
 /**
  * Strict rate limiter for auth endpoints
- * 5 requests per 15 minutes per IP (prevents brute force)
+ * Production: 5 requests per 15 minutes per IP (prevents brute force)
+ * Development: 50 requests per 15 minutes (more lenient for testing)
  */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5,
+  max: config.isDevelopment ? 50 : 5,
   message: 'Too many authentication attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -95,7 +94,7 @@ export const authLimiter = rateLimit({
     });
     rateLimitResponse(req, res);
   },
-  validate: { xForwardedForHeader: false },
+  validate: { xForwardedForHeader: false, keyGeneratorIpFallback: false },
 });
 
 /**
@@ -115,7 +114,7 @@ export const passwordResetLimiter = rateLimit({
     });
     rateLimitResponse(req, res);
   },
-  validate: { xForwardedForHeader: false },
+  validate: { xForwardedForHeader: false, keyGeneratorIpFallback: false },
 });
 
 /**
@@ -130,7 +129,7 @@ export const fmcsaLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: getClientIdentifier,
   handler: rateLimitResponse,
-  validate: { xForwardedForHeader: false },
+  validate: { xForwardedForHeader: false, keyGeneratorIpFallback: false },
 });
 
 /**
@@ -145,7 +144,7 @@ export const uploadLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: getClientIdentifier,
   handler: rateLimitResponse,
-  validate: { xForwardedForHeader: false },
+  validate: { xForwardedForHeader: false, keyGeneratorIpFallback: false },
 });
 
 /**
@@ -160,7 +159,7 @@ export const listingCreationLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: getClientIdentifier,
   handler: rateLimitResponse,
-  validate: { xForwardedForHeader: false },
+  validate: { xForwardedForHeader: false, keyGeneratorIpFallback: false },
 });
 
 /**
@@ -175,7 +174,7 @@ export const offerLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: getClientIdentifier,
   handler: rateLimitResponse,
-  validate: { xForwardedForHeader: false },
+  validate: { xForwardedForHeader: false, keyGeneratorIpFallback: false },
 });
 
 /**
@@ -190,7 +189,7 @@ export const messageLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: getClientIdentifier,
   handler: rateLimitResponse,
-  validate: { xForwardedForHeader: false },
+  validate: { xForwardedForHeader: false, keyGeneratorIpFallback: false },
 });
 
 /**
@@ -205,7 +204,7 @@ export const adminLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: getClientIdentifier,
   handler: rateLimitResponse,
-  validate: { xForwardedForHeader: false },
+  validate: { xForwardedForHeader: false, keyGeneratorIpFallback: false },
 });
 
 /**
@@ -220,7 +219,7 @@ export const webhookLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => req.ip || 'unknown',
   handler: rateLimitResponse,
-  validate: { xForwardedForHeader: false },
+  validate: { xForwardedForHeader: false, keyGeneratorIpFallback: false },
 });
 
 /**

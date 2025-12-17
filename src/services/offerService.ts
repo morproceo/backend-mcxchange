@@ -57,6 +57,7 @@ class OfferService {
       message: data.message,
       expiresAt: data.expiresAt || addDays(new Date(), 7),
       status: OfferStatus.PENDING,
+      isBuyNow: data.isBuyNow || false,
     });
 
     const offerWithDetails = await Offer.findByPk(offer.id, {

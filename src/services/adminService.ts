@@ -1,22 +1,26 @@
 import { Op } from 'sequelize';
+import sequelize from '../config/database';
 import {
   User,
   Listing,
   Transaction,
+  TransactionTimeline,
   PremiumRequest,
   AdminAction,
   Notification,
   PlatformSetting,
   RefreshToken,
+  Offer,
   ListingStatus,
   UserStatus,
   PremiumRequestStatus,
   TransactionStatus,
   NotificationType,
   UserRole,
+  OfferStatus,
 } from '../models';
 import { NotFoundError } from '../middleware/errorHandler';
-import { getPaginationInfo } from '../utils/helpers';
+import { getPaginationInfo, calculateDeposit, calculatePlatformFee } from '../utils/helpers';
 
 class AdminService {
   // Get dashboard stats
@@ -453,6 +457,125 @@ class AdminService {
     };
   }
 
+  // Get single listing by ID (admin view - returns any status)
+  async getListingById(listingId: string) {
+    const listing = await Listing.findByPk(listingId, {
+      include: [
+        {
+          model: User,
+          as: 'seller',
+          attributes: ['id', 'name', 'email', 'verified', 'trustScore', 'createdAt', 'phone', 'companyName'],
+        },
+      ],
+    });
+
+    if (!listing) {
+      throw new NotFoundError('Listing');
+    }
+
+    return listing;
+  }
+
+  // Admin update listing (can update any field including status)
+  async updateListing(listingId: string, adminId: string, data: {
+    mcNumber?: string;
+    dotNumber?: string;
+    legalName?: string;
+    dbaName?: string;
+    title?: string;
+    description?: string;
+    price?: number;
+    city?: string;
+    state?: string;
+    address?: string;
+    yearsActive?: number;
+    fleetSize?: number;
+    totalDrivers?: number;
+    safetyRating?: string;
+    saferScore?: string;
+    insuranceOnFile?: boolean;
+    bipdCoverage?: number;
+    cargoCoverage?: number;
+    bondAmount?: number;
+    amazonStatus?: string;
+    amazonRelayScore?: string;
+    highwaySetup?: boolean;
+    sellingWithEmail?: boolean;
+    sellingWithPhone?: boolean;
+    contactEmail?: string;
+    contactPhone?: string;
+    cargoTypes?: string[];
+    reviewNotes?: string;
+    status?: string;
+    visibility?: string;
+    isPremium?: boolean;
+  }) {
+    const listing = await Listing.findByPk(listingId);
+
+    if (!listing) {
+      throw new NotFoundError('Listing');
+    }
+
+    // Build update object
+    const updateData: any = {};
+
+    if (data.mcNumber !== undefined) updateData.mcNumber = data.mcNumber;
+    if (data.dotNumber !== undefined) updateData.dotNumber = data.dotNumber;
+    if (data.legalName !== undefined) updateData.legalName = data.legalName;
+    if (data.dbaName !== undefined) updateData.dbaName = data.dbaName;
+    if (data.title !== undefined) updateData.title = data.title;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.price !== undefined) updateData.price = data.price;
+    if (data.city !== undefined) updateData.city = data.city;
+    if (data.state !== undefined) updateData.state = data.state.toUpperCase();
+    if (data.address !== undefined) updateData.address = data.address;
+    if (data.yearsActive !== undefined) updateData.yearsActive = data.yearsActive;
+    if (data.fleetSize !== undefined) updateData.fleetSize = data.fleetSize;
+    if (data.totalDrivers !== undefined) updateData.totalDrivers = data.totalDrivers;
+    if (data.safetyRating !== undefined) updateData.safetyRating = data.safetyRating.toUpperCase();
+    if (data.saferScore !== undefined) updateData.saferScore = data.saferScore;
+    if (data.insuranceOnFile !== undefined) updateData.insuranceOnFile = data.insuranceOnFile;
+    if (data.bipdCoverage !== undefined) updateData.bipdCoverage = data.bipdCoverage;
+    if (data.cargoCoverage !== undefined) updateData.cargoCoverage = data.cargoCoverage;
+    if (data.bondAmount !== undefined) updateData.bondAmount = data.bondAmount;
+    if (data.amazonStatus !== undefined) updateData.amazonStatus = data.amazonStatus.toUpperCase();
+    if (data.amazonRelayScore !== undefined) updateData.amazonRelayScore = data.amazonRelayScore;
+    if (data.highwaySetup !== undefined) updateData.highwaySetup = data.highwaySetup;
+    if (data.sellingWithEmail !== undefined) updateData.sellingWithEmail = data.sellingWithEmail;
+    if (data.sellingWithPhone !== undefined) updateData.sellingWithPhone = data.sellingWithPhone;
+    if (data.contactEmail !== undefined) updateData.contactEmail = data.contactEmail;
+    if (data.contactPhone !== undefined) updateData.contactPhone = data.contactPhone;
+    if (data.cargoTypes !== undefined) updateData.cargoTypes = JSON.stringify(data.cargoTypes);
+    if (data.reviewNotes !== undefined) updateData.reviewNotes = data.reviewNotes;
+    if (data.status !== undefined) updateData.status = data.status.toUpperCase();
+    if (data.visibility !== undefined) updateData.visibility = data.visibility.toUpperCase();
+    if (data.isPremium !== undefined) updateData.isPremium = data.isPremium;
+
+    await listing.update(updateData);
+
+    // Record admin action
+    await AdminAction.create({
+      adminId,
+      action: 'UPDATE_LISTING',
+      targetType: 'LISTING',
+      targetId: listingId,
+      metadata: JSON.stringify(data),
+    });
+
+    // Get updated listing with seller info
+    const updatedListing = await Listing.findByPk(listingId, {
+      include: [
+        {
+          model: User,
+          as: 'seller',
+          attributes: ['id', 'name', 'email', 'verified', 'trustScore', 'createdAt', 'phone', 'companyName'],
+        },
+      ],
+    });
+
+    return updatedListing;
+  }
+
   // Get all transactions (admin view)
   async getAllTransactions(params: {
     page?: number;
@@ -761,6 +884,331 @@ class AdminService {
     });
 
     return { success: true, recipientCount: users.length };
+  }
+
+  // ==================== OFFER MANAGEMENT ====================
+
+  // Get all offers (admin view)
+  async getAllOffers(params: {
+    page?: number;
+    limit?: number;
+    status?: string;
+  }) {
+    const { page = 1, limit = 20, status } = params;
+    const offset = (page - 1) * limit;
+
+    const where: any = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    const { count: total, rows: offers } = await Offer.findAndCountAll({
+      where,
+      order: [['createdAt', 'DESC']],
+      offset,
+      limit,
+      include: [
+        {
+          model: Listing,
+          as: 'listing',
+          attributes: ['id', 'mcNumber', 'title', 'price', 'status'],
+        },
+        {
+          model: User,
+          as: 'buyer',
+          attributes: ['id', 'name', 'email', 'phone', 'verified', 'trustScore'],
+        },
+        {
+          model: User,
+          as: 'seller',
+          attributes: ['id', 'name', 'email', 'phone', 'verified'],
+        },
+      ],
+    });
+
+    return {
+      offers,
+      pagination: getPaginationInfo(page, limit, total),
+    };
+  }
+
+  // Approve offer (admin) - Creates transaction for Buy Now offers
+  async approveOffer(offerId: string, adminId: string, notes?: string) {
+    const offer = await Offer.findByPk(offerId, {
+      include: [
+        {
+          model: Listing,
+          as: 'listing',
+        },
+        {
+          model: User,
+          as: 'buyer',
+          attributes: ['id', 'name', 'email'],
+        },
+      ],
+    });
+
+    if (!offer) {
+      throw new NotFoundError('Offer');
+    }
+
+    const listing = (offer as any).listing;
+
+    // For Buy Now offers, create a transaction (the "round table" begins!)
+    if (offer.isBuyNow) {
+      // Calculate amounts - use listing price for Buy Now
+      const agreedPrice = Number(offer.amount);
+      const depositAmount = calculateDeposit(agreedPrice);
+      const platformFee = calculatePlatformFee(agreedPrice);
+
+      const t = await sequelize.transaction();
+
+      try {
+        // Update offer status to ACCEPTED (same as seller accepting)
+        await offer.update(
+          {
+            status: OfferStatus.ACCEPTED,
+            adminReviewedBy: adminId,
+            adminReviewedAt: new Date(),
+            adminNotes: notes,
+            respondedAt: new Date(),
+          },
+          { transaction: t }
+        );
+
+        // Create the transaction - this starts the round table!
+        const transaction = await Transaction.create(
+          {
+            offerId,
+            listingId: offer.listingId,
+            buyerId: offer.buyerId,
+            sellerId: offer.sellerId,
+            agreedPrice,
+            depositAmount,
+            platformFee,
+            status: TransactionStatus.AWAITING_DEPOSIT,
+          },
+          { transaction: t }
+        );
+
+        // Update listing status to RESERVED
+        await Listing.update(
+          { status: ListingStatus.RESERVED },
+          { where: { id: offer.listingId }, transaction: t }
+        );
+
+        // Reject other pending offers on this listing
+        await Offer.update(
+          { status: OfferStatus.REJECTED, respondedAt: new Date() },
+          {
+            where: {
+              listingId: offer.listingId,
+              id: { [Op.ne]: offerId },
+              status: { [Op.in]: [OfferStatus.PENDING, OfferStatus.COUNTERED] },
+            },
+            transaction: t,
+          }
+        );
+
+        await t.commit();
+
+        // Record admin action
+        await AdminAction.create({
+          adminId,
+          action: 'APPROVE_BUY_NOW',
+          targetType: 'OFFER',
+          targetId: offerId,
+          reason: notes,
+          metadata: JSON.stringify({ transactionId: transaction.id }),
+        });
+
+        // Create timeline entry
+        await TransactionTimeline.create({
+          transactionId: transaction.id,
+          status: TransactionStatus.AWAITING_DEPOSIT,
+          title: 'Buy Now Approved',
+          description: 'Admin approved the Buy Now request. Awaiting deposit from buyer.',
+          actorId: adminId,
+          actorRole: 'ADMIN',
+        });
+
+        // Notify buyer - transaction created, go to round table
+        await Notification.create({
+          userId: offer.buyerId,
+          type: NotificationType.OFFER,
+          title: 'Buy Now Approved!',
+          message: `Your Buy Now request for MC-${listing?.mcNumber || 'N/A'} has been approved. Go to the Round Table to proceed with the transaction.`,
+          link: `/transaction/${transaction.id}`,
+          metadata: JSON.stringify({ transactionId: transaction.id }),
+        });
+
+        // Notify seller - their listing has a buyer
+        if (listing?.sellerId) {
+          await Notification.create({
+            userId: listing.sellerId,
+            type: NotificationType.OFFER,
+            title: 'Buy Now Approved - Transaction Started',
+            message: `A Buy Now request for your listing MC-${listing?.mcNumber || 'N/A'} has been approved. The buyer will pay the deposit soon.`,
+            link: `/seller/transactions`,
+          });
+        }
+
+        return { offer, transaction };
+      } catch (error) {
+        await t.rollback();
+        throw error;
+      }
+    } else {
+      // Regular offer approval (not Buy Now) - also create transaction
+      // Calculate amounts - use counter amount if exists, otherwise offer amount
+      const agreedPrice = Number(offer.counterAmount || offer.amount);
+      const depositAmount = calculateDeposit(agreedPrice);
+      const platformFee = calculatePlatformFee(agreedPrice);
+
+      const t = await sequelize.transaction();
+
+      try {
+        // Update offer status to ACCEPTED
+        await offer.update(
+          {
+            status: OfferStatus.ACCEPTED,
+            adminReviewedBy: adminId,
+            adminReviewedAt: new Date(),
+            adminNotes: notes,
+            respondedAt: new Date(),
+          },
+          { transaction: t }
+        );
+
+        // Create the transaction
+        const transaction = await Transaction.create(
+          {
+            offerId,
+            listingId: offer.listingId,
+            buyerId: offer.buyerId,
+            sellerId: offer.sellerId,
+            agreedPrice,
+            depositAmount,
+            platformFee,
+            status: TransactionStatus.AWAITING_DEPOSIT,
+          },
+          { transaction: t }
+        );
+
+        // Update listing status to RESERVED
+        await Listing.update(
+          { status: ListingStatus.RESERVED },
+          { where: { id: offer.listingId }, transaction: t }
+        );
+
+        // Reject other pending offers on this listing
+        await Offer.update(
+          { status: OfferStatus.REJECTED, respondedAt: new Date() },
+          {
+            where: {
+              listingId: offer.listingId,
+              id: { [Op.ne]: offerId },
+              status: { [Op.in]: [OfferStatus.PENDING, OfferStatus.COUNTERED] },
+            },
+            transaction: t,
+          }
+        );
+
+        await t.commit();
+
+        // Record admin action
+        await AdminAction.create({
+          adminId,
+          action: 'APPROVE_OFFER',
+          targetType: 'OFFER',
+          targetId: offerId,
+          reason: notes,
+          metadata: JSON.stringify({ transactionId: transaction.id }),
+        });
+
+        // Create timeline entry
+        await TransactionTimeline.create({
+          transactionId: transaction.id,
+          status: TransactionStatus.AWAITING_DEPOSIT,
+          title: 'Offer Approved',
+          description: 'Admin approved the offer. Awaiting deposit from buyer.',
+          actorId: adminId,
+          actorRole: 'ADMIN',
+        });
+
+        // Notify buyer that their offer was approved
+        await Notification.create({
+          userId: offer.buyerId,
+          type: NotificationType.OFFER,
+          title: 'Offer Approved!',
+          message: `Your offer for MC-${listing?.mcNumber || 'N/A'} has been approved. Go to the Round Table to proceed with the transaction.`,
+          link: `/transaction/${transaction.id}`,
+          metadata: JSON.stringify({ transactionId: transaction.id }),
+        });
+
+        // Also notify the seller
+        if (listing?.sellerId) {
+          await Notification.create({
+            userId: listing.sellerId,
+            type: NotificationType.OFFER,
+            title: 'Offer Approved by Admin',
+            message: `An offer for your listing MC-${listing?.mcNumber || 'N/A'} has been approved. The buyer will pay the deposit soon.`,
+            link: `/seller/transactions`,
+          });
+        }
+
+        return { offer, transaction };
+      } catch (error) {
+        await t.rollback();
+        throw error;
+      }
+    }
+  }
+
+  // Reject offer (admin)
+  async rejectOffer(offerId: string, adminId: string, reason?: string) {
+    const offer = await Offer.findByPk(offerId, {
+      include: [
+        {
+          model: Listing,
+          as: 'listing',
+          attributes: ['id', 'mcNumber', 'title'],
+        },
+      ],
+    });
+
+    if (!offer) {
+      throw new NotFoundError('Offer');
+    }
+
+    // Update offer status to rejected
+    await offer.update({
+      status: OfferStatus.REJECTED,
+      adminReviewedBy: adminId,
+      adminReviewedAt: new Date(),
+      adminNotes: reason,
+    });
+
+    // Record admin action
+    await AdminAction.create({
+      adminId,
+      action: 'REJECT_OFFER',
+      targetType: 'OFFER',
+      targetId: offerId,
+      reason,
+    });
+
+    // Notify buyer that their offer was rejected
+    await Notification.create({
+      userId: offer.buyerId,
+      type: NotificationType.OFFER,
+      title: 'Offer Rejected',
+      message: `Your ${offer.isBuyNow ? 'buy now request' : 'offer'} for MC-${(offer as any).listing?.mcNumber || 'N/A'} was not approved.${reason ? ` Reason: ${reason}` : ''}`,
+      link: `/buyer/offers`,
+    });
+
+    return offer;
   }
 }
 

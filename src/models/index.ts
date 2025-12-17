@@ -64,6 +64,7 @@ export enum DocumentStatus {
 export enum OfferStatus {
   PENDING = 'PENDING',
   ACCEPTED = 'ACCEPTED',
+  APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
   COUNTERED = 'COUNTERED',
   EXPIRED = 'EXPIRED',
@@ -186,39 +187,39 @@ interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'phone'
 // ==================== USER MODEL ====================
 
 export class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
-  public id!: string;
-  public email!: string;
-  public password!: string;
-  public name!: string;
-  public phone?: string;
-  public avatar?: string;
-  public role!: UserRole;
-  public status!: UserStatus;
-  public verified!: boolean;
-  public verifiedAt?: Date;
-  public trustScore!: number;
-  public memberSince!: Date;
-  public lastLoginAt?: Date;
-  public companyName?: string;
-  public companyAddress?: string;
-  public city?: string;
-  public state?: string;
-  public zipCode?: string;
-  public ein?: string;
-  public sellerVerified!: boolean;
-  public sellerVerifiedAt?: Date;
-  public totalCredits!: number;
-  public usedCredits!: number;
-  public stripeCustomerId?: string;
-  public emailVerified!: boolean;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare id: string;
+  declare email: string;
+  declare password: string;
+  declare name: string;
+  declare phone: string | undefined;
+  declare avatar: string | undefined;
+  declare role: UserRole;
+  declare status: UserStatus;
+  declare verified: boolean;
+  declare verifiedAt: Date | undefined;
+  declare trustScore: number;
+  declare memberSince: Date;
+  declare lastLoginAt: Date | undefined;
+  declare companyName: string | undefined;
+  declare companyAddress: string | undefined;
+  declare city: string | undefined;
+  declare state: string | undefined;
+  declare zipCode: string | undefined;
+  declare ein: string | undefined;
+  declare sellerVerified: boolean;
+  declare sellerVerifiedAt: Date | undefined;
+  declare totalCredits: number;
+  declare usedCredits: number;
+  declare stripeCustomerId: string | undefined;
+  declare emailVerified: boolean;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 
   // Associations
-  public readonly listings?: Listing[];
-  public readonly sentOffers?: Offer[];
-  public readonly receivedOffers?: Offer[];
-  public readonly subscription?: Subscription;
+  declare readonly listings?: Listing[];
+  declare readonly sentOffers?: Offer[];
+  declare readonly receivedOffers?: Offer[];
+  declare readonly subscription?: Subscription;
 }
 
 User.init(
@@ -341,11 +342,11 @@ User.init(
 // ==================== REFRESH TOKEN MODEL ====================
 
 export class RefreshToken extends Model {
-  public id!: string;
-  public token!: string;
-  public userId!: string;
-  public expiresAt!: Date;
-  public readonly createdAt!: Date;
+  declare id: string;
+  declare token: string;
+  declare userId: string;
+  declare expiresAt: Date;
+  declare readonly createdAt: Date;
 }
 
 RefreshToken.init(
@@ -383,16 +384,16 @@ RefreshToken.init(
 // ==================== PASSWORD RESET TOKEN MODEL ====================
 
 export class PasswordResetToken extends Model {
-  public id!: string;
-  public token!: string;
-  public tokenHash!: string;
-  public userId!: string;
-  public expiresAt!: Date;
-  public usedAt?: Date;
-  public readonly createdAt!: Date;
+  declare id: string;
+  declare token: string;
+  declare tokenHash: string;
+  declare userId: string;
+  declare expiresAt: Date;
+  declare usedAt?: Date;
+  declare readonly createdAt: Date;
 
   // Associations
-  public readonly user?: User;
+  declare readonly user?: User;
 }
 
 PasswordResetToken.init(
@@ -439,17 +440,17 @@ PasswordResetToken.init(
 // ==================== EMAIL VERIFICATION TOKEN MODEL ====================
 
 export class EmailVerificationToken extends Model {
-  public id!: string;
-  public token!: string;
-  public tokenHash!: string;
-  public userId!: string;
-  public email!: string;
-  public expiresAt!: Date;
-  public verifiedAt?: Date;
-  public readonly createdAt!: Date;
+  declare id: string;
+  declare token: string;
+  declare tokenHash: string;
+  declare userId: string;
+  declare email: string;
+  declare expiresAt: Date;
+  declare verifiedAt?: Date;
+  declare readonly createdAt: Date;
 
   // Associations
-  public readonly user?: User;
+  declare readonly user?: User;
 }
 
 EmailVerificationToken.init(
@@ -501,56 +502,56 @@ EmailVerificationToken.init(
 // ==================== LISTING MODEL ====================
 
 export class Listing extends Model {
-  public id!: string;
-  public mcNumber!: string;
-  public dotNumber!: string;
-  public legalName!: string;
-  public dbaName?: string;
-  public title!: string;
-  public description?: string;
-  public price!: number;
-  public isPremium!: boolean;
-  public status!: ListingStatus;
-  public visibility!: ListingVisibility;
-  public city!: string;
-  public state!: string;
-  public address?: string;
-  public yearsActive!: number;
-  public fleetSize!: number;
-  public totalDrivers!: number;
-  public safetyRating!: SafetyRating;
-  public saferScore?: string;
-  public insuranceOnFile!: boolean;
-  public bipdCoverage?: number;
-  public cargoCoverage?: number;
-  public bondAmount?: number;
-  public amazonStatus!: AmazonRelayStatus;
-  public amazonRelayScore?: string;
-  public highwaySetup!: boolean;
-  public sellingWithEmail!: boolean;
-  public sellingWithPhone!: boolean;
-  public contactEmail?: string;
-  public contactPhone?: string;
-  public cargoTypes?: string;
-  public fmcsaData?: string;
-  public authorityHistory?: string;
-  public insuranceHistory?: string;
-  public views!: number;
-  public saves!: number;
-  public reviewNotes?: string;
-  public rejectionReason?: string;
-  public reviewedBy?: string;
-  public reviewedAt?: Date;
-  public publishedAt?: Date;
-  public soldAt?: Date;
-  public sellerId!: string;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare id: string;
+  declare mcNumber: string;
+  declare dotNumber: string;
+  declare legalName: string;
+  declare dbaName?: string;
+  declare title: string;
+  declare description?: string;
+  declare price: number;
+  declare isPremium: boolean;
+  declare status: ListingStatus;
+  declare visibility: ListingVisibility;
+  declare city: string;
+  declare state: string;
+  declare address?: string;
+  declare yearsActive: number;
+  declare fleetSize: number;
+  declare totalDrivers: number;
+  declare safetyRating: SafetyRating;
+  declare saferScore?: string;
+  declare insuranceOnFile: boolean;
+  declare bipdCoverage?: number;
+  declare cargoCoverage?: number;
+  declare bondAmount?: number;
+  declare amazonStatus: AmazonRelayStatus;
+  declare amazonRelayScore?: string;
+  declare highwaySetup: boolean;
+  declare sellingWithEmail: boolean;
+  declare sellingWithPhone: boolean;
+  declare contactEmail?: string;
+  declare contactPhone?: string;
+  declare cargoTypes?: string;
+  declare fmcsaData?: string;
+  declare authorityHistory?: string;
+  declare insuranceHistory?: string;
+  declare views: number;
+  declare saves: number;
+  declare reviewNotes?: string;
+  declare rejectionReason?: string;
+  declare reviewedBy?: string;
+  declare reviewedAt?: Date;
+  declare publishedAt?: Date;
+  declare soldAt?: Date;
+  declare sellerId: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 
   // Associations
-  public readonly seller?: User;
-  public readonly documents?: Document[];
-  public readonly offers?: Offer[];
+  declare readonly seller?: User;
+  declare readonly documents?: Document[];
+  declare readonly offers?: Offer[];
 }
 
 Listing.init(
@@ -747,25 +748,25 @@ Listing.init(
 // ==================== DOCUMENT MODEL ====================
 
 export class Document extends Model {
-  public id!: string;
-  public type!: DocumentType;
-  public name!: string;
-  public url!: string;
-  public size!: number;
-  public mimeType!: string;
-  public status!: DocumentStatus;
-  public verifiedAt?: Date;
-  public verifiedBy?: string;
-  public listingId?: string;
-  public transactionId?: string;
-  public uploaderId!: string;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare id: string;
+  declare type: DocumentType;
+  declare name: string;
+  declare url: string;
+  declare size: number;
+  declare mimeType: string;
+  declare status: DocumentStatus;
+  declare verifiedAt?: Date;
+  declare verifiedBy?: string;
+  declare listingId?: string;
+  declare transactionId?: string;
+  declare uploaderId: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 
   // Associations
-  public readonly listing?: Listing;
-  public readonly transaction?: Transaction;
-  public readonly uploader?: User;
+  declare readonly listing?: Listing;
+  declare readonly transaction?: Transaction;
+  declare readonly uploader?: User;
 }
 
 Document.init(
@@ -834,26 +835,30 @@ Document.init(
 // ==================== OFFER MODEL ====================
 
 export class Offer extends Model {
-  public id!: string;
-  public amount!: number;
-  public message?: string;
-  public status!: OfferStatus;
-  public counterAmount?: number;
-  public counterMessage?: string;
-  public counterAt?: Date;
-  public expiresAt?: Date;
-  public respondedAt?: Date;
-  public listingId!: string;
-  public buyerId!: string;
-  public sellerId!: string;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare id: string;
+  declare amount: number;
+  declare message?: string;
+  declare status: OfferStatus;
+  declare isBuyNow: boolean;
+  declare counterAmount?: number;
+  declare counterMessage?: string;
+  declare counterAt?: Date;
+  declare expiresAt?: Date;
+  declare respondedAt?: Date;
+  declare adminReviewedBy?: string;
+  declare adminReviewedAt?: Date;
+  declare adminNotes?: string;
+  declare listingId: string;
+  declare buyerId: string;
+  declare sellerId: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 
   // Associations
-  public readonly listing?: Listing;
-  public readonly buyer?: User;
-  public readonly seller?: User;
-  public readonly transaction?: Transaction;
+  declare readonly listing?: Listing;
+  declare readonly buyer?: User;
+  declare readonly seller?: User;
+  declare readonly transaction?: Transaction;
 }
 
 Offer.init(
@@ -874,6 +879,10 @@ Offer.init(
     status: {
       type: DataTypes.ENUM(...Object.values(OfferStatus)),
       defaultValue: OfferStatus.PENDING,
+    },
+    isBuyNow: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
     },
     counterAmount: {
       type: DataTypes.DECIMAL(12, 2),
@@ -907,6 +916,18 @@ Offer.init(
       type: DataTypes.UUID,
       allowNull: false,
     },
+    adminReviewedBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
+    adminReviewedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    adminNotes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
   },
   {
     sequelize,
@@ -923,57 +944,57 @@ Offer.init(
 // ==================== TRANSACTION MODEL ====================
 
 export class Transaction extends Model {
-  public id!: string;
-  public status!: TransactionStatus;
-  public agreedPrice!: number;
-  public depositAmount!: number;
-  public platformFee?: number;
-  public finalPaymentAmount?: number;
-  public buyerApproved!: boolean;
-  public buyerApprovedAt?: Date;
-  public sellerApproved!: boolean;
-  public sellerApprovedAt?: Date;
-  public adminApproved!: boolean;
-  public adminApprovedAt?: Date;
-  public buyerAcceptedTerms!: boolean;
-  public buyerAcceptedTermsAt?: Date;
-  public sellerAcceptedTerms!: boolean;
-  public sellerAcceptedTermsAt?: Date;
-  public depositPaidAt?: Date;
-  public depositPaymentMethod?: PaymentMethod;
-  public depositPaymentRef?: string;
-  public finalPaidAt?: Date;
-  public finalPaymentMethod?: PaymentMethod;
-  public finalPaymentRef?: string;
-  public escrowStatus?: string;
-  public escrowReleaseAt?: Date;
-  public disputeReason?: string;
-  public disputeOpenedAt?: Date;
-  public disputeResolvedAt?: Date;
-  public disputeResolution?: string;
-  public buyerNotes?: string;
-  public sellerNotes?: string;
-  public adminNotes?: string;
-  public completedAt?: Date;
-  public cancelledAt?: Date;
-  public listingId!: string;
-  public offerId!: string;
-  public buyerId!: string;
-  public sellerId!: string;
-  public adminId?: string;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare id: string;
+  declare status: TransactionStatus;
+  declare agreedPrice: number;
+  declare depositAmount: number;
+  declare platformFee?: number;
+  declare finalPaymentAmount?: number;
+  declare buyerApproved: boolean;
+  declare buyerApprovedAt?: Date;
+  declare sellerApproved: boolean;
+  declare sellerApprovedAt?: Date;
+  declare adminApproved: boolean;
+  declare adminApprovedAt?: Date;
+  declare buyerAcceptedTerms: boolean;
+  declare buyerAcceptedTermsAt?: Date;
+  declare sellerAcceptedTerms: boolean;
+  declare sellerAcceptedTermsAt?: Date;
+  declare depositPaidAt?: Date;
+  declare depositPaymentMethod?: PaymentMethod;
+  declare depositPaymentRef?: string;
+  declare finalPaidAt?: Date;
+  declare finalPaymentMethod?: PaymentMethod;
+  declare finalPaymentRef?: string;
+  declare escrowStatus?: string;
+  declare escrowReleaseAt?: Date;
+  declare disputeReason?: string;
+  declare disputeOpenedAt?: Date;
+  declare disputeResolvedAt?: Date;
+  declare disputeResolution?: string;
+  declare buyerNotes?: string;
+  declare sellerNotes?: string;
+  declare adminNotes?: string;
+  declare completedAt?: Date;
+  declare cancelledAt?: Date;
+  declare listingId: string;
+  declare offerId: string;
+  declare buyerId: string;
+  declare sellerId: string;
+  declare adminId?: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 
   // Associations
-  public readonly listing?: Listing;
-  public readonly offer?: Offer;
-  public readonly buyer?: User;
-  public readonly seller?: User;
-  public readonly admin?: User;
-  public readonly documents?: Document[];
-  public readonly messages?: TransactionMessage[];
-  public readonly timeline?: TransactionTimeline[];
-  public readonly payments?: Payment[];
+  declare readonly listing?: Listing;
+  declare readonly offer?: Offer;
+  declare readonly buyer?: User;
+  declare readonly seller?: User;
+  declare readonly admin?: User;
+  declare readonly documents?: Document[];
+  declare readonly messages?: TransactionMessage[];
+  declare readonly timeline?: TransactionTimeline[];
+  declare readonly payments?: Payment[];
 }
 
 Transaction.init(
@@ -1148,12 +1169,12 @@ Transaction.init(
 // ==================== TRANSACTION MESSAGE MODEL ====================
 
 export class TransactionMessage extends Model {
-  public id!: string;
-  public content!: string;
-  public senderRole!: UserRole;
-  public senderId!: string;
-  public transactionId!: string;
-  public readonly createdAt!: Date;
+  declare id: string;
+  declare content: string;
+  declare senderRole: UserRole;
+  declare senderId: string;
+  declare transactionId: string;
+  declare readonly createdAt: Date;
 }
 
 TransactionMessage.init(
@@ -1191,14 +1212,14 @@ TransactionMessage.init(
 // ==================== TRANSACTION TIMELINE MODEL ====================
 
 export class TransactionTimeline extends Model {
-  public id!: string;
-  public status!: TransactionStatus;
-  public title!: string;
-  public description?: string;
-  public actorId?: string;
-  public actorRole?: UserRole;
-  public transactionId!: string;
-  public readonly createdAt!: Date;
+  declare id: string;
+  declare status: TransactionStatus;
+  declare title: string;
+  declare description?: string;
+  declare actorId?: string;
+  declare actorRole?: UserRole;
+  declare transactionId: string;
+  declare readonly createdAt: Date;
 }
 
 TransactionTimeline.init(
@@ -1244,23 +1265,23 @@ TransactionTimeline.init(
 // ==================== PAYMENT MODEL ====================
 
 export class Payment extends Model {
-  public id!: string;
-  public type!: PaymentType;
-  public amount!: number;
-  public status!: PaymentStatus;
-  public method?: PaymentMethod;
-  public stripePaymentId?: string;
-  public stripeIntentId?: string;
-  public reference?: string;
-  public verifiedBy?: string;
-  public verifiedAt?: Date;
-  public description?: string;
-  public metadata?: string;
-  public completedAt?: Date;
-  public transactionId?: string;
-  public userId?: string;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare id: string;
+  declare type: PaymentType;
+  declare amount: number;
+  declare status: PaymentStatus;
+  declare method?: PaymentMethod;
+  declare stripePaymentId?: string;
+  declare stripeIntentId?: string;
+  declare reference?: string;
+  declare verifiedBy?: string;
+  declare verifiedAt?: Date;
+  declare description?: string;
+  declare metadata?: string;
+  declare completedAt?: Date;
+  declare transactionId?: string;
+  declare userId?: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 }
 
 Payment.init(
@@ -1341,14 +1362,14 @@ Payment.init(
 // ==================== REVIEW MODEL ====================
 
 export class Review extends Model {
-  public id!: string;
-  public rating!: number;
-  public comment?: string;
-  public fromUserId!: string;
-  public toUserId!: string;
-  public dealId?: string;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare id: string;
+  declare rating: number;
+  declare comment?: string;
+  declare fromUserId: string;
+  declare toUserId: string;
+  declare dealId?: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 }
 
 Review.init(
@@ -1393,14 +1414,14 @@ Review.init(
 // ==================== SAVED LISTING MODEL ====================
 
 export class SavedListing extends Model {
-  public id!: string;
-  public userId!: string;
-  public listingId!: string;
-  public readonly createdAt!: Date;
+  declare id: string;
+  declare userId: string;
+  declare listingId: string;
+  declare readonly createdAt: Date;
 
   // Associations
-  public readonly user?: User;
-  public readonly listing?: Listing;
+  declare readonly user?: User;
+  declare readonly listing?: Listing;
 }
 
 SavedListing.init(
@@ -1434,15 +1455,15 @@ SavedListing.init(
 // ==================== UNLOCKED LISTING MODEL ====================
 
 export class UnlockedListing extends Model {
-  public id!: string;
-  public creditsUsed!: number;
-  public userId!: string;
-  public listingId!: string;
-  public readonly createdAt!: Date;
+  declare id: string;
+  declare creditsUsed: number;
+  declare userId: string;
+  declare listingId: string;
+  declare readonly createdAt: Date;
 
   // Associations
-  public readonly user?: User;
-  public readonly listing?: Listing;
+  declare readonly user?: User;
+  declare readonly listing?: Listing;
 }
 
 UnlockedListing.init(
@@ -1480,14 +1501,14 @@ UnlockedListing.init(
 // ==================== CREDIT TRANSACTION MODEL ====================
 
 export class CreditTransaction extends Model {
-  public id!: string;
-  public type!: CreditTransactionType;
-  public amount!: number;
-  public balance!: number;
-  public description?: string;
-  public reference?: string;
-  public userId!: string;
-  public readonly createdAt!: Date;
+  declare id: string;
+  declare type: CreditTransactionType;
+  declare amount: number;
+  declare balance: number;
+  declare description?: string;
+  declare reference?: string;
+  declare userId: string;
+  declare readonly createdAt: Date;
 }
 
 CreditTransaction.init(
@@ -1536,26 +1557,26 @@ CreditTransaction.init(
 // ==================== SUBSCRIPTION MODEL ====================
 
 export class Subscription extends Model {
-  public id!: string;
-  public plan!: SubscriptionPlan;
-  public status!: SubscriptionStatus;
-  public priceMonthly!: number;
-  public priceYearly?: number;
-  public isYearly!: boolean;
-  public creditsPerMonth!: number;
-  public creditsRemaining!: number;
-  public stripeSubId?: string;
-  public stripeCustomerId?: string;
-  public startDate!: Date;
-  public endDate?: Date;
-  public renewalDate?: Date;
-  public cancelledAt?: Date;
-  public userId!: string;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare id: string;
+  declare plan: SubscriptionPlan;
+  declare status: SubscriptionStatus;
+  declare priceMonthly: number;
+  declare priceYearly?: number;
+  declare isYearly: boolean;
+  declare creditsPerMonth: number;
+  declare creditsRemaining: number;
+  declare stripeSubId?: string;
+  declare stripeCustomerId?: string;
+  declare startDate: Date;
+  declare endDate?: Date;
+  declare renewalDate?: Date;
+  declare cancelledAt?: Date;
+  declare userId: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 
   // Associations
-  public readonly user?: User;
+  declare readonly user?: User;
 }
 
 Subscription.init(
@@ -1633,19 +1654,19 @@ Subscription.init(
 // ==================== MESSAGE MODEL ====================
 
 export class Message extends Model {
-  public id!: string;
-  public content!: string;
-  public read!: boolean;
-  public readAt?: Date;
-  public senderId!: string;
-  public receiverId!: string;
-  public listingId?: string;
-  public readonly createdAt!: Date;
+  declare id: string;
+  declare content: string;
+  declare read: boolean;
+  declare readAt?: Date;
+  declare senderId: string;
+  declare receiverId: string;
+  declare listingId?: string;
+  declare readonly createdAt: Date;
 
   // Associations
-  public readonly sender?: User;
-  public readonly receiver?: User;
-  public readonly listing?: Listing;
+  declare readonly sender?: User;
+  declare readonly receiver?: User;
+  declare readonly listing?: Listing;
 }
 
 Message.init(
@@ -1695,16 +1716,16 @@ Message.init(
 // ==================== NOTIFICATION MODEL ====================
 
 export class Notification extends Model {
-  public id!: string;
-  public type!: NotificationType;
-  public title!: string;
-  public message!: string;
-  public read!: boolean;
-  public readAt?: Date;
-  public link?: string;
-  public metadata?: string;
-  public userId!: string;
-  public readonly createdAt!: Date;
+  declare id: string;
+  declare type: NotificationType;
+  declare title: string;
+  declare message: string;
+  declare read: boolean;
+  declare readAt?: Date;
+  declare link?: string;
+  declare metadata?: string;
+  declare userId: string;
+  declare readonly createdAt: Date;
 }
 
 Notification.init(
@@ -1762,16 +1783,16 @@ Notification.init(
 // ==================== PREMIUM REQUEST MODEL ====================
 
 export class PremiumRequest extends Model {
-  public id!: string;
-  public status!: PremiumRequestStatus;
-  public message?: string;
-  public adminNotes?: string;
-  public contactedAt?: Date;
-  public contactedBy?: string;
-  public buyerId!: string;
-  public listingId!: string;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare id: string;
+  declare status: PremiumRequestStatus;
+  declare message?: string;
+  declare adminNotes?: string;
+  declare contactedAt?: Date;
+  declare contactedBy?: string;
+  declare buyerId: string;
+  declare listingId: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 }
 
 PremiumRequest.init(
@@ -1823,14 +1844,14 @@ PremiumRequest.init(
 // ==================== ADMIN ACTION MODEL ====================
 
 export class AdminAction extends Model {
-  public id!: string;
-  public action!: string;
-  public targetType!: string;
-  public targetId!: string;
-  public reason?: string;
-  public metadata?: string;
-  public adminId!: string;
-  public readonly createdAt!: Date;
+  declare id: string;
+  declare action: string;
+  declare targetType: string;
+  declare targetId: string;
+  declare reason?: string;
+  declare metadata?: string;
+  declare adminId: string;
+  declare readonly createdAt: Date;
 }
 
 AdminAction.init(
@@ -1880,12 +1901,12 @@ AdminAction.init(
 // ==================== PLATFORM SETTING MODEL ====================
 
 export class PlatformSetting extends Model {
-  public id!: string;
-  public key!: string;
-  public value!: string;
-  public type!: string;
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare id: string;
+  declare key: string;
+  declare value: string;
+  declare type: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 }
 
 PlatformSetting.init(

@@ -4,6 +4,8 @@ import {
   getPendingListings,
   approveListing,
   rejectListing,
+  getListingById,
+  updateListing,
   getUsers,
   getUserDetails,
   blockUser,
@@ -22,6 +24,9 @@ import {
   broadcastMessage,
   rejectListingValidation,
   blockUserValidation,
+  getAllOffers,
+  adminApproveOffer,
+  adminRejectOffer,
 } from '../controllers/adminController';
 import { authenticate, adminOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
@@ -38,6 +43,8 @@ router.get('/dashboard', getDashboardStats);
 // Listings
 router.get('/listings', getAllListings);
 router.get('/listings/pending', getPendingListings);
+router.get('/listings/:id', getListingById);
+router.put('/listings/:id', updateListing);
 router.post('/listings/:id/approve', approveListing);
 router.post('/listings/:id/reject', validate(rejectListingValidation), rejectListing);
 
@@ -54,6 +61,11 @@ router.put('/premium-requests/:id', updatePremiumRequest);
 
 // Transactions
 router.get('/transactions', getAllTransactions);
+
+// Offers
+router.get('/offers', getAllOffers);
+router.post('/offers/:id/approve', adminApproveOffer);
+router.post('/offers/:id/reject', adminRejectOffer);
 
 // Action log
 router.get('/action-log', getActionLog);

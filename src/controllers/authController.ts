@@ -13,8 +13,8 @@ export const registerValidation = [
     .withMessage('Password must be at least 8 characters'),
   body('name').trim().notEmpty().withMessage('Name is required'),
   body('role')
-    .isIn(['BUYER', 'SELLER'])
-    .withMessage('Role must be BUYER or SELLER'),
+    .isIn(['BUYER', 'SELLER', 'ADMIN'])
+    .withMessage('Role must be BUYER, SELLER, or ADMIN'),
   body('phone').optional().isMobilePhone('any').withMessage('Invalid phone number'),
 ];
 

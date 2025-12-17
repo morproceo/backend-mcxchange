@@ -7,6 +7,7 @@ import {
   getVerificationStatus,
   getDocuments,
   getAnalytics,
+  createListingFeeCheckout,
 } from '../controllers/sellerController';
 import { authenticate, sellerOnly } from '../middleware/auth';
 
@@ -36,5 +37,8 @@ router.get('/documents', getDocuments);
 
 // Analytics
 router.get('/analytics', getAnalytics);
+
+// Listing fee payment
+router.post('/listing-fee/checkout', createListingFeeCheckout);
 
 export default router;

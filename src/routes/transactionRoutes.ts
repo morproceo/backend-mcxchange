@@ -17,6 +17,7 @@ import {
   updateStatus,
   paymentValidation,
   messageValidation,
+  createDepositCheckout,
 } from '../controllers/transactionController';
 import { authenticate, adminOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
@@ -34,6 +35,7 @@ router.get('/:id', getTransaction);
 router.post('/:id/buyer/accept-terms', buyerAcceptTerms);
 router.post('/:id/buyer/approve', buyerApprove);
 router.post('/:id/deposit', validate(paymentValidation), payDeposit);
+router.post('/:id/deposit-checkout', createDepositCheckout);
 router.post('/:id/final-payment', validate(paymentValidation), payFinal);
 
 // Seller actions

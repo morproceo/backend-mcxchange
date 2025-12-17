@@ -10,6 +10,7 @@ import {
   acceptCounterOffer,
   withdrawOffer,
   getListingOffers,
+  createDepositCheckout,
   createOfferValidation,
   counterOfferValidation,
 } from '../controllers/offerController';
@@ -26,6 +27,7 @@ router.post('/', buyerOnly, validate(createOfferValidation), createOffer);
 router.get('/my-offers', buyerOnly, getBuyerOffers);
 router.post('/:id/accept-counter', buyerOnly, acceptCounterOffer);
 router.post('/:id/withdraw', buyerOnly, withdrawOffer);
+router.post('/:id/deposit-checkout', buyerOnly, createDepositCheckout);
 
 // Seller routes
 router.get('/received', sellerOnly, getSellerOffers);
