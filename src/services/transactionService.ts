@@ -286,7 +286,10 @@ class TransactionService {
   async buyerApprove(transactionId: string, buyerId: string) {
     const transaction = await this.getTransactionForUpdate(transactionId, buyerId, 'BUYER');
 
-    if (transaction.status !== TransactionStatus.IN_REVIEW && transaction.status !== TransactionStatus.SELLER_APPROVED) {
+    // Allow approval when deposit is received, in review, or seller already approved
+    if (transaction.status !== TransactionStatus.DEPOSIT_RECEIVED &&
+        transaction.status !== TransactionStatus.IN_REVIEW &&
+        transaction.status !== TransactionStatus.SELLER_APPROVED) {
       throw new ForbiddenError('Transaction is not ready for buyer approval');
     }
 
@@ -310,7 +313,10 @@ class TransactionService {
   async sellerApprove(transactionId: string, sellerId: string) {
     const transaction = await this.getTransactionForUpdate(transactionId, sellerId, 'SELLER');
 
-    if (transaction.status !== TransactionStatus.IN_REVIEW && transaction.status !== TransactionStatus.BUYER_APPROVED) {
+    // Allow approval when deposit is received, in review, or buyer already approved
+    if (transaction.status !== TransactionStatus.DEPOSIT_RECEIVED &&
+        transaction.status !== TransactionStatus.IN_REVIEW &&
+        transaction.status !== TransactionStatus.BUYER_APPROVED) {
       throw new ForbiddenError('Transaction is not ready for seller approval');
     }
 

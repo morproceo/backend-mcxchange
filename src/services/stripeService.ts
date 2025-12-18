@@ -896,6 +896,54 @@ class StripeService {
   ): string {
     return SUBSCRIPTION_PRICE_IDS[plan][interval];
   }
+
+  /**
+   * List checkout sessions with a specific transaction ID in metadata
+   * Used to verify payment status when webhook doesn't fire
+   */
+  async listCheckoutSessions(transactionId: string): Promise<{
+    success: boolean;
+    sessions?: Stripe.Checkout.Session[];
+    error?: string;
+  }> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      // List recent checkout sessions (last 24 hours)
+      const sessions = await stripe.checkout.sessions.list({
+        limit: 20,
+        created: {
+          gte: Math.floor(Date.now() / 1000) - 86400, // Last 24 hours
+        },
+      });
+
+      // Filter sessions with matching transaction ID
+      const matchingSessions = sessions.data.filter(
+        (session) => session.metadata?.transactionId === transactionId
+      );
+
+      logger.info('Listed checkout sessions for transaction', {
+        transactionId,
+        totalSessions: sessions.data.length,
+        matchingSessions: matchingSessions.length,
+      });
+
+      return {
+        success: true,
+        sessions: matchingSessions,
+      };
+    } catch (error) {
+      logError('Failed to list checkout sessions', error as Error, {
+        transactionId,
+      });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
 }
 
 // Export singleton instance

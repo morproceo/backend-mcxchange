@@ -393,3 +393,85 @@ export const createDepositCheckout = asyncHandler(async (req: AuthRequest, res: 
     },
   });
 });
+
+// Verify deposit payment status - used when returning from Stripe checkout
+// This checks Stripe directly and updates the transaction if paid
+export const verifyDepositStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+
+  // Get the transaction
+  const transaction = await Transaction.findByPk(id, {
+    include: [{ model: Listing, as: 'listing' }],
+  });
+
+  if (!transaction) {
+    throw new NotFoundError('Transaction not found');
+  }
+
+  // Verify the buyer owns this transaction
+  if (transaction.buyerId !== req.user.id) {
+    throw new ForbiddenError('You do not have permission to verify this transaction');
+  }
+
+  // If already marked as deposit received, return success
+  if (transaction.status !== TransactionStatus.AWAITING_DEPOSIT) {
+    res.json({
+      success: true,
+      data: {
+        status: transaction.status,
+        depositPaid: true,
+        depositPaidAt: transaction.depositPaidAt,
+      },
+      message: 'Deposit already confirmed',
+    });
+    return;
+  }
+
+  // Check for recent successful checkout sessions for this transaction
+  const sessions = await stripeService.listCheckoutSessions(transaction.id);
+
+  if (sessions.success && sessions.sessions && sessions.sessions.length > 0) {
+    // Find a completed/paid session for deposit
+    const paidSession = sessions.sessions.find(
+      (s: any) => s.payment_status === 'paid' && s.metadata?.type === 'deposit'
+    );
+
+    if (paidSession) {
+      const amountPaid = paidSession.amount_total ? paidSession.amount_total / 100 : 1000;
+
+      // Update transaction status
+      await transaction.update({
+        status: TransactionStatus.DEPOSIT_RECEIVED,
+        depositAmount: amountPaid,
+        depositPaidAt: new Date(),
+      });
+
+      res.json({
+        success: true,
+        data: {
+          status: TransactionStatus.DEPOSIT_RECEIVED,
+          depositPaid: true,
+          depositPaidAt: new Date(),
+          amount: amountPaid,
+        },
+        message: 'Deposit verified and confirmed',
+      });
+      return;
+    }
+  }
+
+  // No paid session found
+  res.json({
+    success: true,
+    data: {
+      status: transaction.status,
+      depositPaid: false,
+    },
+    message: 'Deposit payment not yet confirmed',
+  });
+});
