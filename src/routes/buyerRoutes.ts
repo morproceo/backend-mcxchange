@@ -7,6 +7,7 @@ import {
   getUnlockedListings,
   getSubscription,
   getTransactions,
+  getStripePaymentHistory,
   createSubscriptionCheckout,
   cancelSubscription,
   verifySubscription,
@@ -34,5 +35,8 @@ router.get('/purchases', requireSubscription, getPurchases);
 router.get('/saved', requireSubscription, getSavedListings);
 router.get('/unlocked', requireSubscription, getUnlockedListings);
 router.get('/transactions', requireSubscription, getTransactions);
+
+// Stripe payment history - no subscription required (to see payment history)
+router.get('/stripe-history', getStripePaymentHistory);
 
 export default router;

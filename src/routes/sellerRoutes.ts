@@ -8,6 +8,7 @@ import {
   getDocuments,
   getAnalytics,
   createListingFeeCheckout,
+  getStripePaymentHistory,
 } from '../controllers/sellerController';
 import { authenticate, sellerOnly } from '../middleware/auth';
 
@@ -40,5 +41,8 @@ router.get('/analytics', getAnalytics);
 
 // Listing fee payment
 router.post('/listing-fee/checkout', createListingFeeCheckout);
+
+// Stripe payment history
+router.get('/stripe-history', getStripePaymentHistory);
 
 export default router;

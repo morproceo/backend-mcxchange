@@ -3,7 +3,7 @@ import { sellerService } from '../services/sellerService';
 import { stripeService } from '../services/stripeService';
 import { asyncHandler, BadRequestError } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
-import { ListingStatus } from '../models';
+import { ListingStatus, User } from '../models';
 import { parseIntParam } from '../utils/helpers';
 
 // Get seller dashboard stats
@@ -179,6 +179,84 @@ export const createListingFeeCheckout = asyncHandler(async (req: AuthRequest, re
     data: {
       sessionId: result.sessionId,
       url: result.url,
+    },
+  });
+});
+
+// Get seller's Stripe payment history directly from Stripe
+export const getStripePaymentHistory = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  // Get user's Stripe customer ID
+  const user = await User.findByPk(req.user.id);
+
+  if (!user || !user.stripeCustomerId) {
+    res.json({
+      success: true,
+      data: {
+        charges: [],
+        paymentIntents: [],
+        checkoutSessions: [],
+      },
+    });
+    return;
+  }
+
+  // Get payment history from Stripe
+  const history = await stripeService.getCustomerPaymentHistory(user.stripeCustomerId);
+
+  // Helper function to safely convert Unix timestamp to ISO string
+  const safeDate = (timestamp: number | null | undefined): string | null => {
+    if (!timestamp || timestamp <= 0) return null;
+    try {
+      return new Date(timestamp * 1000).toISOString();
+    } catch {
+      return null;
+    }
+  };
+
+  // Transform the data for frontend consumption - focus on listing fee payments
+  const transformedCharges = history.charges
+    .filter(charge => charge.status === 'succeeded')
+    .map(charge => ({
+      id: charge.id,
+      amount: charge.amount / 100, // Convert cents to dollars
+      currency: charge.currency,
+      status: charge.status,
+      description: charge.description,
+      receiptUrl: charge.receipt_url,
+      created: safeDate(charge.created),
+      paymentMethod: charge.payment_method_details?.card ? {
+        brand: charge.payment_method_details.card.brand,
+        last4: charge.payment_method_details.card.last4,
+      } : null,
+      metadata: charge.metadata,
+    }));
+
+  const transformedCheckoutSessions = history.checkoutSessions
+    .filter(session => session.payment_status === 'paid')
+    .map(session => ({
+      id: session.id,
+      amountTotal: session.amount_total ? session.amount_total / 100 : 0,
+      currency: session.currency,
+      status: session.status,
+      paymentStatus: session.payment_status,
+      mode: session.mode,
+      created: safeDate(session.created),
+      metadata: session.metadata,
+      type: session.metadata?.type || 'unknown', // listing_fee, etc.
+      mcNumber: session.metadata?.mcNumber || null,
+    }));
+
+  res.json({
+    success: true,
+    data: {
+      charges: transformedCharges,
+      checkoutSessions: transformedCheckoutSessions,
+      stripeCustomerId: user.stripeCustomerId,
     },
   });
 });

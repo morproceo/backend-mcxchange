@@ -10,6 +10,7 @@ import {
   Subscription,
   CreditTransaction,
   Document,
+  Payment,
   SubscriptionStatus,
   SubscriptionPlan,
   CreditTransactionType,
@@ -284,12 +285,18 @@ class BuyerService {
         {
           model: Listing,
           as: 'listing',
-          attributes: ['id', 'mcNumber', 'dotNumber', 'title'],
+          attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'price'],
         },
         {
           model: User,
           as: 'seller',
-          attributes: ['id', 'name', 'trustScore'],
+          attributes: ['id', 'name', 'email', 'phone', 'trustScore'],
+        },
+        {
+          model: Payment,
+          as: 'payments',
+          attributes: ['id', 'type', 'amount', 'status', 'method', 'stripePaymentId', 'reference', 'verifiedAt', 'description', 'createdAt'],
+          order: [['createdAt', 'DESC']],
         },
       ],
     });

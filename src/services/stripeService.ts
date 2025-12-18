@@ -869,6 +869,101 @@ class StripeService {
     }
   }
 
+  /**
+   * Get all charges/payments for a customer
+   */
+  async getCustomerCharges(
+    customerId: string,
+    limit: number = 100
+  ): Promise<Stripe.Charge[]> {
+    if (!stripe) return [];
+
+    try {
+      const charges = await stripe.charges.list({
+        customer: customerId,
+        limit,
+      });
+
+      return charges.data;
+    } catch (error) {
+      logError('Failed to get customer charges', error as Error, { customerId });
+      return [];
+    }
+  }
+
+  /**
+   * Get all payment intents for a customer
+   */
+  async getCustomerPaymentIntents(
+    customerId: string,
+    limit: number = 100
+  ): Promise<Stripe.PaymentIntent[]> {
+    if (!stripe) return [];
+
+    try {
+      const paymentIntents = await stripe.paymentIntents.list({
+        customer: customerId,
+        limit,
+      });
+
+      return paymentIntents.data;
+    } catch (error) {
+      logError('Failed to get customer payment intents', error as Error, { customerId });
+      return [];
+    }
+  }
+
+  /**
+   * Get checkout sessions for a customer
+   */
+  async getCustomerCheckoutSessions(
+    customerId: string,
+    limit: number = 100
+  ): Promise<Stripe.Checkout.Session[]> {
+    if (!stripe) return [];
+
+    try {
+      const sessions = await stripe.checkout.sessions.list({
+        customer: customerId,
+        limit,
+      });
+
+      return sessions.data;
+    } catch (error) {
+      logError('Failed to get customer checkout sessions', error as Error, { customerId });
+      return [];
+    }
+  }
+
+  /**
+   * Get comprehensive payment history for a customer
+   * Combines charges, payment intents, and checkout sessions
+   */
+  async getCustomerPaymentHistory(customerId: string): Promise<{
+    charges: Stripe.Charge[];
+    paymentIntents: Stripe.PaymentIntent[];
+    checkoutSessions: Stripe.Checkout.Session[];
+    subscriptions: Stripe.Subscription[];
+  }> {
+    if (!stripe) {
+      return { charges: [], paymentIntents: [], checkoutSessions: [], subscriptions: [] };
+    }
+
+    try {
+      const [charges, paymentIntents, checkoutSessions, subscriptions] = await Promise.all([
+        this.getCustomerCharges(customerId),
+        this.getCustomerPaymentIntents(customerId),
+        this.getCustomerCheckoutSessions(customerId),
+        stripe.subscriptions.list({ customer: customerId, limit: 10 }).then(s => s.data),
+      ]);
+
+      return { charges, paymentIntents, checkoutSessions, subscriptions };
+    } catch (error) {
+      logError('Failed to get customer payment history', error as Error, { customerId });
+      return { charges: [], paymentIntents: [], checkoutSessions: [], subscriptions: [] };
+    }
+  }
+
   // ============================================
   // Utility Methods
   // ============================================
