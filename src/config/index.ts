@@ -195,9 +195,9 @@ export function validateConfig(): void {
       errors.push('STRIPE_WEBHOOK_SECRET is required in production');
     }
 
-    // Email must be configured
+    // Email configuration (optional - will run in degraded mode without it)
     if (!process.env.RESEND_API_KEY) {
-      errors.push('RESEND_API_KEY is required in production');
+      warnings.push('RESEND_API_KEY not set - email functionality will be disabled');
     }
 
     // Frontend URL must be set
