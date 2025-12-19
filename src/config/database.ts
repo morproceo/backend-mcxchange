@@ -1,6 +1,18 @@
 import { Sequelize } from 'sequelize';
 import config from './index';
 
+// Build dialect options - only use socket for local development
+const dialectOptions: Record<string, unknown> = {};
+
+// Only use socket path for local development, not for production remote databases
+if (config.isDevelopment && process.env.DB_SOCKET_PATH) {
+  dialectOptions.socketPath = process.env.DB_SOCKET_PATH;
+} else if (config.isDevelopment && config.database.host === 'localhost') {
+  // Default socket path for local macOS MySQL
+  dialectOptions.socketPath = '/tmp/mysql.sock';
+}
+// For production/remote databases, don't use socketPath - connect via host/port
+
 // Create Sequelize instance
 const sequelize = new Sequelize(
   config.database.name,
@@ -21,10 +33,7 @@ const sequelize = new Sequelize(
       timestamps: true,
       underscored: false,
     },
-    dialectOptions: {
-      // Use socket connection on macOS for local development
-      socketPath: process.env.DB_SOCKET_PATH || '/tmp/mysql.sock',
-    },
+    dialectOptions,
   }
 );
 
