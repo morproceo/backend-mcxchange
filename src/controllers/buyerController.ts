@@ -311,8 +311,8 @@ export const getStripePaymentHistory = asyncHandler(async (req: AuthRequest, res
     id: sub.id,
     status: sub.status,
     plan: sub.metadata?.plan || 'unknown',
-    currentPeriodStart: safeDate(sub.current_period_start),
-    currentPeriodEnd: safeDate(sub.current_period_end),
+    currentPeriodStart: safeDate((sub as any).current_period_start),
+    currentPeriodEnd: safeDate((sub as any).current_period_end),
     created: safeDate(sub.created),
     cancelAtPeriodEnd: sub.cancel_at_period_end,
   }));

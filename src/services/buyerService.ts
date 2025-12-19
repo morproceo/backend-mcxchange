@@ -382,7 +382,7 @@ class BuyerService {
 
     // Calculate renewal date from Stripe subscription period end
     // Stripe returns timestamps in seconds, we need milliseconds
-    const periodEnd = stripeSubscription.current_period_end;
+    const periodEnd = (stripeSubscription as any).current_period_end;
     const renewalDate = periodEnd && typeof periodEnd === 'number'
       ? new Date(periodEnd * 1000)
       : new Date(Date.now() + (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000); // Fallback: 30 days or 1 year from now

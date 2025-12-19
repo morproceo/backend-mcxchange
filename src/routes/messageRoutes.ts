@@ -3,13 +3,15 @@ import {
   getConversations,
   getMessages,
   sendMessage,
+  sendInquiryToAdmin,
   markAsRead,
   markConversationAsRead,
   getUnreadCount,
   deleteMessage,
   sendMessageValidation,
+  sendInquiryValidation,
 } from '../controllers/messageController';
-import { authenticate } from '../middleware/auth';
+import { authenticate, buyerOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
 
 const router = Router();
@@ -23,6 +25,7 @@ router.get('/conversations/:partnerId', getMessages);
 router.put('/conversations/:partnerId/read', markConversationAsRead);
 
 // Messages
+router.post('/inquiries', buyerOnly, validate(sendInquiryValidation), sendInquiryToAdmin);
 router.post('/', validate(sendMessageValidation), sendMessage);
 router.put('/:id/read', markAsRead);
 router.delete('/:id', deleteMessage);

@@ -4,12 +4,19 @@ import { messageService } from '../services/messageService';
 import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { parseIntParam } from '../utils/helpers';
+import { User, UserRole, UserStatus } from '../models';
 
 // Validation rules
 export const sendMessageValidation = [
   body('receiverId').trim().notEmpty().withMessage('Receiver ID is required'),
   body('content').trim().notEmpty().withMessage('Message content is required'),
   body('listingId').optional().trim(),
+];
+
+export const sendInquiryValidation = [
+  body('content').trim().notEmpty().withMessage('Message content is required'),
+  body('listingId').optional().trim(),
+  body('contactPhone').optional().trim(),
 ];
 
 // Get conversations
@@ -67,6 +74,50 @@ export const sendMessage = asyncHandler(async (req: AuthRequest, res: Response) 
     success: true,
     data: message,
     message: 'Message sent',
+  });
+});
+
+// Send inquiry to admin (buyer -> admin)
+export const sendInquiryToAdmin = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { content, listingId, contactPhone } = req.body as {
+    content: string;
+    listingId?: string;
+    contactPhone?: string;
+  };
+
+  const adminUser = await User.findOne({
+    where: {
+      role: UserRole.ADMIN,
+      status: UserStatus.ACTIVE,
+    },
+    order: [['createdAt', 'ASC']],
+  });
+
+  if (!adminUser) {
+    res.status(404).json({ success: false, error: 'Admin user not found' });
+    return;
+  }
+
+  const messageContent = contactPhone
+    ? `Phone: ${contactPhone}\n\n${content}`
+    : content;
+
+  const message = await messageService.sendMessage(
+    req.user.id,
+    adminUser.id,
+    messageContent,
+    listingId
+  );
+
+  res.status(201).json({
+    success: true,
+    data: message,
+    message: 'Inquiry sent',
   });
 });
 
