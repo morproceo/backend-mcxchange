@@ -45,10 +45,9 @@ export const connectDatabase = async (): Promise<void> => {
 
     // Sync models - use force: false to only create missing tables
     // Using alter: true causes duplicate index issues in MySQL
-    if (config.nodeEnv === 'development') {
-      await sequelize.sync({ force: false });
-      console.log('Database models synchronized');
-    }
+    // Sync in all environments to create tables if they don't exist
+    await sequelize.sync({ force: false });
+    console.log('Database models synchronized');
   } catch (error) {
     console.error('Database connection failed:', error);
     throw error;
