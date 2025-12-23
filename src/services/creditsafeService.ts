@@ -133,6 +133,7 @@ interface CreditsafeCreditReport {
   };
   financialStatements?: CreditsafeFinancialStatement[];
   negativeInformation?: {
+    possibleOfac?: boolean;
     ccjSummary?: {
       exactRegistered?: number;
       possibleRegistered?: number;
@@ -143,6 +144,88 @@ interface CreditsafeCreditReport {
         currency?: string;
       };
     };
+    uccFilings?: Array<{
+      filedDate?: string;
+      filingType?: string;
+      filingNumber?: string;
+      jurisdiction?: string;
+      filingOffice?: string;
+      debtorName?: string;
+      debtorAddress?: {
+        simpleValue?: string;
+        street?: string;
+        city?: string;
+        postalCode?: string;
+        province?: string;
+      };
+      relatedDocumentNumber?: string;
+      status?: string;
+      securedParty?: {
+        name?: string;
+        address?: string;
+      };
+      collateralDescription?: string;
+      expirationDate?: string;
+    }>;
+    legalFilingSummary?: {
+      bankruptcy?: boolean;
+      taxLienFilings?: number;
+      judgmentFilings?: number;
+      uccFilings?: number;
+      cautionaryUccFilings?: number;
+      suits?: number;
+      sum?: {
+        currency?: string;
+        value?: number;
+      };
+    };
+    legalFilingGroupSummary?: {
+      bankruptcy?: boolean;
+      taxLienFilings?: number;
+      judgmentFilings?: number;
+      uccFilings?: number;
+      cautionaryUccFilings?: number;
+      suits?: number;
+      sum?: {
+        currency?: string;
+        value?: number;
+      };
+    };
+    legalFilingBranchSummary?: {
+      bankruptcy?: boolean;
+      taxLienFilings?: number;
+      judgmentFilings?: number;
+      uccFilings?: number;
+      cautionaryUccFilings?: number;
+      suits?: number;
+      sum?: {
+        currency?: string;
+        value?: number;
+      };
+    };
+    judgments?: Array<{
+      filedDate?: string;
+      caseNumber?: string;
+      amount?: number;
+      currency?: string;
+      plaintiff?: string;
+      status?: string;
+    }>;
+    taxLiens?: Array<{
+      filedDate?: string;
+      amount?: number;
+      currency?: string;
+      jurisdiction?: string;
+      status?: string;
+    }>;
+    suits?: Array<{
+      filedDate?: string;
+      caseNumber?: string;
+      plaintiff?: string;
+      amount?: number;
+      currency?: string;
+      status?: string;
+    }>;
   };
   paymentData?: {
     dbt?: number; // Days Beyond Terms

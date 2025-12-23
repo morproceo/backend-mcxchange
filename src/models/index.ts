@@ -177,12 +177,13 @@ interface UserAttributes {
   totalCredits: number;
   usedCredits: number;
   stripeCustomerId?: string;
+  stripeAccountId?: string;
   emailVerified: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'phone' | 'avatar' | 'status' | 'verified' | 'verifiedAt' | 'trustScore' | 'memberSince' | 'lastLoginAt' | 'companyName' | 'companyAddress' | 'city' | 'state' | 'zipCode' | 'ein' | 'sellerVerified' | 'sellerVerifiedAt' | 'totalCredits' | 'usedCredits' | 'stripeCustomerId' | 'emailVerified' | 'createdAt' | 'updatedAt'> {}
+interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'phone' | 'avatar' | 'status' | 'verified' | 'verifiedAt' | 'trustScore' | 'memberSince' | 'lastLoginAt' | 'companyName' | 'companyAddress' | 'city' | 'state' | 'zipCode' | 'ein' | 'sellerVerified' | 'sellerVerifiedAt' | 'totalCredits' | 'usedCredits' | 'stripeCustomerId' | 'stripeAccountId' | 'emailVerified' | 'createdAt' | 'updatedAt'> {}
 
 // ==================== USER MODEL ====================
 
@@ -211,6 +212,7 @@ export class User extends Model<UserAttributes, UserCreationAttributes> implemen
   declare totalCredits: number;
   declare usedCredits: number;
   declare stripeCustomerId: string | undefined;
+  declare stripeAccountId: string | undefined;
   declare emailVerified: boolean;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
@@ -319,6 +321,10 @@ User.init(
       defaultValue: 0,
     },
     stripeCustomerId: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    stripeAccountId: {
       type: DataTypes.STRING(255),
       allowNull: true,
     },

@@ -27,6 +27,11 @@ import {
   getAllOffers,
   adminApproveOffer,
   adminRejectOffer,
+  createUser,
+  createUserValidation,
+  createListing,
+  createListingValidation,
+  createUserWithListing,
 } from '../controllers/adminController';
 import { authenticate, adminOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
@@ -42,6 +47,7 @@ router.get('/dashboard', getDashboardStats);
 
 // Listings
 router.get('/listings', getAllListings);
+router.post('/listings', validate(createListingValidation), createListing);
 router.get('/listings/pending', getPendingListings);
 router.get('/listings/:id', getListingById);
 router.put('/listings/:id', updateListing);
@@ -50,6 +56,8 @@ router.post('/listings/:id/reject', validate(rejectListingValidation), rejectLis
 
 // Users
 router.get('/users', getUsers);
+router.post('/users', validate(createUserValidation), createUser);
+router.post('/users/with-listing', createUserWithListing);
 router.get('/users/:id', getUserDetails);
 router.post('/users/:id/block', validate(blockUserValidation), blockUser);
 router.post('/users/:id/unblock', unblockUser);

@@ -965,6 +965,209 @@ class StripeService {
   }
 
   // ============================================
+  // Connected Accounts (for Sellers to receive payouts)
+  // ============================================
+
+  /**
+   * Create a Stripe Connected Account for a seller
+   * This enables the seller to receive payouts from the platform
+   */
+  async createConnectedAccount(params: {
+    userId: string;
+    email: string;
+    businessName?: string;
+    country?: string;
+  }): Promise<{
+    success: boolean;
+    accountId?: string;
+    error?: string;
+  }> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const account = await stripe.accounts.create({
+        type: 'express', // Express accounts are easiest for marketplaces
+        country: params.country || 'US',
+        email: params.email,
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
+        business_type: 'individual',
+        metadata: {
+          userId: params.userId,
+          platform: 'mc-exchange',
+        },
+        business_profile: {
+          name: params.businessName,
+          product_description: 'MC Authority Sales',
+        },
+      });
+
+      logger.info('Stripe connected account created', {
+        accountId: account.id,
+        userId: params.userId,
+        email: params.email,
+      });
+
+      return {
+        success: true,
+        accountId: account.id,
+      };
+    } catch (error) {
+      logError('Failed to create Stripe connected account', error as Error, {
+        userId: params.userId,
+        email: params.email,
+      });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Create an account link for onboarding (Stripe-hosted onboarding flow)
+   */
+  async createAccountLink(params: {
+    accountId: string;
+    refreshUrl: string;
+    returnUrl: string;
+  }): Promise<{
+    success: boolean;
+    url?: string;
+    error?: string;
+  }> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const accountLink = await stripe.accountLinks.create({
+        account: params.accountId,
+        refresh_url: params.refreshUrl,
+        return_url: params.returnUrl,
+        type: 'account_onboarding',
+      });
+
+      return {
+        success: true,
+        url: accountLink.url,
+      };
+    } catch (error) {
+      logError('Failed to create account link', error as Error, {
+        accountId: params.accountId,
+      });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Get connected account details
+   */
+  async getConnectedAccount(accountId: string): Promise<Stripe.Account | null> {
+    if (!stripe) return null;
+
+    try {
+      return await stripe.accounts.retrieve(accountId);
+    } catch (error) {
+      logError('Failed to retrieve connected account', error as Error, { accountId });
+      return null;
+    }
+  }
+
+  /**
+   * Check if connected account has completed onboarding
+   */
+  async isAccountOnboarded(accountId: string): Promise<boolean> {
+    const account = await this.getConnectedAccount(accountId);
+    if (!account) return false;
+
+    return account.details_submitted && account.charges_enabled && account.payouts_enabled;
+  }
+
+  /**
+   * Create a login link for the seller's Stripe dashboard
+   */
+  async createLoginLink(accountId: string): Promise<{
+    success: boolean;
+    url?: string;
+    error?: string;
+  }> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const loginLink = await stripe.accounts.createLoginLink(accountId);
+
+      return {
+        success: true,
+        url: loginLink.url,
+      };
+    } catch (error) {
+      logError('Failed to create login link', error as Error, { accountId });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Create a transfer to a connected account (for paying sellers)
+   */
+  async createTransfer(params: {
+    amount: number; // In cents
+    destinationAccountId: string;
+    description?: string;
+    metadata?: Record<string, string>;
+  }): Promise<{
+    success: boolean;
+    transferId?: string;
+    error?: string;
+  }> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const transfer = await stripe.transfers.create({
+        amount: params.amount,
+        currency: 'usd',
+        destination: params.destinationAccountId,
+        description: params.description,
+        metadata: params.metadata,
+      });
+
+      logger.info('Transfer created', {
+        transferId: transfer.id,
+        amount: params.amount,
+        destination: params.destinationAccountId,
+      });
+
+      return {
+        success: true,
+        transferId: transfer.id,
+      };
+    } catch (error) {
+      logError('Failed to create transfer', error as Error, {
+        destinationAccountId: params.destinationAccountId,
+        amount: params.amount,
+      });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  // ============================================
   // Utility Methods
   // ============================================
 

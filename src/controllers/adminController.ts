@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { PremiumRequestStatus } from '../models';
 import { parseIntParam, parseBooleanParam } from '../utils/helpers';
+import { stripeService } from '../services/stripeService';
 
 // Validation rules
 export const rejectListingValidation = [
@@ -13,6 +14,18 @@ export const rejectListingValidation = [
 
 export const blockUserValidation = [
   body('reason').trim().notEmpty().withMessage('Block reason is required'),
+];
+
+export const createUserValidation = [
+  body('email').isEmail().withMessage('Valid email is required'),
+  body('name').trim().notEmpty().withMessage('Name is required'),
+  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  body('role').isIn(['BUYER', 'SELLER', 'ADMIN']).withMessage('Valid role is required'),
+];
+
+export const createListingValidation = [
+  body('mcNumber').trim().notEmpty().withMessage('MC Number is required'),
+  body('sellerId').trim().notEmpty().withMessage('Seller ID is required'),
 ];
 
 // Get dashboard stats
@@ -417,5 +430,243 @@ export const adminRejectOffer = asyncHandler(async (req: AuthRequest, res: Respo
     success: true,
     data: offer,
     message: 'Offer rejected. Buyer will be notified.',
+  });
+});
+
+// ============================================
+// Admin User & Listing Creation
+// ============================================
+
+// Create user (admin) - with optional Stripe account for sellers
+export const createUser = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { email, name, password, role, phone, companyName, createStripeAccount } = req.body;
+
+  // Create the user
+  const user = await adminService.createUser({
+    email,
+    name,
+    password,
+    role,
+    phone,
+    companyName,
+    createdByAdminId: req.user.id,
+  });
+
+  let stripeAccountId: string | undefined;
+  let stripeOnboardingUrl: string | undefined;
+
+  // If seller and createStripeAccount is true, create Stripe connected account
+  if (role === 'SELLER' && createStripeAccount && stripeService.isEnabled()) {
+    const stripeResult = await stripeService.createConnectedAccount({
+      userId: user.id,
+      email: user.email,
+      businessName: companyName || name,
+    });
+
+    if (stripeResult.success && stripeResult.accountId) {
+      stripeAccountId = stripeResult.accountId;
+
+      // Update user with Stripe account ID
+      await adminService.updateUserStripeAccount(user.id, stripeAccountId);
+
+      // Create onboarding link
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const linkResult = await stripeService.createAccountLink({
+        accountId: stripeAccountId,
+        refreshUrl: `${frontendUrl}/seller/stripe-refresh`,
+        returnUrl: `${frontendUrl}/seller/stripe-complete`,
+      });
+
+      if (linkResult.success) {
+        stripeOnboardingUrl = linkResult.url;
+      }
+    }
+  }
+
+  res.status(201).json({
+    success: true,
+    data: {
+      user,
+      stripeAccountId,
+      stripeOnboardingUrl,
+    },
+    message: `User created successfully${stripeAccountId ? ' with Stripe account' : ''}`,
+  });
+});
+
+// Create listing (admin) - can assign to any seller
+export const createListing = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const {
+    sellerId,
+    mcNumber,
+    dotNumber,
+    legalName,
+    dbaName,
+    title,
+    description,
+    askingPrice,
+    city,
+    state,
+    yearsActive,
+    fleetSize,
+    totalDrivers,
+    safetyRating,
+    insuranceOnFile,
+    bipdCoverage,
+    cargoCoverage,
+    amazonStatus,
+    amazonRelayScore,
+    highwaySetup,
+    sellingWithEmail,
+    sellingWithPhone,
+    cargoTypes,
+    isPremium,
+    status,
+    adminNotes,
+  } = req.body;
+
+  const listing = await adminService.createListing({
+    sellerId,
+    mcNumber,
+    dotNumber,
+    legalName,
+    dbaName,
+    title: title || `MC Authority #${mcNumber}`,
+    description,
+    askingPrice: askingPrice || 0,
+    city,
+    state,
+    yearsActive,
+    fleetSize,
+    totalDrivers,
+    safetyRating,
+    insuranceOnFile,
+    bipdCoverage,
+    cargoCoverage,
+    amazonStatus,
+    amazonRelayScore,
+    highwaySetup,
+    sellingWithEmail,
+    sellingWithPhone,
+    cargoTypes,
+    isPremium,
+    status: status || 'ACTIVE', // Admin can create active listings directly
+    createdByAdminId: req.user.id,
+    adminNotes,
+  });
+
+  res.status(201).json({
+    success: true,
+    data: listing,
+    message: 'Listing created successfully',
+  });
+});
+
+// Create user with listing (admin) - combined operation
+export const createUserWithListing = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { user: userData, listing: listingData, createStripeAccount } = req.body;
+
+  if (!userData || !userData.email || !userData.name || !userData.password) {
+    res.status(400).json({ success: false, error: 'User data is required (email, name, password)' });
+    return;
+  }
+
+  // 1. Create the user (always as SELLER for this combined operation)
+  const user = await adminService.createUser({
+    email: userData.email,
+    name: userData.name,
+    password: userData.password,
+    role: 'SELLER',
+    phone: userData.phone,
+    companyName: userData.companyName,
+    createdByAdminId: req.user.id,
+  });
+
+  let stripeAccountId: string | undefined;
+  let stripeOnboardingUrl: string | undefined;
+
+  // 2. Create Stripe connected account if requested
+  if (createStripeAccount && stripeService.isEnabled()) {
+    const stripeResult = await stripeService.createConnectedAccount({
+      userId: user.id,
+      email: user.email,
+      businessName: userData.companyName || userData.name,
+    });
+
+    if (stripeResult.success && stripeResult.accountId) {
+      stripeAccountId = stripeResult.accountId;
+      await adminService.updateUserStripeAccount(user.id, stripeAccountId);
+
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const linkResult = await stripeService.createAccountLink({
+        accountId: stripeAccountId,
+        refreshUrl: `${frontendUrl}/seller/stripe-refresh`,
+        returnUrl: `${frontendUrl}/seller/stripe-complete`,
+      });
+
+      if (linkResult.success) {
+        stripeOnboardingUrl = linkResult.url;
+      }
+    }
+  }
+
+  // 3. Create the listing if provided
+  let listing = null;
+  if (listingData && listingData.mcNumber) {
+    listing = await adminService.createListing({
+      sellerId: user.id,
+      mcNumber: listingData.mcNumber,
+      dotNumber: listingData.dotNumber,
+      legalName: listingData.legalName || userData.companyName || userData.name,
+      dbaName: listingData.dbaName,
+      title: listingData.title || `MC Authority #${listingData.mcNumber}`,
+      description: listingData.description,
+      askingPrice: listingData.askingPrice || 0,
+      city: listingData.city,
+      state: listingData.state,
+      yearsActive: listingData.yearsActive,
+      fleetSize: listingData.fleetSize,
+      totalDrivers: listingData.totalDrivers,
+      safetyRating: listingData.safetyRating,
+      insuranceOnFile: listingData.insuranceOnFile,
+      bipdCoverage: listingData.bipdCoverage,
+      cargoCoverage: listingData.cargoCoverage,
+      amazonStatus: listingData.amazonStatus,
+      amazonRelayScore: listingData.amazonRelayScore,
+      highwaySetup: listingData.highwaySetup,
+      sellingWithEmail: listingData.sellingWithEmail,
+      sellingWithPhone: listingData.sellingWithPhone,
+      cargoTypes: listingData.cargoTypes,
+      isPremium: listingData.isPremium,
+      status: listingData.status || 'ACTIVE',
+      createdByAdminId: req.user.id,
+      adminNotes: listingData.adminNotes,
+    });
+  }
+
+  res.status(201).json({
+    success: true,
+    data: {
+      user,
+      listing,
+      stripeAccountId,
+      stripeOnboardingUrl,
+    },
+    message: `Seller created${listing ? ' with listing' : ''}${stripeAccountId ? ' and Stripe account' : ''}`,
   });
 });

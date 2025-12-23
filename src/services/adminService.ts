@@ -27,6 +27,9 @@ class AdminService {
   async getDashboardStats() {
     const [
       totalUsers,
+      totalSellers,
+      totalBuyers,
+      activeUsers,
       totalListings,
       activeListings,
       pendingListings,
@@ -35,8 +38,13 @@ class AdminService {
       activeTransactions,
       completedTransactions,
       pendingPremiumRequests,
+      totalOffers,
+      pendingOffers,
     ] = await Promise.all([
       User.count(),
+      User.count({ where: { role: 'SELLER' } }),
+      User.count({ where: { role: 'BUYER' } }),
+      User.count({ where: { status: 'ACTIVE' } }),
       Listing.count(),
       Listing.count({ where: { status: ListingStatus.ACTIVE } }),
       Listing.count({ where: { status: ListingStatus.PENDING_REVIEW } }),
@@ -45,6 +53,8 @@ class AdminService {
       Transaction.count({ where: { status: { [Op.ne]: TransactionStatus.COMPLETED } } }),
       Transaction.count({ where: { status: TransactionStatus.COMPLETED } }),
       PremiumRequest.count({ where: { status: PremiumRequestStatus.PENDING } }),
+      Offer.count(),
+      Offer.count({ where: { status: 'PENDING' } }),
     ]);
 
     // Calculate total revenue from completed transactions
@@ -52,23 +62,30 @@ class AdminService {
       where: { status: TransactionStatus.COMPLETED },
     });
 
+    // Return flat structure for frontend
     return {
-      users: {
-        total: totalUsers,
-      },
-      listings: {
-        total: totalListings,
-        active: activeListings,
-        pending: pendingListings,
-        sold: soldListings,
-      },
-      transactions: {
-        total: totalTransactions,
-        active: activeTransactions,
-        completed: completedTransactions,
-      },
+      // Users
+      totalUsers,
+      totalSellers,
+      totalBuyers,
+      activeUsers,
+      // Listings
+      totalListings,
+      activeListings,
+      pendingListings,
+      soldListings,
+      // Transactions
+      totalTransactions,
+      activeTransactions,
+      completedTransactions,
+      // Offers
+      totalOffers,
+      pendingOffers,
+      // Premium
       premiumRequests: pendingPremiumRequests,
-      revenue: revenueResult || 0,
+      // Revenue
+      totalRevenue: revenueResult || 0,
+      monthlyRevenue: 0, // Would need date filtering for this
     };
   }
 
@@ -1209,6 +1226,170 @@ class AdminService {
     });
 
     return offer;
+  }
+
+  // ============================================
+  // Admin User & Listing Creation
+  // ============================================
+
+  // Create a new user (admin)
+  async createUser(data: {
+    email: string;
+    name: string;
+    password: string;
+    role: string;
+    phone?: string;
+    companyName?: string;
+    createdByAdminId: string;
+  }) {
+    const bcrypt = require('bcryptjs');
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ where: { email: data.email } });
+    if (existingUser) {
+      throw new Error('User with this email already exists');
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(data.password, 12);
+
+    // Create user
+    const user = await User.create({
+      email: data.email,
+      name: data.name,
+      password: hashedPassword,
+      role: data.role as UserRole,
+      phone: data.phone,
+      companyName: data.companyName,
+      status: UserStatus.ACTIVE,
+      emailVerified: true, // Admin-created users are pre-verified
+      verified: data.role === 'SELLER', // Auto-verify sellers created by admin
+    });
+
+    // Record admin action
+    await AdminAction.create({
+      adminId: data.createdByAdminId,
+      action: 'CREATE_USER',
+      targetType: 'USER',
+      targetId: user.id,
+      details: {
+        email: data.email,
+        role: data.role,
+      },
+    });
+
+    return user;
+  }
+
+  // Update user's Stripe account ID (stored in metadata for now)
+  async updateUserStripeAccount(userId: string, stripeAccountId: string) {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    // Store stripe account ID on user
+    await user.update({ stripeAccountId });
+    return user;
+  }
+
+  // Create a listing (admin)
+  async createListing(data: {
+    sellerId: string;
+    mcNumber: string;
+    dotNumber?: string;
+    legalName?: string;
+    dbaName?: string;
+    title: string;
+    description?: string;
+    askingPrice: number;
+    city?: string;
+    state?: string;
+    yearsActive?: number;
+    fleetSize?: number;
+    totalDrivers?: number;
+    safetyRating?: string;
+    insuranceOnFile?: boolean;
+    bipdCoverage?: number;
+    cargoCoverage?: number;
+    amazonStatus?: string;
+    amazonRelayScore?: string;
+    highwaySetup?: boolean;
+    sellingWithEmail?: boolean;
+    sellingWithPhone?: boolean;
+    cargoTypes?: string[];
+    isPremium?: boolean;
+    status?: string;
+    createdByAdminId: string;
+    adminNotes?: string;
+  }) {
+    // Verify seller exists
+    const seller = await User.findByPk(data.sellerId);
+    if (!seller) {
+      throw new NotFoundError('Seller');
+    }
+
+    // Check if MC number already exists
+    const existingListing = await Listing.findOne({
+      where: { mcNumber: data.mcNumber },
+    });
+    if (existingListing) {
+      throw new Error('A listing with this MC number already exists');
+    }
+
+    // Create listing
+    const listing = await Listing.create({
+      sellerId: data.sellerId,
+      mcNumber: data.mcNumber,
+      dotNumber: data.dotNumber || '',
+      legalName: data.legalName || '',
+      dbaName: data.dbaName || '',
+      title: data.title,
+      description: data.description || '',
+      price: data.askingPrice,
+      city: data.city || 'Unknown',
+      state: data.state || '',
+      yearsActive: data.yearsActive || 0,
+      fleetSize: data.fleetSize || 0,
+      totalDrivers: data.totalDrivers || 0,
+      safetyRating: data.safetyRating || 'satisfactory',
+      insuranceOnFile: data.insuranceOnFile || false,
+      bipdCoverage: data.bipdCoverage || 0,
+      cargoCoverage: data.cargoCoverage || 0,
+      amazonStatus: data.amazonStatus || 'NONE',
+      amazonRelayScore: data.amazonRelayScore || '',
+      highwaySetup: data.highwaySetup || false,
+      sellingWithEmail: data.sellingWithEmail || false,
+      sellingWithPhone: data.sellingWithPhone || false,
+      cargoTypes: data.cargoTypes ? JSON.stringify(data.cargoTypes) : '[]',
+      isPremium: data.isPremium || false,
+      status: (data.status as ListingStatus) || ListingStatus.ACTIVE,
+      adminNotes: data.adminNotes || '',
+    });
+
+    // Record admin action
+    await AdminAction.create({
+      adminId: data.createdByAdminId,
+      action: 'CREATE_LISTING',
+      targetType: 'LISTING',
+      targetId: listing.id,
+      details: {
+        mcNumber: data.mcNumber,
+        sellerId: data.sellerId,
+        status: data.status,
+      },
+    });
+
+    // Notify seller
+    await Notification.create({
+      userId: data.sellerId,
+      type: NotificationType.SYSTEM,
+      title: 'New Listing Created',
+      message: `A listing for MC-${data.mcNumber} has been created for your account.`,
+      link: `/seller/listings`,
+    });
+
+    return listing;
   }
 }
 

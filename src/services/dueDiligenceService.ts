@@ -64,6 +64,67 @@ export interface DueDiligenceResult {
       bankruptcy: boolean;
       suits: number;
     };
+    negativeInformation?: {
+      possibleOfac?: boolean;
+      uccFilings?: Array<{
+        filedDate?: string;
+        filingType?: string;
+        filingNumber?: string;
+        jurisdiction?: string;
+        filingOffice?: string;
+        debtorName?: string;
+        debtorAddress?: {
+          simpleValue?: string;
+          street?: string;
+          city?: string;
+          postalCode?: string;
+          province?: string;
+        };
+        relatedDocumentNumber?: string;
+        status?: string;
+        securedParty?: {
+          name?: string;
+          address?: string;
+        };
+        collateralDescription?: string;
+      }>;
+      legalFilingSummary?: {
+        bankruptcy?: boolean;
+        taxLienFilings?: number;
+        judgmentFilings?: number;
+        uccFilings?: number;
+        cautionaryUccFilings?: number;
+        suits?: number;
+        sum?: {
+          currency?: string;
+          value?: number;
+        };
+      };
+      legalFilingGroupSummary?: {
+        bankruptcy?: boolean;
+        taxLienFilings?: number;
+        judgmentFilings?: number;
+        uccFilings?: number;
+        cautionaryUccFilings?: number;
+        suits?: number;
+        sum?: {
+          currency?: string;
+          value?: number;
+        };
+      };
+      legalFilingBranchSummary?: {
+        bankruptcy?: boolean;
+        taxLienFilings?: number;
+        judgmentFilings?: number;
+        uccFilings?: number;
+        cautionaryUccFilings?: number;
+        suits?: number;
+        sum?: {
+          currency?: string;
+          value?: number;
+        };
+      };
+    };
     yearsInBusiness?: string;
     employees?: string;
     score: number;
@@ -436,6 +497,32 @@ class DueDiligenceService {
       const maxCreditScore = Object.values(SCORE_WEIGHTS.credit).reduce((a, b) => a + b, 0);
       const normalizedScore = Math.round((totalScore / maxCreditScore) * 100);
 
+      // Build negative information object with all available data
+      const negativeInfo = reportAny.negativeInformation || {};
+      const negativeInformation: any = {
+        possibleOfac: negativeInfo.possibleOfac || false,
+        legalFilingSummary: negativeInfo.legalFilingSummary || undefined,
+        legalFilingGroupSummary: negativeInfo.legalFilingGroupSummary || undefined,
+        legalFilingBranchSummary: negativeInfo.legalFilingBranchSummary || undefined,
+      };
+
+      // Extract UCC filings details if available
+      if (negativeInfo.uccFilings && Array.isArray(negativeInfo.uccFilings)) {
+        negativeInformation.uccFilings = negativeInfo.uccFilings.map((ucc: any) => ({
+          filedDate: ucc.filedDate,
+          filingType: ucc.filingType,
+          filingNumber: ucc.filingNumber,
+          jurisdiction: ucc.jurisdiction,
+          filingOffice: ucc.filingOffice,
+          debtorName: ucc.debtorName,
+          debtorAddress: ucc.debtorAddress,
+          relatedDocumentNumber: ucc.relatedDocumentNumber,
+          status: ucc.status,
+          securedParty: ucc.securedParty,
+          collateralDescription: ucc.collateralDescription,
+        }));
+      }
+
       return {
         companyFound: true,
         companyName: company.name,
@@ -452,6 +539,7 @@ class DueDiligenceService {
           bankruptcy: hasBankruptcy,
           suits: legalFilings.suits || 0,
         },
+        negativeInformation,
         yearsInBusiness: additionalInfo.misc?.yearsInBusiness,
         employees: reportAny.otherInformation?.employeesInformation?.[0]?.numberOfEmployees,
         score: normalizedScore,
