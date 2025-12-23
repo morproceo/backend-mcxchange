@@ -6,6 +6,8 @@ import transactionRoutes from './transactionRoutes';
 import adminRoutes from './adminRoutes';
 import creditRoutes from './creditRoutes';
 import fmcsaRoutes from './fmcsaRoutes';
+import creditsafeRoutes from './creditsafeRoutes';
+import dueDiligenceRoutes from './dueDiligenceRoutes';
 import messageRoutes from './messageRoutes';
 import notificationRoutes from './notificationRoutes';
 import userRoutes from './userRoutes';
@@ -164,5 +166,7 @@ router.use('/documents', documentRoutes);
 router.use('/admin', adminRoutes);
 router.use('/credits', creditRoutes);
 router.use('/fmcsa', fmcsaRoutes);
+router.use('/admin/creditsafe', creditsafeRoutes);
+router.use('/admin/due-diligence', dueDiligenceRoutes);
 
 export default router;

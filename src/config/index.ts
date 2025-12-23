@@ -78,6 +78,13 @@ export const config = {
     baseUrl: process.env.FMCSA_BASE_URL || 'https://mobile.fmcsa.dot.gov/qc/services',
   },
 
+  // Creditsafe
+  creditsafe: {
+    username: process.env.CREDITSAFE_USERNAME || '',
+    password: process.env.CREDITSAFE_PASSWORD || '',
+    baseUrl: process.env.CREDITSAFE_BASE_URL || 'https://connect.creditsafe.com/v1',
+  },
+
   // File Upload
   upload: {
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760', 10), // 10MB
@@ -218,6 +225,10 @@ export function validateConfig(): void {
     warnings.push('FMCSA_API_KEY not set - FMCSA lookups will not work');
   }
 
+  if (!process.env.CREDITSAFE_USERNAME || !process.env.CREDITSAFE_PASSWORD) {
+    warnings.push('CREDITSAFE_USERNAME/PASSWORD not set - Creditsafe credit reports will not work');
+  }
+
   if (!process.env.REDIS_URL && !process.env.REDIS_HOST) {
     warnings.push('Redis not configured - rate limiting will use in-memory store');
   }
@@ -270,6 +281,7 @@ export function getPublicConfig() {
       stripe: !!config.stripe.secretKey,
       email: !!config.resend.apiKey,
       fmcsa: !!config.fmcsa.apiKey,
+      creditsafe: !!(config.creditsafe.username && config.creditsafe.password),
       redis: !!config.redis.url || !!config.redis.host,
       s3: config.upload.s3.enabled,
     },
