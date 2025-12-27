@@ -14,6 +14,7 @@ import userRoutes from './userRoutes';
 import sellerRoutes from './sellerRoutes';
 import buyerRoutes from './buyerRoutes';
 import documentRoutes from './documentRoutes';
+import consultationRoutes from './consultationRoutes';
 import { sequelize } from '../models';
 import { isRedisHealthy } from '../config/redis';
 import { config, getPublicConfig } from '../config';
@@ -168,5 +169,6 @@ router.use('/credits', creditRoutes);
 router.use('/fmcsa', fmcsaRoutes);
 router.use('/admin/creditsafe', creditsafeRoutes);
 router.use('/admin/due-diligence', dueDiligenceRoutes);
+router.use('/consultations', consultationRoutes);
 
 export default router;

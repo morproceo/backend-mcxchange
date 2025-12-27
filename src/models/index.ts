@@ -150,6 +150,15 @@ export enum PremiumRequestStatus {
   CANCELLED = 'CANCELLED'
 }
 
+export enum ConsultationStatus {
+  PENDING_PAYMENT = 'PENDING_PAYMENT',
+  PAID = 'PAID',
+  SCHEDULED = 'SCHEDULED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+  REFUNDED = 'REFUNDED'
+}
+
 // ==================== INTERFACES ====================
 
 interface UserAttributes {
@@ -1950,6 +1959,115 @@ PlatformSetting.init(
   }
 );
 
+// ==================== CONSULTATION MODEL ====================
+
+export class Consultation extends Model {
+  declare id: string;
+  declare name: string;
+  declare email: string;
+  declare phone: string;
+  declare preferredDate: string;
+  declare preferredTime: string;
+  declare message?: string;
+  declare status: ConsultationStatus;
+  declare amount: number;
+  declare stripeSessionId?: string;
+  declare stripePaymentIntentId?: string;
+  declare paidAt?: Date;
+  declare scheduledAt?: Date;
+  declare completedAt?: Date;
+  declare adminNotes?: string;
+  declare contactedBy?: string;
+  declare contactedAt?: Date;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+Consultation.init(
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    name: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    email: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    phone: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+    },
+    preferredDate: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+    },
+    preferredTime: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+    },
+    message: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    status: {
+      type: DataTypes.ENUM(...Object.values(ConsultationStatus)),
+      defaultValue: ConsultationStatus.PENDING_PAYMENT,
+    },
+    amount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 100.00,
+    },
+    stripeSessionId: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    stripePaymentIntentId: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    paidAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    scheduledAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    completedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    adminNotes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    contactedBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
+    contactedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+  },
+  {
+    sequelize,
+    tableName: 'consultations',
+    indexes: [
+      { fields: ['email'] },
+      { fields: ['status'] },
+      { fields: ['stripeSessionId'] },
+      { fields: ['createdAt'] },
+    ],
+  }
+);
+
 // ==================== ASSOCIATIONS ====================
 
 // User associations
@@ -2083,5 +2201,6 @@ export default {
   PremiumRequest,
   AdminAction,
   PlatformSetting,
+  Consultation,
   sequelize,
 };
