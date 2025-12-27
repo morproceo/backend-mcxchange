@@ -1,21 +1,19 @@
 import { PlatformSetting } from '../models';
 
 interface FacebookConfig {
-  accessToken: string;
-  group1Id: string;
-  group1Name: string;
-  group2Id: string;
-  group2Name: string;
+  pageAccessToken: string;
+  pageId: string;
+  pageName: string;
 }
 
-interface PostToGroupOptions {
-  groupId: string;
+interface PostToPageOptions {
   message: string;
   link?: string;
 }
 
 interface FacebookApiResponse {
   id?: string;
+  name?: string;
   error?: {
     message: string;
     code: number;
@@ -37,20 +35,16 @@ class FacebookService {
     }
 
     // Load from database
-    const [accessTokenSetting, group1IdSetting, group1NameSetting, group2IdSetting, group2NameSetting] = await Promise.all([
-      PlatformSetting.findOne({ where: { key: 'facebook_access_token' } }),
-      PlatformSetting.findOne({ where: { key: 'facebook_group1_id' } }),
-      PlatformSetting.findOne({ where: { key: 'facebook_group1_name' } }),
-      PlatformSetting.findOne({ where: { key: 'facebook_group2_id' } }),
-      PlatformSetting.findOne({ where: { key: 'facebook_group2_name' } }),
+    const [pageAccessTokenSetting, pageIdSetting, pageNameSetting] = await Promise.all([
+      PlatformSetting.findOne({ where: { key: 'facebook_page_access_token' } }),
+      PlatformSetting.findOne({ where: { key: 'facebook_page_id' } }),
+      PlatformSetting.findOne({ where: { key: 'facebook_page_name' } }),
     ]);
 
     this.configCache = {
-      accessToken: accessTokenSetting?.value || '',
-      group1Id: group1IdSetting?.value || '',
-      group1Name: group1NameSetting?.value || 'Group 1',
-      group2Id: group2IdSetting?.value || '',
-      group2Name: group2NameSetting?.value || 'Group 2',
+      pageAccessToken: pageAccessTokenSetting?.value || '',
+      pageId: pageIdSetting?.value || '',
+      pageName: pageNameSetting?.value || 'Facebook Page',
     };
     this.cacheTimestamp = Date.now();
 
@@ -63,20 +57,14 @@ class FacebookService {
   async updateConfig(config: Partial<FacebookConfig>): Promise<void> {
     const updates: { key: string; value: string }[] = [];
 
-    if (config.accessToken !== undefined) {
-      updates.push({ key: 'facebook_access_token', value: config.accessToken });
+    if (config.pageAccessToken !== undefined) {
+      updates.push({ key: 'facebook_page_access_token', value: config.pageAccessToken });
     }
-    if (config.group1Id !== undefined) {
-      updates.push({ key: 'facebook_group1_id', value: config.group1Id });
+    if (config.pageId !== undefined) {
+      updates.push({ key: 'facebook_page_id', value: config.pageId });
     }
-    if (config.group1Name !== undefined) {
-      updates.push({ key: 'facebook_group1_name', value: config.group1Name });
-    }
-    if (config.group2Id !== undefined) {
-      updates.push({ key: 'facebook_group2_id', value: config.group2Id });
-    }
-    if (config.group2Name !== undefined) {
-      updates.push({ key: 'facebook_group2_name', value: config.group2Name });
+    if (config.pageName !== undefined) {
+      updates.push({ key: 'facebook_page_name', value: config.pageName });
     }
 
     await Promise.all(
@@ -93,41 +81,30 @@ class FacebookService {
   /**
    * Check if Facebook is configured
    */
-  async isConfigured(): Promise<{ configured: boolean; group1: boolean; group2: boolean }> {
+  async isConfigured(): Promise<boolean> {
     const config = await this.getConfig();
-    return {
-      configured: !!config.accessToken,
-      group1: !!(config.accessToken && config.group1Id),
-      group2: !!(config.accessToken && config.group2Id),
-    };
+    return !!(config.pageAccessToken && config.pageId);
   }
 
   /**
-   * Post to a Facebook group
+   * Post to Facebook Page
    */
-  async postToGroup(options: PostToGroupOptions): Promise<{ success: boolean; postId?: string; error?: string }> {
+  async postToPage(options: PostToPageOptions): Promise<{ success: boolean; postId?: string; error?: string }> {
     const config = await this.getConfig();
 
-    if (!config.accessToken) {
+    if (!config.pageAccessToken || !config.pageId) {
       return {
         success: false,
-        error: 'Facebook not configured. Please set access token in settings.',
-      };
-    }
-
-    if (!options.groupId) {
-      return {
-        success: false,
-        error: 'Group ID is required.',
+        error: 'Facebook not configured. Please set Page Access Token and Page ID in settings.',
       };
     }
 
     try {
-      const url = `https://graph.facebook.com/v18.0/${options.groupId}/feed`;
+      const url = `https://graph.facebook.com/v18.0/${config.pageId}/feed`;
 
       const body: Record<string, string> = {
         message: options.message,
-        access_token: config.accessToken,
+        access_token: config.pageAccessToken,
       };
 
       if (options.link) {
@@ -148,7 +125,7 @@ class FacebookService {
         console.error('Facebook API error:', data.error);
         return {
           success: false,
-          error: data.error.message || 'Failed to post to Facebook group',
+          error: data.error.message || 'Failed to post to Facebook Page',
         };
       }
 
@@ -166,7 +143,7 @@ class FacebookService {
   }
 
   /**
-   * Post a listing to Facebook group(s)
+   * Post a listing to Facebook Page
    */
   async postListing(
     listing: {
@@ -179,13 +156,8 @@ class FacebookService {
       fleetSize?: number;
       safetyRating?: string;
     },
-    options: {
-      customMessage?: string;
-      postToGroup1?: boolean;
-      postToGroup2?: boolean;
-    }
-  ): Promise<{ success: boolean; results: { group1?: { success: boolean; postId?: string; error?: string }; group2?: { success: boolean; postId?: string; error?: string } } }> {
-    const config = await this.getConfig();
+    customMessage?: string
+  ): Promise<{ success: boolean; postId?: string; error?: string }> {
     const frontendUrl = process.env.FRONTEND_URL || 'https://www.domilea.com';
     const listingUrl = `${frontendUrl}/mc/${listing.id}`;
 
@@ -197,8 +169,8 @@ class FacebookService {
     // Build the message
     let message = '';
 
-    if (options.customMessage) {
-      message = options.customMessage + '\n\n';
+    if (customMessage) {
+      message = customMessage + '\n\n';
     }
 
     message += `🚛 ${listing.title}\n\n`;
@@ -220,49 +192,27 @@ class FacebookService {
 
     message += `\n🔗 View Listing: ${listingUrl}`;
 
-    const results: { group1?: { success: boolean; postId?: string; error?: string }; group2?: { success: boolean; postId?: string; error?: string } } = {};
-
-    // Post to Group 1
-    if (options.postToGroup1 && config.group1Id) {
-      results.group1 = await this.postToGroup({
-        groupId: config.group1Id,
-        message,
-        link: listingUrl,
-      });
-    }
-
-    // Post to Group 2
-    if (options.postToGroup2 && config.group2Id) {
-      results.group2 = await this.postToGroup({
-        groupId: config.group2Id,
-        message,
-        link: listingUrl,
-      });
-    }
-
-    const success = (results.group1?.success || !options.postToGroup1) &&
-                    (results.group2?.success || !options.postToGroup2);
-
-    return { success, results };
+    return this.postToPage({ message, link: listingUrl });
   }
 
   /**
    * Test the Facebook connection
    */
-  async testConnection(): Promise<{ success: boolean; userName?: string; error?: string }> {
+  async testConnection(): Promise<{ success: boolean; pageName?: string; error?: string }> {
     const config = await this.getConfig();
 
-    if (!config.accessToken) {
+    if (!config.pageAccessToken) {
       return {
         success: false,
-        error: 'Access token not configured',
+        error: 'Page Access Token not configured',
       };
     }
 
     try {
-      const url = `https://graph.facebook.com/v18.0/me?access_token=${config.accessToken}`;
+      // Test by getting page info
+      const url = `https://graph.facebook.com/v18.0/me?access_token=${config.pageAccessToken}`;
       const response = await fetch(url);
-      const data = await response.json() as { name?: string; id?: string; error?: { message: string } };
+      const data = await response.json() as FacebookApiResponse;
 
       if (data.error) {
         return {
@@ -273,7 +223,7 @@ class FacebookService {
 
       return {
         success: true,
-        userName: data.name,
+        pageName: data.name,
       };
     } catch (error: any) {
       return {

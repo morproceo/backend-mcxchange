@@ -8,20 +8,16 @@ import { Listing } from '../models';
 export const getConfig = async (_req: Request, res: Response) => {
   try {
     const config = await facebookService.getConfig();
-    const configStatus = await facebookService.isConfigured();
+    const isConfigured = await facebookService.isConfigured();
 
     res.json({
       success: true,
       data: {
         // Don't send the full token for security - just indicate if it's set
-        accessTokenSet: !!config.accessToken,
-        group1Id: config.group1Id,
-        group1Name: config.group1Name,
-        group2Id: config.group2Id,
-        group2Name: config.group2Name,
-        isConfigured: configStatus.configured,
-        group1Configured: configStatus.group1,
-        group2Configured: configStatus.group2,
+        pageAccessTokenSet: !!config.pageAccessToken,
+        pageId: config.pageId,
+        pageName: config.pageName,
+        isConfigured,
       },
     });
   } catch (error: any) {
@@ -39,14 +35,12 @@ export const getConfig = async (_req: Request, res: Response) => {
  */
 export const updateConfig = async (req: Request, res: Response) => {
   try {
-    const { accessToken, group1Id, group1Name, group2Id, group2Name } = req.body;
+    const { pageAccessToken, pageId, pageName } = req.body;
 
     await facebookService.updateConfig({
-      accessToken,
-      group1Id,
-      group1Name,
-      group2Id,
-      group2Name,
+      pageAccessToken,
+      pageId,
+      pageName,
     });
 
     res.json({
@@ -73,8 +67,8 @@ export const testConnection = async (_req: Request, res: Response) => {
     if (result.success) {
       res.json({
         success: true,
-        message: `Connected as: ${result.userName}`,
-        userName: result.userName,
+        message: `Connected to Page: ${result.pageName}`,
+        pageName: result.pageName,
       });
     } else {
       res.status(400).json({
@@ -93,23 +87,16 @@ export const testConnection = async (_req: Request, res: Response) => {
 };
 
 /**
- * Share a listing to Facebook group(s) (admin only)
+ * Share a listing to Facebook Page (admin only)
  */
 export const shareListing = async (req: Request, res: Response) => {
   try {
-    const { listingId, customMessage, postToGroup1, postToGroup2 } = req.body;
+    const { listingId, customMessage } = req.body;
 
     if (!listingId) {
       return res.status(400).json({
         success: false,
         message: 'Listing ID is required',
-      });
-    }
-
-    if (!postToGroup1 && !postToGroup2) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please select at least one group to post to',
       });
     }
 
@@ -134,24 +121,19 @@ export const shareListing = async (req: Request, res: Response) => {
         fleetSize: listing.fleetSize,
         safetyRating: listing.safetyRating,
       },
-      {
-        customMessage,
-        postToGroup1,
-        postToGroup2,
-      }
+      customMessage
     );
 
     if (result.success) {
       res.json({
         success: true,
-        message: 'Listing shared to Facebook group(s)',
-        results: result.results,
+        message: 'Listing shared to Facebook Page',
+        postId: result.postId,
       });
     } else {
       res.status(400).json({
         success: false,
-        message: 'Failed to share to some groups',
-        results: result.results,
+        message: result.error,
       });
     }
   } catch (error: any) {
