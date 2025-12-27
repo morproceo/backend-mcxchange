@@ -505,7 +505,8 @@ class AdminService {
     dbaName?: string;
     title?: string;
     description?: string;
-    price?: number;
+    askingPrice?: number;
+    listingPrice?: number | null;
     city?: string;
     state?: string;
     address?: string;
@@ -546,7 +547,8 @@ class AdminService {
     if (data.dbaName !== undefined) updateData.dbaName = data.dbaName;
     if (data.title !== undefined) updateData.title = data.title;
     if (data.description !== undefined) updateData.description = data.description;
-    if (data.price !== undefined) updateData.price = data.price;
+    if (data.askingPrice !== undefined) updateData.askingPrice = data.askingPrice;
+    if (data.listingPrice !== undefined) updateData.listingPrice = data.listingPrice;
     if (data.city !== undefined) updateData.city = data.city;
     if (data.state !== undefined) updateData.state = data.state.toUpperCase();
     if (data.address !== undefined) updateData.address = data.address;
