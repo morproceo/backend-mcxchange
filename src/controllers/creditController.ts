@@ -58,7 +58,7 @@ export const getHistory = asyncHandler(async (req: AuthRequest, res: Response) =
 
 // Get subscription plans
 export const getPlans = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const plans = creditService.getSubscriptionPlans();
+  const plans = await creditService.getSubscriptionPlans();
 
   res.json({
     success: true,

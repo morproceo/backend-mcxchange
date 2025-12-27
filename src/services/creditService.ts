@@ -15,6 +15,7 @@ import { SUBSCRIPTION_PLANS } from '../types';
 import { addMonths, addYears } from 'date-fns';
 import { stripeService } from './stripeService';
 import { emailService } from './emailService';
+import { pricingConfigService, SubscriptionPlanConfig } from './pricingConfigService';
 import logger from '../utils/logger';
 import { config } from '../config';
 
@@ -154,20 +155,33 @@ class CreditService {
   // ============================================
 
   /**
-   * Get available subscription plans
+   * Get available subscription plans (uses dynamic pricing from database)
    */
-  getSubscriptionPlans() {
-    return Object.entries(SUBSCRIPTION_PLANS).map(([key, plan]) => ({
-      id: key,
-      name: plan.name,
-      credits: plan.credits,
-      priceMonthly: plan.priceMonthly,
-      priceYearly: plan.priceYearly,
-      pricePerCreditMonthly: Math.round((plan.priceMonthly / plan.credits) * 100) / 100,
-      pricePerCreditYearly: Math.round((plan.priceYearly / plan.credits) * 100) / 100,
-      stripePriceIdMonthly: plan.stripePriceIdMonthly,
-      stripePriceIdYearly: plan.stripePriceIdYearly,
-    }));
+  async getSubscriptionPlans() {
+    const plans = await pricingConfigService.getSubscriptionPlans();
+    return plans.map((plan, index) => {
+      const keys = ['STARTER', 'PROFESSIONAL', 'ENTERPRISE'];
+      return {
+        id: keys[index],
+        name: plan.name,
+        credits: plan.credits,
+        priceMonthly: plan.priceMonthly,
+        priceYearly: plan.priceYearly,
+        pricePerCreditMonthly: Math.round((plan.priceMonthly / plan.credits) * 100) / 100,
+        pricePerCreditYearly: Math.round((plan.priceYearly / plan.credits) * 100) / 100,
+        stripePriceIdMonthly: plan.stripePriceIdMonthly,
+        stripePriceIdYearly: plan.stripePriceIdYearly,
+        features: plan.features,
+      };
+    });
+  }
+
+  /**
+   * Get a specific subscription plan's config by key
+   */
+  async getSubscriptionPlanConfig(plan: SubscriptionPlan): Promise<SubscriptionPlanConfig> {
+    const planConfig = await pricingConfigService.getSubscriptionPlan(plan);
+    return planConfig;
   }
 
   /**
@@ -208,7 +222,8 @@ class CreditService {
       throw new ConflictError('You already have an active subscription. Please cancel it first or upgrade.');
     }
 
-    const planDetails = SUBSCRIPTION_PLANS[plan];
+    // Get plan details from dynamic pricing config
+    const planDetails = await this.getSubscriptionPlanConfig(plan);
     if (!planDetails) {
       throw new BadRequestError('Invalid subscription plan');
     }
@@ -225,7 +240,7 @@ class CreditService {
       await user.update({ stripeCustomerId });
     }
 
-    // Get the appropriate price ID
+    // Get the appropriate price ID from dynamic config
     const priceId = isYearly ? planDetails.stripePriceIdYearly : planDetails.stripePriceIdMonthly;
 
     if (!priceId) {
@@ -272,7 +287,7 @@ class CreditService {
       throw new NotFoundError('User');
     }
 
-    const planDetails = SUBSCRIPTION_PLANS[plan];
+    const planDetails = await this.getSubscriptionPlanConfig(plan);
     const price = isYearly ? planDetails.priceYearly : planDetails.priceMonthly;
     const priceInCents = Math.round(price * 100);
 
@@ -337,7 +352,8 @@ class CreditService {
       return;
     }
 
-    const planDetails = SUBSCRIPTION_PLANS[plan as SubscriptionPlan];
+    // Get plan details from dynamic pricing config
+    const planDetails = await this.getSubscriptionPlanConfig(plan as SubscriptionPlan);
     if (!planDetails) {
       logger.error('Invalid plan in subscription webhook', { plan });
       return;
@@ -691,7 +707,8 @@ class CreditService {
       throw new ConflictError('You already have an active subscription');
     }
 
-    const planDetails = SUBSCRIPTION_PLANS[plan];
+    // Get plan details from dynamic pricing config
+    const planDetails = await this.getSubscriptionPlanConfig(plan);
     const price = isYearly ? planDetails.priceYearly : planDetails.priceMonthly;
     const renewalDate = isYearly ? addYears(new Date(), 1) : addMonths(new Date(), 1);
 
@@ -971,7 +988,8 @@ class CreditService {
    * Grant subscription credits (used by webhooks)
    */
   async grantSubscriptionCredits(userId: string, plan: SubscriptionPlan): Promise<void> {
-    const planDetails = SUBSCRIPTION_PLANS[plan];
+    // Get plan details from dynamic pricing config
+    const planDetails = await this.getSubscriptionPlanConfig(plan);
     if (!planDetails) {
       logger.error('Invalid subscription plan', { userId, plan });
       return;
