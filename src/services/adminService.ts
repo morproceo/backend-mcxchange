@@ -1352,7 +1352,7 @@ class AdminService {
       dbaName: data.dbaName || '',
       title: data.title,
       description: data.description || '',
-      price: data.askingPrice,
+      askingPrice: data.askingPrice,
       city: data.city || 'Unknown',
       state: data.state || '',
       yearsActive: data.yearsActive || 0,
