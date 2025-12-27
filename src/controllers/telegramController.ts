@@ -201,7 +201,7 @@ export const getListingsForSharing = async (req: Request, res: Response) => {
 
     const { rows: listings, count: total } = await Listing.findAndCountAll({
       where,
-      attributes: ['id', 'mcNumber', 'title', 'askingPrice', 'state', 'yearsActive', 'fleetSize', 'safetyRating', 'coverImage', 'createdAt'],
+      attributes: ['id', 'mcNumber', 'title', 'askingPrice', 'state', 'yearsActive', 'fleetSize', 'safetyRating', 'createdAt'],
       order: [['createdAt', 'DESC']],
       limit: Number(limit),
       offset,
