@@ -159,7 +159,7 @@ class TelegramService {
 
     message += `🚛 <b>${listing.title}</b>\n\n`;
     message += `📋 MC# ${listing.mcNumber}\n`;
-    message += `💰 Asking Price: $${listing.askingPrice.toLocaleString()}\n`;
+    message += `💰 Listing Price: $${listing.askingPrice.toLocaleString()}\n`;
 
     if (listing.state) {
       message += `📍 State: ${listing.state}\n`;
