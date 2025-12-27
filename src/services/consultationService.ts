@@ -1,12 +1,12 @@
 import Stripe from 'stripe';
 import { Consultation, ConsultationStatus } from '../models';
 import { Op } from 'sequelize';
+import { pricingConfigService } from './pricingConfigService';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-11-17.clover' as const,
 });
 
-const CONSULTATION_FEE = 100.00; // $100 consultation fee
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://mc-xchange.vercel.app';
 
 interface CreateConsultationData {
@@ -23,6 +23,9 @@ export const consultationService = {
    * Create a consultation and return Stripe checkout session URL
    */
   async createCheckoutSession(data: CreateConsultationData): Promise<{ checkoutUrl: string; consultationId: string }> {
+    // Get dynamic consultation fee from pricing config
+    const consultationFee = await pricingConfigService.getConsultationFee();
+
     // Create consultation record
     const consultation = await Consultation.create({
       name: data.name,
@@ -32,7 +35,7 @@ export const consultationService = {
       preferredTime: data.preferredTime,
       message: data.message || '',
       status: ConsultationStatus.PENDING_PAYMENT,
-      amount: CONSULTATION_FEE,
+      amount: consultationFee,
     });
 
     // Create Stripe checkout session
@@ -46,7 +49,7 @@ export const consultationService = {
               name: 'MC Authority Consultation',
               description: `60-minute expert consultation with a Domilea representative. Scheduled for ${data.preferredDate} at ${data.preferredTime}`,
             },
-            unit_amount: Math.round(CONSULTATION_FEE * 100), // Convert to cents
+            unit_amount: Math.round(consultationFee * 100), // Convert to cents
           },
           quantity: 1,
         },

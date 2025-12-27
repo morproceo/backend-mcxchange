@@ -5,6 +5,7 @@ import * as consultationController from '../controllers/consultationController';
 const router = Router();
 
 // Public routes (no auth required)
+router.get('/fee', consultationController.getConsultationFee);
 router.post('/checkout', consultationController.createCheckoutSession);
 
 // Webhook route (no auth, but verified by Stripe)

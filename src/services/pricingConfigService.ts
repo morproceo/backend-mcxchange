@@ -25,6 +25,7 @@ export interface PlatformFeesConfig {
   depositPercentage: number;
   minDeposit: number;
   maxDeposit: number;
+  consultationFee: number;
 }
 
 export interface PricingConfig {
@@ -96,6 +97,7 @@ const DEFAULT_PRICING: PricingConfig = {
     depositPercentage: 10,
     minDeposit: 500,
     maxDeposit: 10000,
+    consultationFee: 100.00,
   },
   creditPacks: [
     { id: 'pack_5', credits: 5, price: 24.99, stripePriceId: '' },
@@ -196,6 +198,14 @@ class PricingConfigService {
   }
 
   /**
+   * Get consultation fee
+   */
+  async getConsultationFee(): Promise<number> {
+    const config = await this.getPricingConfig();
+    return config.platformFees.consultationFee;
+  }
+
+  /**
    * Get a specific credit pack by ID
    */
   async getCreditPack(packId: string): Promise<CreditPack | null> {
@@ -268,6 +278,7 @@ class PricingConfigService {
         depositPercentage: this.parseNumber(settingsMap['deposit_percentage'], DEFAULT_PRICING.platformFees.depositPercentage),
         minDeposit: this.parseNumber(settingsMap['min_deposit'], DEFAULT_PRICING.platformFees.minDeposit),
         maxDeposit: this.parseNumber(settingsMap['max_deposit'], DEFAULT_PRICING.platformFees.maxDeposit),
+        consultationFee: this.parseNumber(settingsMap['consultation_fee'], DEFAULT_PRICING.platformFees.consultationFee),
       },
       creditPacks: this.parseJson(settingsMap['credit_packs'], DEFAULT_PRICING.creditPacks),
     };
@@ -309,6 +320,7 @@ class PricingConfigService {
       { key: 'deposit_percentage', value: String(config.platformFees.depositPercentage), type: 'number' },
       { key: 'min_deposit', value: String(config.platformFees.minDeposit), type: 'number' },
       { key: 'max_deposit', value: String(config.platformFees.maxDeposit), type: 'number' },
+      { key: 'consultation_fee', value: String(config.platformFees.consultationFee), type: 'number' },
 
       // Credit packs
       { key: 'credit_packs', value: JSON.stringify(config.creditPacks), type: 'json' },

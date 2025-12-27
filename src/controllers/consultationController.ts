@@ -1,6 +1,31 @@
 import { Request, Response } from 'express';
 import { consultationService } from '../services/consultationService';
 import { ConsultationStatus } from '../models';
+import { pricingConfigService } from '../services/pricingConfigService';
+
+/**
+ * Get consultation fee (public - no auth required)
+ */
+export const getConsultationFee = async (_req: Request, res: Response) => {
+  try {
+    const fee = await pricingConfigService.getConsultationFee();
+    res.json({
+      success: true,
+      data: {
+        fee,
+        currency: 'USD',
+        description: '60-minute expert consultation',
+      },
+    });
+  } catch (error: any) {
+    console.error('Error getting consultation fee:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get consultation fee',
+      error: error.message,
+    });
+  }
+};
 
 /**
  * Create consultation checkout session (public - no auth required)
