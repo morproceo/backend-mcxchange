@@ -157,8 +157,13 @@ class TelegramService {
       message = customMessage + '\n\n';
     }
 
+    // Mask MC number - show only last 3 digits
+    const maskedMC = listing.mcNumber.length > 3
+      ? '***' + listing.mcNumber.slice(-3)
+      : '***';
+
     message += `🚛 <b>${listing.title}</b>\n\n`;
-    message += `📋 MC# ${listing.mcNumber}\n`;
+    message += `📋 MC# ${maskedMC}\n`;
     message += `💰 Listing Price: $${listing.askingPrice.toLocaleString()}\n`;
 
     if (listing.state) {
