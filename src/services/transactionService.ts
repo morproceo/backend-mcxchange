@@ -792,6 +792,55 @@ class TransactionService {
     return listings;
   }
 
+  // Admin deletes a transaction
+  async adminDeleteTransaction(adminId: string, transactionId: string) {
+    // Verify admin
+    const admin = await User.findByPk(adminId);
+    if (!admin || admin.role !== UserRole.ADMIN) {
+      throw new ForbiddenError('Only admins can delete transactions');
+    }
+
+    // Find the transaction with associated data
+    const transaction = await Transaction.findByPk(transactionId, {
+      include: [
+        { model: Listing, as: 'listing' },
+        { model: Offer, as: 'offer' },
+      ],
+    });
+
+    if (!transaction) {
+      throw new NotFoundError('Transaction not found');
+    }
+
+    // Store listing and offer IDs before deletion
+    const listingId = transaction.listingId;
+    const offerId = transaction.offerId;
+
+    // Delete related records in order (due to foreign key constraints)
+    await TransactionTimeline.destroy({ where: { transactionId } });
+    await TransactionMessage.destroy({ where: { transactionId } });
+    await Payment.destroy({ where: { transactionId } });
+    await Document.destroy({ where: { transactionId } });
+
+    // Delete the transaction
+    await transaction.destroy();
+
+    // If listing was reserved for this transaction, make it active again
+    if (listingId) {
+      const listing = await Listing.findByPk(listingId);
+      if (listing && listing.status === ListingStatus.RESERVED) {
+        await listing.update({ status: ListingStatus.ACTIVE });
+      }
+    }
+
+    // Delete the associated offer if it exists
+    if (offerId) {
+      await Offer.destroy({ where: { id: offerId } });
+    }
+
+    return { success: true, message: 'Transaction deleted successfully' };
+  }
+
   // Helper: Get transaction and verify access
   private async getTransactionForUpdate(
     transactionId: string,

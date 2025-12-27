@@ -546,3 +546,20 @@ export const getAvailableListings = asyncHandler(async (req: AuthRequest, res: R
     data: listings,
   });
 });
+
+// Admin deletes a transaction
+export const adminDeleteTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+
+  const result = await transactionService.adminDeleteTransaction(req.user.id, id);
+
+  res.json({
+    success: true,
+    message: result.message,
+  });
+});

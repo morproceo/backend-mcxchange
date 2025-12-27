@@ -23,6 +23,7 @@ import {
   adminCreateTransactionValidation,
   getAvailableBuyers,
   getAvailableListings,
+  adminDeleteTransaction,
 } from '../controllers/transactionController';
 import { authenticate, adminOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
@@ -63,5 +64,6 @@ router.post('/:id/admin/approve', adminOnly, adminApprove);
 router.post('/:id/admin/verify-deposit/:paymentId', adminOnly, verifyDeposit);
 router.post('/:id/admin/verify-payment/:paymentId', adminOnly, verifyFinalPayment);
 router.put('/:id/admin/status', adminOnly, updateStatus);
+router.delete('/:id/admin', adminOnly, adminDeleteTransaction);
 
 export default router;
