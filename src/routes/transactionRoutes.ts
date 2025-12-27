@@ -19,6 +19,10 @@ import {
   messageValidation,
   createDepositCheckout,
   verifyDepositStatus,
+  adminCreateTransaction,
+  adminCreateTransactionValidation,
+  getAvailableBuyers,
+  getAvailableListings,
 } from '../controllers/transactionController';
 import { authenticate, adminOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
@@ -27,6 +31,11 @@ const router = Router();
 
 // All transaction routes require authentication
 router.use(authenticate);
+
+// Admin create transaction routes (must be before /:id routes to avoid conflict)
+router.get('/admin/available-buyers', adminOnly, getAvailableBuyers);
+router.get('/admin/available-listings', adminOnly, getAvailableListings);
+router.post('/admin/create', adminOnly, validate(adminCreateTransactionValidation), adminCreateTransaction);
 
 // Get transactions
 router.get('/', getMyTransactions);
@@ -49,7 +58,7 @@ router.post('/:id/cancel', cancelTransaction);
 router.post('/:id/dispute', openDispute);
 router.post('/:id/messages', validate(messageValidation), sendMessage);
 
-// Admin actions
+// Admin actions on existing transactions
 router.post('/:id/admin/approve', adminOnly, adminApprove);
 router.post('/:id/admin/verify-deposit/:paymentId', adminOnly, verifyDeposit);
 router.post('/:id/admin/verify-payment/:paymentId', adminOnly, verifyFinalPayment);

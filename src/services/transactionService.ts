@@ -16,8 +16,10 @@ import {
   PaymentType,
   PaymentMethod,
   UserRole,
+  OfferStatus,
 } from '../models';
-import { NotFoundError, ForbiddenError } from '../middleware/errorHandler';
+import { NotFoundError, ForbiddenError, BadRequestError } from '../middleware/errorHandler';
+import { pricingConfigService } from './pricingConfigService';
 
 class TransactionService {
   // Get transaction by ID
@@ -600,6 +602,194 @@ class TransactionService {
       notes || 'Admin updated transaction status', adminId, 'ADMIN');
 
     return transaction;
+  }
+
+  // Admin creates a transaction manually (skipping offer flow)
+  async adminCreateTransaction(
+    adminId: string,
+    params: {
+      listingId: string;
+      buyerId: string;
+      agreedPrice: number;
+      depositAmount?: number;
+      notes?: string;
+    }
+  ) {
+    const { listingId, buyerId, agreedPrice, depositAmount, notes } = params;
+
+    // Validate listing exists and is available
+    const listing = await Listing.findByPk(listingId, {
+      include: [{ model: User, as: 'seller' }],
+    });
+
+    if (!listing) {
+      throw new NotFoundError('Listing');
+    }
+
+    if (listing.status === ListingStatus.SOLD) {
+      throw new BadRequestError('This listing has already been sold');
+    }
+
+    if (listing.status === ListingStatus.RESERVED) {
+      throw new BadRequestError('This listing is already reserved in another transaction');
+    }
+
+    // Validate buyer exists and is not the seller
+    const buyer = await User.findByPk(buyerId);
+    if (!buyer) {
+      throw new NotFoundError('Buyer');
+    }
+
+    if (listing.sellerId === buyerId) {
+      throw new BadRequestError('Buyer cannot be the same as seller');
+    }
+
+    // Get platform fees to calculate deposit and platform fee
+    const platformFees = await pricingConfigService.getPlatformFees();
+
+    // Calculate deposit (use provided or calculate from platform config)
+    let calculatedDeposit = depositAmount;
+    if (!calculatedDeposit) {
+      calculatedDeposit = Math.min(
+        Math.max(
+          agreedPrice * (platformFees.depositPercentage / 100),
+          platformFees.minDeposit
+        ),
+        platformFees.maxDeposit
+      );
+    }
+
+    // Calculate platform fee
+    const platformFee = agreedPrice * (platformFees.transactionFeePercentage / 100);
+
+    const t = await sequelize.transaction();
+
+    try {
+      // Create a placeholder offer to link to the transaction
+      const offer = await Offer.create(
+        {
+          listingId,
+          buyerId,
+          sellerId: listing.sellerId,
+          amount: agreedPrice,
+          message: notes || 'Transaction created by admin',
+          status: OfferStatus.ACCEPTED, // Mark as accepted since admin is creating directly
+        },
+        { transaction: t }
+      );
+
+      // Create the transaction
+      const transaction = await Transaction.create(
+        {
+          offerId: offer.id,
+          listingId,
+          buyerId,
+          sellerId: listing.sellerId,
+          adminId,
+          agreedPrice,
+          depositAmount: calculatedDeposit,
+          platformFee,
+          finalPaymentAmount: agreedPrice - calculatedDeposit,
+          status: TransactionStatus.AWAITING_DEPOSIT,
+          adminNotes: notes,
+        },
+        { transaction: t }
+      );
+
+      // Reserve the listing
+      await listing.update(
+        { status: ListingStatus.RESERVED },
+        { transaction: t }
+      );
+
+      await t.commit();
+
+      // Add timeline entry
+      await this.addTimelineEntry(
+        transaction.id,
+        TransactionStatus.AWAITING_DEPOSIT,
+        'Transaction Created by Admin',
+        notes || 'Admin initiated this transaction. Awaiting deposit from buyer.',
+        adminId,
+        'ADMIN'
+      );
+
+      // Notify both parties
+      await this.notifyParties(
+        buyerId,
+        listing.sellerId,
+        'New Transaction Created',
+        `Admin has created a transaction for MC-${listing.mcNumber}. Please proceed with the deposit.`
+      );
+
+      // Return full transaction with associations
+      return Transaction.findByPk(transaction.id, {
+        include: [
+          { model: Listing, as: 'listing' },
+          { model: User, as: 'buyer', attributes: ['id', 'name', 'email'] },
+          { model: User, as: 'seller', attributes: ['id', 'name', 'email'] },
+        ],
+      });
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
+
+  // Get available buyers for admin transaction creation
+  async getAvailableBuyers(search?: string) {
+    const where: Record<string, unknown> = {
+      role: UserRole.BUYER,
+    };
+
+    if (search) {
+      where[Op.or as unknown as string] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { email: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const buyers = await User.findAll({
+      where,
+      attributes: ['id', 'name', 'email', 'verified', 'trustScore'],
+      limit: 20,
+      order: [['name', 'ASC']],
+    });
+
+    return buyers;
+  }
+
+  // Get available listings for admin transaction creation
+  async getAvailableListings(search?: string) {
+    const where: Record<string, unknown> = {
+      status: {
+        [Op.in]: [ListingStatus.ACTIVE, ListingStatus.PENDING_REVIEW],
+      },
+    };
+
+    if (search) {
+      where[Op.or as unknown as string] = [
+        { mcNumber: { [Op.like]: `%${search}%` } },
+        { legalName: { [Op.like]: `%${search}%` } },
+        { title: { [Op.like]: `%${search}%` } },
+      ];
+    }
+
+    const listings = await Listing.findAll({
+      where,
+      attributes: ['id', 'mcNumber', 'dotNumber', 'legalName', 'title', 'askingPrice', 'listingPrice', 'sellerId'],
+      include: [
+        {
+          model: User,
+          as: 'seller',
+          attributes: ['id', 'name', 'email'],
+        },
+      ],
+      limit: 20,
+      order: [['createdAt', 'DESC']],
+    });
+
+    return listings;
   }
 
   // Helper: Get transaction and verify access

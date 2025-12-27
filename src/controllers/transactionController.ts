@@ -475,3 +475,74 @@ export const verifyDepositStatus = asyncHandler(async (req: AuthRequest, res: Re
     message: 'Deposit payment not yet confirmed',
   });
 });
+
+// ============================================
+// Admin Create Transaction
+// ============================================
+
+// Validation for admin create transaction
+export const adminCreateTransactionValidation = [
+  body('listingId').trim().notEmpty().withMessage('Listing ID is required'),
+  body('buyerId').trim().notEmpty().withMessage('Buyer ID is required'),
+  body('agreedPrice').isNumeric().withMessage('Agreed price must be a number'),
+  body('depositAmount').optional().isNumeric().withMessage('Deposit amount must be a number'),
+  body('notes').optional().trim(),
+];
+
+// Admin creates a transaction manually
+export const adminCreateTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { listingId, buyerId, agreedPrice, depositAmount, notes } = req.body;
+
+  const transaction = await transactionService.adminCreateTransaction(req.user.id, {
+    listingId,
+    buyerId,
+    agreedPrice: Number(agreedPrice),
+    depositAmount: depositAmount ? Number(depositAmount) : undefined,
+    notes,
+  });
+
+  res.status(201).json({
+    success: true,
+    data: transaction,
+    message: 'Transaction created successfully',
+  });
+});
+
+// Get available buyers for admin transaction creation
+export const getAvailableBuyers = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { search } = req.query;
+
+  const buyers = await transactionService.getAvailableBuyers(search as string);
+
+  res.json({
+    success: true,
+    data: buyers,
+  });
+});
+
+// Get available listings for admin transaction creation
+export const getAvailableListings = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { search } = req.query;
+
+  const listings = await transactionService.getAvailableListings(search as string);
+
+  res.json({
+    success: true,
+    data: listings,
+  });
+});
