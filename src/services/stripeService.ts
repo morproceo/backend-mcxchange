@@ -504,6 +504,69 @@ class StripeService {
   }
 
   /**
+   * Create a Stripe Checkout Session for credit pack purchase (one-time payment)
+   */
+  async createCreditPackCheckout(params: {
+    customerId: string;
+    priceId: string;
+    packId: string;
+    credits: number;
+    userId: string;
+    successUrl: string;
+    cancelUrl: string;
+    metadata?: Record<string, string>;
+  }): Promise<CheckoutSessionResult> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        customer: params.customerId,
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: params.priceId,
+            quantity: 1,
+          },
+        ],
+        success_url: params.successUrl,
+        cancel_url: params.cancelUrl,
+        metadata: {
+          type: 'credit_pack',
+          packId: params.packId,
+          credits: params.credits.toString(),
+          userId: params.userId,
+          ...params.metadata,
+        },
+      });
+
+      logger.info('Credit pack checkout session created', {
+        sessionId: session.id,
+        customerId: params.customerId,
+        packId: params.packId,
+        credits: params.credits,
+      });
+
+      return {
+        success: true,
+        sessionId: session.id,
+        url: session.url || undefined,
+      };
+    } catch (error) {
+      logError('Failed to create credit pack checkout session', error as Error, {
+        customerId: params.customerId,
+        packId: params.packId,
+      });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
    * Create a Stripe Checkout Session for subscription
    */
   async createCheckoutSession(params: CheckoutSessionParams): Promise<CheckoutSessionResult> {

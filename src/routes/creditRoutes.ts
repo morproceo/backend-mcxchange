@@ -11,14 +11,17 @@ import {
   checkCredits,
   subscribeValidation,
   addBonusCreditsValidation,
+  getCreditPacks,
+  purchaseCreditPack,
 } from '../controllers/creditController';
 import { authenticate, adminOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
 
 const router = Router();
 
-// Public route - get plans
+// Public routes
 router.get('/plans', getPlans);
+router.get('/packs', getCreditPacks);
 
 // Protected routes
 router.use(authenticate);
@@ -30,6 +33,7 @@ router.get('/check', checkCredits);
 router.get('/subscription', getCurrentSubscription);
 router.post('/subscribe', validate(subscribeValidation), subscribe);
 router.post('/cancel-subscription', cancelSubscription);
+router.post('/packs/:packId/checkout', purchaseCreditPack);
 
 // Admin routes
 router.post('/bonus', adminOnly, validate(addBonusCreditsValidation), addBonusCredits);

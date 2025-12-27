@@ -6,6 +6,7 @@ import { AuthRequest } from '../types';
 import { PremiumRequestStatus } from '../models';
 import { parseIntParam, parseBooleanParam } from '../utils/helpers';
 import { stripeService } from '../services/stripeService';
+import { pricingConfigService } from '../services/pricingConfigService';
 
 // Validation rules
 export const rejectListingValidation = [
@@ -668,5 +669,42 @@ export const createUserWithListing = asyncHandler(async (req: AuthRequest, res: 
       stripeOnboardingUrl,
     },
     message: `Seller created${listing ? ' with listing' : ''}${stripeAccountId ? ' and Stripe account' : ''}`,
+  });
+});
+
+// ============================================
+// Pricing Configuration
+// ============================================
+
+// Get pricing configuration
+export const getPricingConfig = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const config = await pricingConfigService.getPricingConfig();
+
+  res.json({
+    success: true,
+    data: config,
+  });
+});
+
+// Update pricing configuration
+export const updatePricingConfig = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const updates = req.body;
+
+  if (!updates || typeof updates !== 'object') {
+    res.status(400).json({ success: false, error: 'Invalid pricing configuration' });
+    return;
+  }
+
+  const config = await pricingConfigService.updatePricingConfig(updates);
+
+  res.json({
+    success: true,
+    data: config,
+    message: 'Pricing configuration updated',
   });
 });

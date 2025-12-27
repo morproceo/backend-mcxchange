@@ -5,6 +5,8 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { SubscriptionPlan } from '../models';
 import { parseIntParam } from '../utils/helpers';
+import { pricingConfigService } from '../services/pricingConfigService';
+import { stripeService } from '../services/stripeService';
 
 // Validation rules
 export const subscribeValidation = [
@@ -171,5 +173,91 @@ export const checkCredits = asyncHandler(async (req: AuthRequest, res: Response)
   res.json({
     success: true,
     data: { hasCredits, required },
+  });
+});
+
+// ============================================
+// Credit Packs (One-Time Purchases)
+// ============================================
+
+// Get all available credit packs
+export const getCreditPacks = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const creditPacks = await pricingConfigService.getCreditPacks();
+
+  // Filter out packs without Stripe price IDs (not configured yet)
+  const availablePacks = creditPacks.filter(pack => pack.stripePriceId);
+
+  res.json({
+    success: true,
+    data: availablePacks,
+  });
+});
+
+// Purchase a credit pack (create Stripe checkout session)
+export const purchaseCreditPack = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { packId } = req.params;
+
+  // Get the credit pack
+  const pack = await pricingConfigService.getCreditPack(packId);
+
+  if (!pack) {
+    res.status(404).json({ success: false, error: 'Credit pack not found' });
+    return;
+  }
+
+  if (!pack.stripePriceId) {
+    res.status(400).json({ success: false, error: 'Credit pack not available for purchase' });
+    return;
+  }
+
+  // Check if Stripe is enabled
+  if (!stripeService.isEnabled()) {
+    res.status(503).json({ success: false, error: 'Payment service unavailable' });
+    return;
+  }
+
+  // Get or create Stripe customer
+  const customer = await stripeService.getOrCreateCustomer(
+    req.user.id,
+    req.user.email,
+    req.user.name
+  );
+
+  if (!customer) {
+    res.status(500).json({ success: false, error: 'Failed to create customer' });
+    return;
+  }
+
+  // Create checkout session for one-time payment
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+  const checkoutResult = await stripeService.createCreditPackCheckout({
+    customerId: customer.id,
+    priceId: pack.stripePriceId,
+    packId: pack.id,
+    credits: pack.credits,
+    userId: req.user.id,
+    successUrl: `${frontendUrl}/buyer/subscription?credit_pack_success=true&pack=${packId}`,
+    cancelUrl: `${frontendUrl}/buyer/subscription?credit_pack_cancelled=true`,
+  });
+
+  if (!checkoutResult.success || !checkoutResult.url) {
+    res.status(500).json({ success: false, error: 'Failed to create checkout session' });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      checkoutUrl: checkoutResult.url,
+      packId: pack.id,
+      credits: pack.credits,
+      price: pack.price,
+    },
   });
 });

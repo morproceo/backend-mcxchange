@@ -32,6 +32,8 @@ import {
   createListing,
   createListingValidation,
   createUserWithListing,
+  getPricingConfig,
+  updatePricingConfig,
 } from '../controllers/adminController';
 import { authenticate, adminOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
@@ -89,5 +91,9 @@ router.get('/analytics/listings', getListingAnalytics);
 
 // Broadcast
 router.post('/broadcast', broadcastMessage);
+
+// Pricing Configuration
+router.get('/pricing', getPricingConfig);
+router.put('/pricing', updatePricingConfig);
 
 export default router;
