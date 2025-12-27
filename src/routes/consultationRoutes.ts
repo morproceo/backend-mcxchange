@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireRole } from '../middleware/auth';
-import { UserRole } from '../models';
+import { authenticate, adminOnly } from '../middleware/auth';
 import * as consultationController from '../controllers/consultationController';
 
 const router = Router();
@@ -12,10 +11,10 @@ router.post('/checkout', consultationController.createCheckoutSession);
 router.post('/webhook', consultationController.handleWebhook);
 
 // Admin routes
-router.get('/', authenticate, requireRole([UserRole.ADMIN]), consultationController.getAll);
-router.get('/stats', authenticate, requireRole([UserRole.ADMIN]), consultationController.getStats);
-router.get('/:id', authenticate, requireRole([UserRole.ADMIN]), consultationController.getById);
-router.put('/:id/status', authenticate, requireRole([UserRole.ADMIN]), consultationController.updateStatus);
-router.post('/:id/refund', authenticate, requireRole([UserRole.ADMIN]), consultationController.refund);
+router.get('/', authenticate, adminOnly, consultationController.getAll);
+router.get('/stats', authenticate, adminOnly, consultationController.getStats);
+router.get('/:id', authenticate, adminOnly, consultationController.getById);
+router.put('/:id/status', authenticate, adminOnly, consultationController.updateStatus);
+router.post('/:id/refund', authenticate, adminOnly, consultationController.refund);
 
 export default router;

@@ -3,7 +3,7 @@ import { Consultation, ConsultationStatus } from '../models';
 import { Op } from 'sequelize';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-04-30.basil',
+  apiVersion: '2025-11-17.clover' as const,
 });
 
 const CONSULTATION_FEE = 100.00; // $100 consultation fee
