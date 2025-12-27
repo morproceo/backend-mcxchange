@@ -143,7 +143,8 @@ export interface CreateListingData {
   dbaName?: string;
   title: string;
   description?: string;
-  price: number;
+  askingPrice: number;
+  listingPrice?: number;
   city: string;
   state: string;
   address?: string;

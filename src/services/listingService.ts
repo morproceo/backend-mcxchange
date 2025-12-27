@@ -100,7 +100,8 @@ class ListingService {
       const priceFilter: Record<symbol, number> = {};
       if (minPrice !== undefined) priceFilter[Op.gte] = minPrice;
       if (maxPrice !== undefined) priceFilter[Op.lte] = maxPrice;
-      (where as Record<string, unknown>).price = priceFilter;
+      // Filter by listingPrice (the price shown to buyers), fallback to askingPrice
+      (where as Record<string, unknown>).listingPrice = priceFilter;
     }
 
     // State filter
@@ -262,7 +263,7 @@ class ListingService {
       dbaName: data.dbaName,
       title: data.title,
       description: data.description,
-      price: data.price,
+      askingPrice: data.askingPrice,
       city: data.city,
       state: data.state.toUpperCase(),
       address: data.address,
@@ -318,7 +319,8 @@ class ListingService {
     await listing.update({
       ...(data.title && { title: data.title }),
       ...(data.description !== undefined && { description: data.description }),
-      ...(data.price && { price: data.price }),
+      ...(data.askingPrice && { askingPrice: data.askingPrice }),
+      ...(data.listingPrice !== undefined && { listingPrice: data.listingPrice }),
       ...(data.city && { city: data.city }),
       ...(data.state && { state: data.state.toUpperCase() }),
       ...(data.yearsActive !== undefined && { yearsActive: data.yearsActive }),

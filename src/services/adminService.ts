@@ -114,15 +114,19 @@ class AdminService {
   }
 
   // Approve listing
-  async approveListing(listingId: string, adminId: string, notes?: string) {
+  async approveListing(listingId: string, adminId: string, notes?: string, listingPrice?: number) {
     const listing = await Listing.findByPk(listingId);
 
     if (!listing) {
       throw new NotFoundError('Listing');
     }
 
+    // If no listingPrice provided, default to askingPrice
+    const finalListingPrice = listingPrice !== undefined ? listingPrice : listing.askingPrice;
+
     await listing.update({
       status: ListingStatus.ACTIVE,
+      listingPrice: finalListingPrice,
       reviewedBy: adminId,
       reviewedAt: new Date(),
       reviewNotes: notes,

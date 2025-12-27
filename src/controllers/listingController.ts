@@ -11,7 +11,7 @@ export const createListingValidation = [
   body('dotNumber').trim().notEmpty().withMessage('DOT number is required'),
   body('legalName').trim().notEmpty().withMessage('Legal name is required'),
   body('title').trim().notEmpty().withMessage('Title is required'),
-  body('price').isNumeric().withMessage('Price must be a number'),
+  body('askingPrice').isNumeric().withMessage('Asking price must be a number'),
   body('city').trim().notEmpty().withMessage('City is required'),
   body('state').trim().isLength({ min: 2, max: 2 }).withMessage('State must be 2 characters'),
 ];

@@ -515,7 +515,8 @@ export class Listing extends Model {
   declare dbaName?: string;
   declare title: string;
   declare description?: string;
-  declare price: number;
+  declare askingPrice: number;
+  declare listingPrice?: number;
   declare isPremium: boolean;
   declare status: ListingStatus;
   declare visibility: ListingVisibility;
@@ -591,9 +592,15 @@ Listing.init(
       type: DataTypes.TEXT,
       allowNull: true,
     },
-    price: {
+    askingPrice: {
       type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
+      comment: 'Price the seller is asking for the MC authority',
+    },
+    listingPrice: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
+      comment: 'Published price set by admin (shown to buyers)',
     },
     isPremium: {
       type: DataTypes.BOOLEAN,
@@ -745,7 +752,8 @@ Listing.init(
       { fields: ['sellerId'] },
       { fields: ['status'] },
       { fields: ['state'] },
-      { fields: ['price'] },
+      { fields: ['askingPrice'] },
+      { fields: ['listingPrice'] },
       { fields: ['isPremium'] },
     ],
   }
