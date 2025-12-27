@@ -37,11 +37,20 @@ export const updateConfig = async (req: Request, res: Response) => {
   try {
     const { pageAccessToken, pageId, pageName } = req.body;
 
+    console.log('Facebook updateConfig received:', {
+      hasPageAccessToken: !!pageAccessToken,
+      pageAccessTokenLength: pageAccessToken?.length,
+      pageId,
+      pageName,
+    });
+
     await facebookService.updateConfig({
       pageAccessToken,
       pageId,
       pageName,
     });
+
+    console.log('Facebook config saved successfully');
 
     res.json({
       success: true,

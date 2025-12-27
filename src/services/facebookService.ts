@@ -67,11 +67,15 @@ class FacebookService {
       updates.push({ key: 'facebook_page_name', value: config.pageName });
     }
 
+    console.log('FacebookService updateConfig - updates to save:', updates.map(u => ({ key: u.key, valueLength: u.value?.length })));
+
     await Promise.all(
       updates.map(({ key, value }) =>
         PlatformSetting.upsert({ key, value, type: 'string' })
       )
     );
+
+    console.log('FacebookService updateConfig - upserts completed');
 
     // Clear cache
     this.configCache = null;
