@@ -16,6 +16,7 @@ import buyerRoutes from './buyerRoutes';
 import documentRoutes from './documentRoutes';
 import consultationRoutes from './consultationRoutes';
 import telegramRoutes from './telegramRoutes';
+import facebookRoutes from './facebookRoutes';
 import { sequelize } from '../models';
 import { isRedisHealthy } from '../config/redis';
 import { config, getPublicConfig } from '../config';
@@ -172,5 +173,6 @@ router.use('/admin/creditsafe', creditsafeRoutes);
 router.use('/admin/due-diligence', dueDiligenceRoutes);
 router.use('/consultations', consultationRoutes);
 router.use('/admin/telegram', telegramRoutes);
+router.use('/admin/facebook', facebookRoutes);
 
 export default router;
