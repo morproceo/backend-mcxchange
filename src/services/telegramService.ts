@@ -141,11 +141,12 @@ class TelegramService {
     id: string;
     mcNumber: string;
     title: string;
-    askingPrice: number;
+    listingPrice: number;
     state?: string;
     yearsActive?: number;
     fleetSize?: number;
     safetyRating?: string;
+    totalInspections?: number;
   }, customMessage?: string): Promise<{ success: boolean; messageId?: number; error?: string }> {
     const frontendUrl = process.env.FRONTEND_URL || 'https://mc-xchange.vercel.app';
     const listingUrl = `${frontendUrl}/mc/${listing.id}`;
@@ -164,8 +165,11 @@ class TelegramService {
 
     message += `🚛 <b>${listing.title}</b>\n\n`;
     message += `📋 MC# ${maskedMC}\n`;
-    message += `💰 Listing Price: $${listing.askingPrice.toLocaleString()}\n`;
+    message += `💰 Listing Price: $${listing.listingPrice.toLocaleString()}\n`;
 
+    if (listing.totalInspections !== undefined) {
+      message += `🔍 Inspections: ${listing.totalInspections}\n`;
+    }
     if (listing.state) {
       message += `📍 State: ${listing.state}\n`;
     }

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { telegramService } from '../services/telegramService';
+import { fmcsaService } from '../services/fmcsaService';
 import { Listing } from '../models';
 
 /**
@@ -143,16 +144,30 @@ export const shareListing = async (req: Request, res: Response) => {
       });
     }
 
+    // Fetch inspections from FMCSA
+    let totalInspections: number = 0;
+    try {
+      const fmcsaData = await fmcsaService.lookupByMC(listing.mcNumber);
+      if (fmcsaData) {
+        totalInspections = (fmcsaData.driverInsp || 0) +
+                          (fmcsaData.vehicleInsp || 0) +
+                          (fmcsaData.hazmatInsp || 0);
+      }
+    } catch (error) {
+      console.error('Failed to fetch FMCSA data for Telegram share:', error);
+    }
+
     const result = await telegramService.sendListingPromotion(
       {
         id: listing.id,
         mcNumber: listing.mcNumber,
         title: listing.title,
-        askingPrice: listing.askingPrice,
+        listingPrice: listing.listingPrice || listing.askingPrice,
         state: listing.state,
         yearsActive: listing.yearsActive,
         fleetSize: listing.fleetSize,
         safetyRating: listing.safetyRating,
+        totalInspections,
       },
       customMessage
     );
@@ -201,7 +216,7 @@ export const getListingsForSharing = async (req: Request, res: Response) => {
 
     const { rows: listings, count: total } = await Listing.findAndCountAll({
       where,
-      attributes: ['id', 'mcNumber', 'title', 'askingPrice', 'state', 'yearsActive', 'fleetSize', 'safetyRating', 'createdAt'],
+      attributes: ['id', 'mcNumber', 'title', 'listingPrice', 'askingPrice', 'state', 'yearsActive', 'fleetSize', 'safetyRating', 'createdAt'],
       order: [['createdAt', 'DESC']],
       limit: Number(limit),
       offset,
