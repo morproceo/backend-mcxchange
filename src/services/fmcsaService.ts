@@ -65,6 +65,29 @@ interface FMCSACarrierRaw {
   commonAuthorityStatus?: string;
   contractAuthorityStatus?: string;
   brokerAuthorityStatus?: string;
+  // Inspection data
+  driverInsp?: number;
+  driverOosInsp?: number;
+  driverOosRate?: number;
+  vehicleInsp?: number;
+  vehicleOosInsp?: number;
+  vehicleOosRate?: number;
+  hazmatInsp?: number;
+  hazmatOosInsp?: number;
+  hazmatOosRate?: number;
+  // Crash data
+  crashTotal?: number;
+  fatalCrash?: number;
+  injuryCrash?: number;
+  towCrash?: number;
+  // BASIC scores
+  unsafeDrivingBasic?: number;
+  hoursOfServiceBasic?: number;
+  driverFitnessBasic?: number;
+  controlledSubstancesBasic?: number;
+  vehicleMaintenanceBasic?: number;
+  hazmatBasic?: number;
+  crashIndicatorBasic?: number;
 }
 
 // Response for single carrier lookup (by DOT)
@@ -396,6 +419,29 @@ class FMCSAService {
       cargoOnFile: toNumber(rawCarrier.cargoInsuranceOnFile),
       bondOnFile: toNumber(rawCarrier.bondInsuranceOnFile),
       cargoTypes: [], // Would need additional API call to get cargo types
+      // Inspection data
+      driverInsp: rawCarrier.driverInsp || 0,
+      driverOosInsp: rawCarrier.driverOosInsp || 0,
+      driverOosRate: rawCarrier.driverOosRate || 0,
+      vehicleInsp: rawCarrier.vehicleInsp || 0,
+      vehicleOosInsp: rawCarrier.vehicleOosInsp || 0,
+      vehicleOosRate: rawCarrier.vehicleOosRate || 0,
+      hazmatInsp: rawCarrier.hazmatInsp || 0,
+      hazmatOosInsp: rawCarrier.hazmatOosInsp || 0,
+      hazmatOosRate: rawCarrier.hazmatOosRate || 0,
+      // Crash data
+      crashTotal: rawCarrier.crashTotal || 0,
+      fatalCrash: rawCarrier.fatalCrash || 0,
+      injuryCrash: rawCarrier.injuryCrash || 0,
+      towCrash: rawCarrier.towCrash || 0,
+      // BASIC scores
+      unsafeDrivingBasic: rawCarrier.unsafeDrivingBasic || 0,
+      hoursOfServiceBasic: rawCarrier.hoursOfServiceBasic || 0,
+      driverFitnessBasic: rawCarrier.driverFitnessBasic || 0,
+      controlledSubstancesBasic: rawCarrier.controlledSubstancesBasic || 0,
+      vehicleMaintenanceBasic: rawCarrier.vehicleMaintenanceBasic || 0,
+      hazmatBasic: rawCarrier.hazmatBasic || 0,
+      crashIndicatorBasic: rawCarrier.crashIndicatorBasic || 0,
     };
   }
 

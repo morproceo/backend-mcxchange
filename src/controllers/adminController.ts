@@ -708,3 +708,268 @@ export const updatePricingConfig = asyncHandler(async (req: AuthRequest, res: Re
     message: 'Pricing configuration updated',
   });
 });
+
+// ============================================
+// Stripe Transactions
+// ============================================
+
+// Get all Stripe transactions with full customer details
+export const getStripeTransactions = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const limit = parseIntParam(req.query.limit as string) || 50;
+  const status = req.query.status as 'succeeded' | 'pending' | 'failed' | undefined;
+  const type = req.query.type as 'all' | 'payment_intent' | 'checkout_session' | 'charge' | undefined;
+  const startingAfter = req.query.startingAfter as string | undefined;
+
+  const result = await stripeService.getAllTransactions({
+    limit,
+    status,
+    type,
+    startingAfter,
+  });
+
+  if (!result.success) {
+    res.status(500).json({
+      success: false,
+      error: result.error || 'Failed to fetch Stripe transactions',
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: result.transactions,
+    hasMore: result.hasMore,
+  });
+});
+
+// Get Stripe account balance
+export const getStripeBalance = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const result = await stripeService.getAccountBalance();
+
+  if (!result.success) {
+    res.status(500).json({
+      success: false,
+      error: result.error || 'Failed to fetch Stripe balance',
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: result.balance,
+  });
+});
+
+// Get Stripe balance transactions (money movement history)
+export const getStripeBalanceTransactions = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const limit = parseIntParam(req.query.limit as string) || 50;
+  const startingAfter = req.query.startingAfter as string | undefined;
+
+  const result = await stripeService.getBalanceTransactions({
+    limit,
+    startingAfter,
+  });
+
+  if (!result.success) {
+    res.status(500).json({
+      success: false,
+      error: result.error || 'Failed to fetch balance transactions',
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: result.data,
+    hasMore: result.hasMore,
+  });
+});
+
+// ============================================
+// User Credits Management
+// ============================================
+
+// Validation for credits adjustment
+export const adjustCreditsValidation = [
+  body('amount').isInt().withMessage('Amount must be an integer'),
+  body('reason').trim().notEmpty().withMessage('Reason is required'),
+];
+
+// Adjust user credits (add or remove)
+export const adjustUserCredits = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id: userId } = req.params;
+  const { amount, reason } = req.body;
+
+  const result = await adminService.adjustUserCredits(userId, amount, reason, req.user.id);
+
+  res.json({
+    success: true,
+    data: result,
+    message: `Credits ${amount >= 0 ? 'added' : 'removed'} successfully`,
+  });
+});
+
+// ============================================
+// Account Dispute Management
+// ============================================
+
+// Block user for cardholder mismatch
+export const blockUserMismatchValidation = [
+  body('userId').isUUID().withMessage('User ID must be a valid UUID'),
+  body('stripeTransactionId').notEmpty().withMessage('Stripe transaction ID is required'),
+  body('cardholderName').notEmpty().withMessage('Cardholder name is required'),
+  body('userName').notEmpty().withMessage('User name is required'),
+];
+
+export const blockUserForMismatch = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { userId, stripeTransactionId, cardholderName, userName } = req.body;
+
+  const result = await adminService.blockUserForMismatch({
+    userId,
+    stripeTransactionId,
+    cardholderName,
+    userName,
+    adminId: req.user.id,
+  });
+
+  res.json({
+    success: true,
+    data: result,
+    message: result.alreadyExists
+      ? 'User already has a pending dispute'
+      : 'User blocked for cardholder name mismatch. Dispute created.',
+  });
+});
+
+// Get all disputes (admin)
+export const getAllDisputes = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const page = parseIntParam(req.query.page as string) || 1;
+  const limit = parseIntParam(req.query.limit as string) || 20;
+  const status = req.query.status as string | undefined;
+
+  const result = await adminService.getAllDisputes({ page, limit, status });
+
+  res.json({
+    success: true,
+    data: result.disputes,
+    pagination: result.pagination,
+  });
+});
+
+// Resolve dispute (admin)
+export const resolveDispute = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+  const { notes } = req.body;
+
+  const result = await adminService.resolveDispute(id, req.user.id, notes);
+
+  res.json({
+    success: true,
+    data: result,
+    message: 'Dispute resolved. User has been unblocked.',
+  });
+});
+
+// Reject dispute (admin)
+export const rejectDispute = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  const result = await adminService.rejectDispute(id, req.user.id, reason);
+
+  res.json({
+    success: true,
+    data: result,
+    message: 'Dispute rejected. User remains blocked.',
+  });
+});
+
+// Process auto-unblock (can be called by cron or manually)
+export const processAutoUnblock = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const results = await adminService.processAutoUnblock();
+
+  res.json({
+    success: true,
+    data: results,
+    message: `Processed ${results.length} disputes for auto-unblock`,
+  });
+});
+
+// ============================================
+// Notification Settings
+// ============================================
+
+const NOTIFICATION_SETTING_KEYS = [
+  'admin_notification_emails',
+  'notify_new_users',
+  'notify_new_inquiries',
+  'notify_new_transactions',
+  'notify_disputes',
+  'notify_consultations',
+];
+
+// Get notification settings
+export const getNotificationSettings = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const allSettings = await adminService.getSettings();
+
+  // Extract only notification-related settings
+  const notificationSettings: Record<string, string> = {};
+  for (const key of NOTIFICATION_SETTING_KEYS) {
+    notificationSettings[key] = allSettings[key]?.toString() || (key === 'admin_notification_emails' ? '' : 'true');
+  }
+
+  res.json({
+    success: true,
+    data: notificationSettings,
+  });
+});
+
+// Update notification settings
+export const updateNotificationSettings = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const updates = req.body;
+
+  // Validate and filter only notification-related settings
+  const settingsToUpdate: Array<{ key: string; value: string; type: string }> = [];
+
+  for (const key of NOTIFICATION_SETTING_KEYS) {
+    if (updates[key] !== undefined) {
+      settingsToUpdate.push({
+        key,
+        value: updates[key].toString(),
+        type: key === 'admin_notification_emails' ? 'string' : 'string', // Store as strings
+      });
+    }
+  }
+
+  if (settingsToUpdate.length === 0) {
+    res.status(400).json({ success: false, error: 'No valid notification settings provided' });
+    return;
+  }
+
+  await adminService.updateSettings(settingsToUpdate);
+
+  res.json({
+    success: true,
+    message: 'Notification settings updated successfully',
+  });
+});

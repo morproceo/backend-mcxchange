@@ -20,6 +20,7 @@ import {
 import { addDays, addMonths, addHours } from 'date-fns';
 import { emailService } from './emailService';
 import { stripeService } from './stripeService';
+import { adminNotificationService } from './adminNotificationService';
 import logger from '../utils/logger';
 import { Op } from 'sequelize';
 
@@ -98,6 +99,17 @@ class AuthService {
     // Send welcome email (async, don't wait)
     this.sendWelcomeAndVerificationEmails(user).catch(err => {
       logger.error('Failed to send welcome/verification emails', err);
+    });
+
+    // Notify admins of new user registration (async, don't wait)
+    adminNotificationService.notifyNewUser({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      createdAt: user.createdAt,
+    }).catch(err => {
+      logger.error('Failed to send admin notification for new user', err);
     });
 
     // Return user without password

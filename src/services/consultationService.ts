@@ -2,6 +2,8 @@ import Stripe from 'stripe';
 import { Consultation, ConsultationStatus } from '../models';
 import { Op } from 'sequelize';
 import { pricingConfigService } from './pricingConfigService';
+import { adminNotificationService } from './adminNotificationService';
+import logger from '../utils/logger';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-11-17.clover' as const,
@@ -95,6 +97,18 @@ export const consultationService = {
       status: ConsultationStatus.PAID,
       stripePaymentIntentId: session.payment_intent as string,
       paidAt: new Date(),
+    });
+
+    // Notify admins of new paid consultation (async, don't wait)
+    adminNotificationService.notifyConsultation({
+      name: consultation.name,
+      email: consultation.email,
+      phone: consultation.phone,
+      preferredDate: consultation.preferredDate,
+      preferredTime: consultation.preferredTime,
+      message: consultation.message || undefined,
+    }).catch(err => {
+      logger.error('Failed to send admin notification for consultation', err);
     });
   },
 

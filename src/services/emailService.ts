@@ -1,4 +1,5 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 import { config } from '../config';
 import logger, { logError } from '../utils/logger';
 import path from 'path';
@@ -17,7 +18,8 @@ export type EmailType =
   | 'listing-approved'
   | 'listing-rejected'
   | 'payment-received'
-  | 'payment-reminder';
+  | 'payment-reminder'
+  | 'account-blocked';
 
 // Email data interfaces
 export interface WelcomeEmailData {
@@ -86,6 +88,60 @@ export interface PaymentData {
   transactionUrl?: string;
 }
 
+export interface AccountBlockedData {
+  userName: string;
+  cardholderName: string;
+  accountName: string;
+  disputeUrl: string;
+}
+
+// Admin notification data interfaces
+export interface AdminNewUserData {
+  userName: string;
+  userEmail: string;
+  userRole: string;
+  registeredAt: string;
+  adminUrl: string;
+}
+
+export interface AdminNewInquiryData {
+  senderName: string;
+  senderEmail: string;
+  messagePreview: string;
+  listingInfo?: string;
+  adminUrl: string;
+}
+
+export interface AdminNewTransactionData {
+  transactionId: string;
+  mcNumber: string;
+  buyerName: string;
+  sellerName: string;
+  amount: string;
+  status: string;
+  adminUrl: string;
+}
+
+export interface AdminDisputeData {
+  userName: string;
+  userEmail: string;
+  cardholderName: string;
+  accountName: string;
+  disputeType: string; // 'Account Blocked' | 'Dispute Submitted' or similar
+  disputeReason?: string;
+  adminUrl: string;
+}
+
+export interface AdminConsultationData {
+  name: string;
+  email: string;
+  phone: string;
+  preferredDate: string;
+  preferredTime: string;
+  message?: string;
+  adminUrl: string;
+}
+
 // Email template
 interface EmailTemplate {
   subject: string;
@@ -94,19 +150,28 @@ interface EmailTemplate {
 }
 
 class EmailService {
-  private resend: Resend | null = null;
+  private transporter: Transporter | null = null;
   private enabled: boolean = false;
   private templatesDir: string;
 
   constructor() {
     this.templatesDir = path.join(__dirname, '../templates/emails');
 
-    if (config.resend.apiKey) {
-      this.resend = new Resend(config.resend.apiKey);
+    // Initialize Nodemailer with SMTP settings
+    if (config.smtp.host && config.smtp.user) {
+      this.transporter = nodemailer.createTransport({
+        host: config.smtp.host,
+        port: config.smtp.port,
+        secure: config.smtp.secure, // true for 465, false for other ports
+        auth: {
+          user: config.smtp.user,
+          pass: config.smtp.pass,
+        },
+      });
       this.enabled = true;
-      logger.info('Email service initialized with Resend');
+      logger.info(`Email service initialized with SMTP (${config.smtp.host}:${config.smtp.port})`);
     } else {
-      logger.warn('Email service disabled - RESEND_API_KEY not configured');
+      logger.warn('Email service disabled - SMTP not configured (set SMTP_HOST and SMTP_USER)');
     }
   }
 
@@ -126,29 +191,31 @@ class EmailService {
     html: string,
     text?: string
   ): Promise<boolean> {
-    if (!this.enabled || !this.resend) {
+    if (!this.enabled || !this.transporter) {
       logger.warn('Email not sent - service disabled', { to, subject });
       return false;
     }
 
     try {
-      const result = await this.resend.emails.send({
-        from: `${config.resend.fromName} <${config.resend.fromEmail}>`,
+      const mailOptions: nodemailer.SendMailOptions = {
+        from: `${config.smtp.fromName} <${config.smtp.fromEmail}>`,
         to,
         subject,
         html,
         text: text || this.htmlToText(html),
-        replyTo: config.resend.replyTo,
-      });
+      };
 
-      if (result.error) {
-        throw new Error(result.error.message);
+      // Add replyTo if configured
+      if (config.smtp.replyTo) {
+        mailOptions.replyTo = config.smtp.replyTo;
       }
+
+      const result = await this.transporter.sendMail(mailOptions);
 
       logger.info('Email sent successfully', {
         to,
         subject,
-        emailId: result.data?.id,
+        messageId: result.messageId,
       });
 
       return true;
@@ -733,6 +800,313 @@ class EmailService {
           View transaction: {{transactionUrl}}
         `,
       },
+
+      'account-blocked': {
+        subject: 'Important: Your Account Has Been Blocked - Action Required',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>${baseStyles}</head>
+          <body>
+            <div class="container">
+              <div class="header" style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);">
+                <h1>Account Blocked</h1>
+              </div>
+              <div class="content">
+                <h2>Hi {{userName}},</h2>
+                <p>Your MC Exchange account has been temporarily blocked due to a payment verification issue.</p>
+
+                <div class="highlight" style="background: #fef2f2; border: 1px solid #fecaca;">
+                  <p><strong>Reason:</strong> The cardholder name on a recent payment does not match your account name.</p>
+                  <p><strong>Cardholder Name:</strong> {{cardholderName}}</p>
+                  <p><strong>Account Name:</strong> {{accountName}}</p>
+                </div>
+
+                <p>This security measure helps protect our users from unauthorized transactions.</p>
+
+                <h3>What can you do?</h3>
+                <p>If this payment was made by you or with your permission, you can submit a dispute to restore your account. After submitting the dispute form, your account will be automatically restored within 24 hours.</p>
+
+                <a href="{{disputeUrl}}" class="button" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">Submit Dispute Form</a>
+
+                <div class="highlight" style="background: #f0f9ff; border: 1px solid #bae6fd;">
+                  <p><strong>Important:</strong></p>
+                  <ul>
+                    <li>You will need to provide your email and explain the name discrepancy</li>
+                    <li>After submission, your account will be reviewed</li>
+                    <li>Your account will be restored within 24 hours if no issues are found</li>
+                    <li>An admin may restore your account sooner</li>
+                  </ul>
+                </div>
+
+                <p>If you did not make this payment or have any concerns, please contact our support team immediately.</p>
+              </div>
+              <div class="footer">
+                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
+                <p>Need help? Contact us at support@domilea.io</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+        text: `
+          Account Blocked - Action Required
+
+          Hi {{userName}},
+
+          Your MC Exchange account has been temporarily blocked due to a payment verification issue.
+
+          Reason: The cardholder name on a recent payment does not match your account name.
+          Cardholder Name: {{cardholderName}}
+          Account Name: {{accountName}}
+
+          This security measure helps protect our users from unauthorized transactions.
+
+          What can you do?
+          If this payment was made by you or with your permission, you can submit a dispute to restore your account.
+
+          Submit your dispute here: {{disputeUrl}}
+
+          After submission, your account will be reviewed and restored within 24 hours if no issues are found.
+
+          If you did not make this payment or have any concerns, please contact our support team at support@domilea.io.
+        `,
+      },
+
+      // ============================================
+      // Admin Notification Templates
+      // ============================================
+
+      'admin-new-user': {
+        subject: 'New User Registration - {{userName}}',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>${baseStyles}</head>
+          <body>
+            <div class="container">
+              <div class="header" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);">
+                <h1>New User Registration</h1>
+              </div>
+              <div class="content">
+                <h2>Admin Alert</h2>
+                <p>A new user has registered on MC Exchange.</p>
+                <div class="highlight">
+                  <p><strong>Name:</strong> {{userName}}</p>
+                  <p><strong>Email:</strong> {{userEmail}}</p>
+                  <p><strong>Role:</strong> {{userRole}}</p>
+                  <p><strong>Registered:</strong> {{registeredAt}}</p>
+                </div>
+                <a href="{{adminUrl}}" class="button">View in Admin Panel</a>
+              </div>
+              <div class="footer">
+                <p>&copy; ${new Date().getFullYear()} MC Exchange - Admin Notification</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+        text: `
+          New User Registration
+
+          A new user has registered on MC Exchange.
+
+          Name: {{userName}}
+          Email: {{userEmail}}
+          Role: {{userRole}}
+          Registered: {{registeredAt}}
+
+          View in Admin Panel: {{adminUrl}}
+        `,
+      },
+
+      'admin-new-inquiry': {
+        subject: 'New Inquiry from {{senderName}}',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>${baseStyles}</head>
+          <body>
+            <div class="container">
+              <div class="header" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);">
+                <h1>New Inquiry Received</h1>
+              </div>
+              <div class="content">
+                <h2>Admin Alert</h2>
+                <p>A new inquiry has been submitted.</p>
+                <div class="highlight">
+                  <p><strong>From:</strong> {{senderName}}</p>
+                  <p><strong>Email:</strong> {{senderEmail}}</p>
+                  <p><strong>Listing:</strong> {{listingInfo}}</p>
+                </div>
+                <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                  <p style="margin: 0; font-style: italic;">"{{messagePreview}}"</p>
+                </div>
+                <a href="{{adminUrl}}" class="button">View Message</a>
+              </div>
+              <div class="footer">
+                <p>&copy; ${new Date().getFullYear()} MC Exchange - Admin Notification</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+        text: `
+          New Inquiry Received
+
+          From: {{senderName}}
+          Email: {{senderEmail}}
+          Listing: {{listingInfo}}
+
+          Message:
+          "{{messagePreview}}"
+
+          View Message: {{adminUrl}}
+        `,
+      },
+
+      'admin-new-transaction': {
+        subject: 'Transaction Update - MC#{{mcNumber}}',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>${baseStyles}</head>
+          <body>
+            <div class="container">
+              <div class="header" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                <h1>Transaction Update</h1>
+              </div>
+              <div class="content">
+                <h2>Admin Alert</h2>
+                <p>A transaction has been updated.</p>
+                <div class="highlight">
+                  <p><strong>Transaction ID:</strong> {{transactionId}}</p>
+                  <p><strong>MC Number:</strong> {{mcNumber}}</p>
+                  <p><strong>Buyer:</strong> {{buyerName}}</p>
+                  <p><strong>Seller:</strong> {{sellerName}}</p>
+                  <p><strong>Amount:</strong> <span class="amount">{{amount}}</span></p>
+                  <p><strong>Status:</strong> {{status}}</p>
+                </div>
+                <a href="{{adminUrl}}" class="button">View Transaction</a>
+              </div>
+              <div class="footer">
+                <p>&copy; ${new Date().getFullYear()} MC Exchange - Admin Notification</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+        text: `
+          Transaction Update
+
+          Transaction ID: {{transactionId}}
+          MC Number: {{mcNumber}}
+          Buyer: {{buyerName}}
+          Seller: {{sellerName}}
+          Amount: {{amount}}
+          Status: {{status}}
+
+          View Transaction: {{adminUrl}}
+        `,
+      },
+
+      'admin-dispute': {
+        subject: 'Account Dispute Alert - {{userName}}',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>${baseStyles}</head>
+          <body>
+            <div class="container">
+              <div class="header" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+                <h1>Account Dispute Alert</h1>
+              </div>
+              <div class="content">
+                <h2>Admin Alert</h2>
+                <p>An account dispute requires attention.</p>
+                <div class="highlight" style="background: #fef2f2; border: 1px solid #fecaca;">
+                  <p><strong>User:</strong> {{userName}}</p>
+                  <p><strong>Email:</strong> {{userEmail}}</p>
+                  <p><strong>Cardholder Name:</strong> {{cardholderName}}</p>
+                  <p><strong>Account Name:</strong> {{accountName}}</p>
+                  <p><strong>Status:</strong> {{disputeType}}</p>
+                </div>
+                {{#if disputeReason}}
+                <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                  <p style="margin: 0;"><strong>Reason:</strong> {{disputeReason}}</p>
+                </div>
+                {{/if}}
+                <a href="{{adminUrl}}" class="button">Review Dispute</a>
+              </div>
+              <div class="footer">
+                <p>&copy; ${new Date().getFullYear()} MC Exchange - Admin Notification</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+        text: `
+          Account Dispute Alert
+
+          User: {{userName}}
+          Email: {{userEmail}}
+          Cardholder Name: {{cardholderName}}
+          Account Name: {{accountName}}
+          Status: {{disputeType}}
+          Reason: {{disputeReason}}
+
+          Review Dispute: {{adminUrl}}
+        `,
+      },
+
+      'admin-consultation': {
+        subject: 'New Consultation Request - {{name}}',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>${baseStyles}</head>
+          <body>
+            <div class="container">
+              <div class="header" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                <h1>New Consultation Request</h1>
+              </div>
+              <div class="content">
+                <h2>Admin Alert</h2>
+                <p>A new consultation has been requested.</p>
+                <div class="highlight">
+                  <p><strong>Name:</strong> {{name}}</p>
+                  <p><strong>Email:</strong> {{email}}</p>
+                  <p><strong>Phone:</strong> {{phone}}</p>
+                  <p><strong>Preferred Date:</strong> {{preferredDate}}</p>
+                  <p><strong>Preferred Time:</strong> {{preferredTime}}</p>
+                </div>
+                {{#if message}}
+                <div style="background: #f3f4f6; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                  <p style="margin: 0;"><strong>Message:</strong> {{message}}</p>
+                </div>
+                {{/if}}
+                <a href="{{adminUrl}}" class="button">View Request</a>
+              </div>
+              <div class="footer">
+                <p>&copy; ${new Date().getFullYear()} MC Exchange - Admin Notification</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+        text: `
+          New Consultation Request
+
+          Name: {{name}}
+          Email: {{email}}
+          Phone: {{phone}}
+          Preferred Date: {{preferredDate}}
+          Preferred Time: {{preferredTime}}
+          Message: {{message}}
+
+          View Request: {{adminUrl}}
+        `,
+      },
     };
   }
 
@@ -874,6 +1248,96 @@ class EmailService {
     text?: string
   ): Promise<boolean> {
     return this.send(to, subject, html, text);
+  }
+
+  /**
+   * Send account blocked notification
+   */
+  async sendAccountBlockedEmail(
+    to: string,
+    data: AccountBlockedData
+  ): Promise<boolean> {
+    const template = this.compileTemplate('account-blocked', data);
+    return this.send(to, template.subject, template.html, template.text);
+  }
+
+  // ============================================
+  // Admin Notification Methods
+  // ============================================
+
+  /**
+   * Send to multiple email addresses
+   */
+  private async sendToMultiple(
+    emails: string[],
+    subject: string,
+    html: string,
+    text?: string
+  ): Promise<boolean> {
+    const results = await Promise.all(
+      emails.map((email) => this.send(email.trim(), subject, html, text))
+    );
+    return results.some((result) => result === true);
+  }
+
+  /**
+   * Send admin notification for new user registration
+   */
+  async sendAdminNewUserNotification(
+    emails: string[],
+    data: AdminNewUserData
+  ): Promise<boolean> {
+    if (!emails || emails.length === 0) return false;
+    const template = this.compileTemplate('admin-new-user', data);
+    return this.sendToMultiple(emails, template.subject, template.html, template.text);
+  }
+
+  /**
+   * Send admin notification for new inquiry
+   */
+  async sendAdminNewInquiryNotification(
+    emails: string[],
+    data: AdminNewInquiryData
+  ): Promise<boolean> {
+    if (!emails || emails.length === 0) return false;
+    const template = this.compileTemplate('admin-new-inquiry', data);
+    return this.sendToMultiple(emails, template.subject, template.html, template.text);
+  }
+
+  /**
+   * Send admin notification for transaction update
+   */
+  async sendAdminTransactionNotification(
+    emails: string[],
+    data: AdminNewTransactionData
+  ): Promise<boolean> {
+    if (!emails || emails.length === 0) return false;
+    const template = this.compileTemplate('admin-new-transaction', data);
+    return this.sendToMultiple(emails, template.subject, template.html, template.text);
+  }
+
+  /**
+   * Send admin notification for dispute/block
+   */
+  async sendAdminDisputeNotification(
+    emails: string[],
+    data: AdminDisputeData
+  ): Promise<boolean> {
+    if (!emails || emails.length === 0) return false;
+    const template = this.compileTemplate('admin-dispute', data);
+    return this.sendToMultiple(emails, template.subject, template.html, template.text);
+  }
+
+  /**
+   * Send admin notification for consultation request
+   */
+  async sendAdminConsultationNotification(
+    emails: string[],
+    data: AdminConsultationData
+  ): Promise<boolean> {
+    if (!emails || emails.length === 0) return false;
+    const template = this.compileTemplate('admin-consultation', data);
+    return this.sendToMultiple(emails, template.subject, template.html, template.text);
   }
 }
 

@@ -15,6 +15,8 @@ import { NotFoundError, ForbiddenError, ConflictError } from '../middleware/erro
 import { CreateOfferData } from '../types';
 import { calculateDeposit, calculatePlatformFee } from '../utils/helpers';
 import { addDays } from 'date-fns';
+import { adminNotificationService } from './adminNotificationService';
+import logger from '../utils/logger';
 
 class OfferService {
   // Create a new offer
@@ -287,6 +289,18 @@ class OfferService {
         description: 'Offer accepted. Awaiting deposit from buyer.',
         actorId: sellerId,
         actorRole: 'SELLER',
+      });
+
+      // Notify admins of new transaction (async, don't wait)
+      adminNotificationService.notifyTransaction({
+        transactionId: transaction.id,
+        mcNumber: offer.listing?.mcNumber || 'Unknown',
+        buyerName: offer.buyer?.name || 'Unknown',
+        sellerName: offer.listing?.seller?.name || 'Unknown',
+        amount: agreedPrice,
+        status: 'created',
+      }).catch(err => {
+        logger.error('Failed to send admin notification for transaction', err);
       });
 
       return { offer, transaction };

@@ -55,7 +55,19 @@ export const config = {
     publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
   },
 
-  // Resend Email
+  // SMTP Email Configuration (Nodemailer)
+  smtp: {
+    host: process.env.SMTP_HOST || '',
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    fromEmail: process.env.EMAIL_FROM || 'noreply@mcexchange.com',
+    fromName: process.env.EMAIL_FROM_NAME || 'MC Exchange',
+    replyTo: process.env.EMAIL_REPLY_TO || '',
+  },
+
+  // Resend Email (legacy/optional)
   resend: {
     apiKey: process.env.RESEND_API_KEY || '',
     fromEmail: process.env.EMAIL_FROM || 'noreply@mcexchange.com',
@@ -153,13 +165,6 @@ export const config = {
     },
   },
 
-  // Legacy email config (for backwards compatibility)
-  email: {
-    host: process.env.SMTP_HOST || '',
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
-  },
 } as const;
 
 // Configuration validation errors
@@ -203,8 +208,8 @@ export function validateConfig(): void {
     }
 
     // Email configuration (optional - will run in degraded mode without it)
-    if (!process.env.RESEND_API_KEY) {
-      warnings.push('RESEND_API_KEY not set - email functionality will be disabled');
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+      warnings.push('SMTP not configured - email functionality will be disabled');
     }
 
     // Frontend URL must be set
@@ -279,7 +284,7 @@ export function getPublicConfig() {
     frontendUrl: config.frontendUrl,
     features: {
       stripe: !!config.stripe.secretKey,
-      email: !!config.resend.apiKey,
+      email: !!(config.smtp.host && config.smtp.user),
       fmcsa: !!config.fmcsa.apiKey,
       creditsafe: !!(config.creditsafe.username && config.creditsafe.password),
       redis: !!config.redis.url || !!config.redis.host,

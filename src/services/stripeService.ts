@@ -1,7 +1,9 @@
 import Stripe from 'stripe';
+import { Op } from 'sequelize';
 import { config } from '../config';
 import logger, { logError } from '../utils/logger';
 import { BadRequestError, PaymentRequiredError } from '../middleware/errorHandler';
+import { User } from '../models';
 
 // Initialize Stripe client
 const stripe = config.stripe.secretKey
@@ -1256,6 +1258,420 @@ class StripeService {
     interval: 'monthly' | 'yearly'
   ): string {
     return SUBSCRIPTION_PRICE_IDS[plan][interval];
+  }
+
+  // ============================================
+  // Admin: Get All Transactions
+  // ============================================
+
+  /**
+   * Get all Stripe transactions with full customer and billing details (for Admin)
+   */
+  async getAllTransactions(params: {
+    limit?: number;
+    startingAfter?: string;
+    endingBefore?: string;
+    status?: 'succeeded' | 'pending' | 'failed';
+    type?: 'all' | 'payment_intent' | 'checkout_session' | 'charge';
+  } = {}): Promise<{
+    success: boolean;
+    transactions?: Array<{
+      id: string;
+      type: 'payment_intent' | 'checkout_session' | 'charge';
+      amount: number;
+      amountFormatted: string;
+      currency: string;
+      status: string;
+      created: number;
+      createdDate: string;
+      description: string | null;
+      customer: {
+        id: string | null;
+        email: string | null;
+        name: string | null;
+        phone: string | null;
+      };
+      billing: {
+        name: string | null;
+        email: string | null;
+        phone: string | null;
+        address: {
+          line1: string | null;
+          line2: string | null;
+          city: string | null;
+          state: string | null;
+          postalCode: string | null;
+          country: string | null;
+        } | null;
+      };
+      paymentMethod: {
+        type: string | null;
+        brand: string | null;
+        last4: string | null;
+        expMonth: number | null;
+        expYear: number | null;
+        cardholderName: string | null;
+      } | null;
+      // User verification
+      matchedUser: {
+        id: string;
+        name: string;
+        email: string;
+      } | null;
+      nameMatchStatus: 'match' | 'partial' | 'mismatch' | 'unknown';
+      metadata: Record<string, string>;
+      receiptUrl: string | null;
+      refunded: boolean;
+      refundedAmount: number;
+    }>;
+    hasMore: boolean;
+    error?: string;
+  }> {
+    if (!stripe) {
+      return { success: false, transactions: [], hasMore: false, error: 'Payment service not available' };
+    }
+
+    const limit = params.limit || 50;
+
+    // Helper function to normalize names for comparison
+    const normalizeName = (name: string | null | undefined): string => {
+      if (!name) return '';
+      return name.toLowerCase().trim().replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ');
+    };
+
+    // Helper function to calculate name match status
+    const calculateNameMatch = (cardholderName: string | null, userName: string | null): 'match' | 'partial' | 'mismatch' | 'unknown' => {
+      if (!cardholderName || !userName) return 'unknown';
+
+      const normalizedCardholder = normalizeName(cardholderName);
+      const normalizedUser = normalizeName(userName);
+
+      if (!normalizedCardholder || !normalizedUser) return 'unknown';
+
+      // Exact match
+      if (normalizedCardholder === normalizedUser) return 'match';
+
+      // Check if one contains the other (partial match for names like "John Smith" vs "John")
+      const cardholderParts = normalizedCardholder.split(' ').filter(Boolean);
+      const userParts = normalizedUser.split(' ').filter(Boolean);
+
+      // Check if any significant parts match (first or last name)
+      const matchingParts = cardholderParts.filter(part =>
+        userParts.some(userPart => userPart === part || part.includes(userPart) || userPart.includes(part))
+      );
+
+      if (matchingParts.length >= 1 && (matchingParts.length >= cardholderParts.length / 2 || matchingParts.length >= userParts.length / 2)) {
+        return 'partial';
+      }
+
+      return 'mismatch';
+    };
+
+    try {
+      const transactions: Array<any> = [];
+
+      // Fetch Payment Intents (main transaction type)
+      if (params.type === 'all' || params.type === 'payment_intent' || !params.type) {
+        const paymentIntentsParams: Stripe.PaymentIntentListParams = {
+          limit,
+          expand: ['data.customer', 'data.payment_method', 'data.latest_charge'],
+        };
+
+        if (params.startingAfter) paymentIntentsParams.starting_after = params.startingAfter;
+        if (params.endingBefore) paymentIntentsParams.ending_before = params.endingBefore;
+
+        const paymentIntents = await stripe.paymentIntents.list(paymentIntentsParams);
+
+        for (const pi of paymentIntents.data) {
+          // Filter by status if specified
+          if (params.status) {
+            if (params.status === 'succeeded' && pi.status !== 'succeeded') continue;
+            if (params.status === 'pending' && !['processing', 'requires_action', 'requires_confirmation'].includes(pi.status)) continue;
+            if (params.status === 'failed' && !['canceled', 'requires_payment_method'].includes(pi.status)) continue;
+          }
+
+          const customer = pi.customer as Stripe.Customer | null;
+          const paymentMethod = pi.payment_method as Stripe.PaymentMethod | null;
+          const charge = pi.latest_charge as Stripe.Charge | null;
+
+          // Get cardholder name from payment method billing details
+          const cardholderName = paymentMethod?.billing_details?.name || charge?.billing_details?.name || null;
+
+          transactions.push({
+            id: pi.id,
+            type: 'payment_intent',
+            amount: pi.amount,
+            amountFormatted: `$${(pi.amount / 100).toFixed(2)}`,
+            currency: pi.currency.toUpperCase(),
+            status: pi.status,
+            created: pi.created,
+            createdDate: new Date(pi.created * 1000).toISOString(),
+            description: pi.description,
+            customer: {
+              id: customer?.id || null,
+              email: customer?.email || charge?.billing_details?.email || pi.receipt_email || null,
+              name: customer?.name || charge?.billing_details?.name || null,
+              phone: customer?.phone || charge?.billing_details?.phone || null,
+            },
+            billing: {
+              name: charge?.billing_details?.name || customer?.name || null,
+              email: charge?.billing_details?.email || customer?.email || pi.receipt_email || null,
+              phone: charge?.billing_details?.phone || customer?.phone || null,
+              address: charge?.billing_details?.address ? {
+                line1: charge.billing_details.address.line1 || null,
+                line2: charge.billing_details.address.line2 || null,
+                city: charge.billing_details.address.city || null,
+                state: charge.billing_details.address.state || null,
+                postalCode: charge.billing_details.address.postal_code || null,
+                country: charge.billing_details.address.country || null,
+              } : null,
+            },
+            paymentMethod: paymentMethod?.card ? {
+              type: paymentMethod.type,
+              brand: paymentMethod.card.brand,
+              last4: paymentMethod.card.last4,
+              expMonth: paymentMethod.card.exp_month,
+              expYear: paymentMethod.card.exp_year,
+              cardholderName: cardholderName,
+            } : null,
+            // Placeholder - will be filled after user lookup
+            matchedUser: null as { id: string; name: string; email: string } | null,
+            nameMatchStatus: 'unknown' as 'match' | 'partial' | 'mismatch' | 'unknown',
+            _lookupEmail: customer?.email || charge?.billing_details?.email || pi.receipt_email || pi.metadata?.userId || null,
+            _cardholderName: cardholderName,
+            metadata: pi.metadata || {},
+            receiptUrl: charge?.receipt_url || null,
+            refunded: charge?.refunded || false,
+            refundedAmount: charge?.amount_refunded || 0,
+          });
+        }
+      }
+
+      // Fetch Checkout Sessions (for subscription and one-time purchases)
+      if (params.type === 'all' || params.type === 'checkout_session' || !params.type) {
+        const sessionsParams: Stripe.Checkout.SessionListParams = {
+          limit,
+          expand: ['data.customer', 'data.payment_intent'],
+        };
+
+        const sessions = await stripe.checkout.sessions.list(sessionsParams);
+
+        for (const session of sessions.data) {
+          // Filter by status if specified
+          if (params.status) {
+            if (params.status === 'succeeded' && session.payment_status !== 'paid') continue;
+            if (params.status === 'pending' && session.payment_status !== 'unpaid') continue;
+            if (params.status === 'failed' && session.status !== 'expired') continue;
+          }
+
+          // Skip if we already have the payment intent from the payment_intents list
+          if (session.payment_intent && transactions.some(t => t.id === (session.payment_intent as Stripe.PaymentIntent)?.id)) {
+            continue;
+          }
+
+          const customer = session.customer as Stripe.Customer | null;
+          const pi = session.payment_intent as Stripe.PaymentIntent | null;
+
+          // For checkout sessions, the "cardholder" is the customer details name
+          const sessionCardholderName = session.customer_details?.name || null;
+
+          transactions.push({
+            id: session.id,
+            type: 'checkout_session',
+            amount: session.amount_total || 0,
+            amountFormatted: `$${((session.amount_total || 0) / 100).toFixed(2)}`,
+            currency: (session.currency || 'usd').toUpperCase(),
+            status: session.payment_status,
+            created: session.created,
+            createdDate: new Date(session.created * 1000).toISOString(),
+            description: session.metadata?.type ? `${session.metadata.type} - ${session.metadata.mcNumber || session.metadata.packId || ''}` : null,
+            customer: {
+              id: customer?.id || null,
+              email: session.customer_email || customer?.email || session.customer_details?.email || null,
+              name: customer?.name || session.customer_details?.name || null,
+              phone: customer?.phone || session.customer_details?.phone || null,
+            },
+            billing: {
+              name: session.customer_details?.name || customer?.name || null,
+              email: session.customer_details?.email || customer?.email || null,
+              phone: session.customer_details?.phone || customer?.phone || null,
+              address: session.customer_details?.address ? {
+                line1: session.customer_details.address.line1 || null,
+                line2: session.customer_details.address.line2 || null,
+                city: session.customer_details.address.city || null,
+                state: session.customer_details.address.state || null,
+                postalCode: session.customer_details.address.postal_code || null,
+                country: session.customer_details.address.country || null,
+              } : null,
+            },
+            paymentMethod: sessionCardholderName ? {
+              type: 'card',
+              brand: null,
+              last4: null,
+              expMonth: null,
+              expYear: null,
+              cardholderName: sessionCardholderName,
+            } : null,
+            // Placeholder - will be filled after user lookup
+            matchedUser: null as { id: string; name: string; email: string } | null,
+            nameMatchStatus: 'unknown' as 'match' | 'partial' | 'mismatch' | 'unknown',
+            _lookupEmail: session.customer_email || customer?.email || session.customer_details?.email || session.metadata?.userId || null,
+            _cardholderName: sessionCardholderName,
+            metadata: session.metadata || {},
+            receiptUrl: null,
+            refunded: false,
+            refundedAmount: 0,
+          });
+        }
+      }
+
+      // Sort by created date descending
+      transactions.sort((a, b) => b.created - a.created);
+
+      // Batch lookup users by email and userId from metadata
+      const lookupEmails = transactions
+        .map(t => t._lookupEmail)
+        .filter((email): email is string => !!email);
+
+      const lookupUserIds = transactions
+        .map(t => t.metadata?.userId)
+        .filter((id): id is string => !!id);
+
+      // Query users by email or ID using Sequelize
+      const users = await User.findAll({
+        where: {
+          [Op.or]: [
+            { email: { [Op.in]: lookupEmails } },
+            { id: { [Op.in]: lookupUserIds } },
+          ],
+        },
+        attributes: ['id', 'name', 'email'],
+        raw: true,
+      });
+
+      // Create lookup maps
+      const usersByEmail = new Map(users.map((u: { id: string; name: string; email: string }) => [u.email.toLowerCase(), u]));
+      const usersById = new Map(users.map((u: { id: string; name: string; email: string }) => [u.id, u]));
+
+      // Fill in matched users and calculate name match status
+      for (const txn of transactions) {
+        // Try to find user by userId metadata first, then by email
+        let matchedUser = txn.metadata?.userId ? usersById.get(txn.metadata.userId) : null;
+        if (!matchedUser && txn._lookupEmail) {
+          matchedUser = usersByEmail.get(txn._lookupEmail.toLowerCase()) || null;
+        }
+
+        if (matchedUser) {
+          txn.matchedUser = {
+            id: matchedUser.id,
+            name: matchedUser.name,
+            email: matchedUser.email,
+          };
+          txn.nameMatchStatus = calculateNameMatch(txn._cardholderName, matchedUser.name);
+        }
+
+        // Remove internal lookup fields before returning
+        delete txn._lookupEmail;
+        delete txn._cardholderName;
+      }
+
+      logger.info('Retrieved all Stripe transactions with user matching', {
+        count: transactions.length,
+        type: params.type || 'all',
+        status: params.status || 'all',
+        matchedUsers: transactions.filter(t => t.matchedUser).length,
+      });
+
+      return {
+        success: true,
+        transactions: transactions.slice(0, limit),
+        hasMore: transactions.length > limit,
+      };
+    } catch (error) {
+      logError('Failed to get all Stripe transactions', error as Error);
+      return {
+        success: false,
+        transactions: [],
+        hasMore: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Get balance transactions (for seeing all money movement)
+   */
+  async getBalanceTransactions(params: {
+    limit?: number;
+    startingAfter?: string;
+  } = {}): Promise<{
+    success: boolean;
+    data?: Stripe.BalanceTransaction[];
+    hasMore?: boolean;
+    error?: string;
+  }> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const balanceTransactions = await stripe.balanceTransactions.list({
+        limit: params.limit || 50,
+        starting_after: params.startingAfter,
+        expand: ['data.source'],
+      });
+
+      return {
+        success: true,
+        data: balanceTransactions.data,
+        hasMore: balanceTransactions.has_more,
+      };
+    } catch (error) {
+      logError('Failed to get balance transactions', error as Error);
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Get Stripe account balance summary
+   */
+  async getAccountBalance(): Promise<{
+    success: boolean;
+    balance?: {
+      available: number;
+      pending: number;
+      currency: string;
+    };
+    error?: string;
+  }> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const balance = await stripe.balance.retrieve();
+
+      const availableUSD = balance.available.find(b => b.currency === 'usd');
+      const pendingUSD = balance.pending.find(b => b.currency === 'usd');
+
+      return {
+        success: true,
+        balance: {
+          available: availableUSD?.amount || 0,
+          pending: pendingUSD?.amount || 0,
+          currency: 'USD',
+        },
+      };
+    } catch (error) {
+      logError('Failed to get account balance', error as Error);
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
   }
 
   /**

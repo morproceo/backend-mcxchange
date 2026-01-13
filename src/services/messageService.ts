@@ -6,6 +6,8 @@ import {
 } from '../models';
 import { NotFoundError, ForbiddenError } from '../middleware/errorHandler';
 import { getPaginationInfo } from '../utils/helpers';
+import { adminNotificationService } from './adminNotificationService';
+import logger from '../utils/logger';
 
 interface Conversation {
   id: string;
@@ -177,6 +179,19 @@ class MessageService {
       message: `You have a new message from ${messageWithSender?.sender?.name}`,
       link: `/messages/${senderId}`,
       metadata: JSON.stringify({ messageId: message.id, senderId }),
+    });
+
+    // Get sender info for admin notification
+    const sender = await User.findByPk(senderId, { attributes: ['name', 'email'] });
+
+    // Notify admins of new inquiry/message (async, don't wait)
+    adminNotificationService.notifyNewInquiry({
+      senderName: sender?.name || 'Unknown',
+      senderEmail: sender?.email || 'Unknown',
+      messageContent: content,
+      listingInfo: listingId ? `Listing ID: ${listingId}` : undefined,
+    }).catch(err => {
+      logger.error('Failed to send admin notification for new message', err);
     });
 
     return messageWithSender;

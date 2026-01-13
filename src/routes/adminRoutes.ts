@@ -34,6 +34,19 @@ import {
   createUserWithListing,
   getPricingConfig,
   updatePricingConfig,
+  getStripeTransactions,
+  getStripeBalance,
+  getStripeBalanceTransactions,
+  adjustUserCredits,
+  adjustCreditsValidation,
+  blockUserForMismatch,
+  blockUserMismatchValidation,
+  getAllDisputes,
+  resolveDispute,
+  rejectDispute,
+  processAutoUnblock,
+  getNotificationSettings,
+  updateNotificationSettings,
 } from '../controllers/adminController';
 import { authenticate, adminOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
@@ -64,6 +77,7 @@ router.get('/users/:id', getUserDetails);
 router.post('/users/:id/block', validate(blockUserValidation), blockUser);
 router.post('/users/:id/unblock', unblockUser);
 router.post('/users/:id/verify-seller', verifySeller);
+router.post('/users/:id/credits', validate(adjustCreditsValidation), adjustUserCredits);
 
 // Premium requests
 router.get('/premium-requests', getPremiumRequests);
@@ -95,5 +109,21 @@ router.post('/broadcast', broadcastMessage);
 // Pricing Configuration
 router.get('/pricing', getPricingConfig);
 router.put('/pricing', updatePricingConfig);
+
+// Stripe Transactions (payment history from Stripe)
+router.get('/stripe/transactions', getStripeTransactions);
+router.get('/stripe/balance', getStripeBalance);
+router.get('/stripe/balance-transactions', getStripeBalanceTransactions);
+
+// Account Disputes
+router.get('/disputes', getAllDisputes);
+router.post('/disputes/block-mismatch', validate(blockUserMismatchValidation), blockUserForMismatch);
+router.post('/disputes/:id/resolve', resolveDispute);
+router.post('/disputes/:id/reject', rejectDispute);
+router.post('/disputes/process-auto-unblock', processAutoUnblock);
+
+// Notification Settings
+router.get('/settings/notifications', getNotificationSettings);
+router.put('/settings/notifications', updateNotificationSettings);
 
 export default router;

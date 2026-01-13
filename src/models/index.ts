@@ -159,6 +159,13 @@ export enum ConsultationStatus {
   REFUNDED = 'REFUNDED'
 }
 
+export enum AccountDisputeStatus {
+  PENDING = 'PENDING',
+  SUBMITTED = 'SUBMITTED',
+  RESOLVED = 'RESOLVED',
+  REJECTED = 'REJECTED'
+}
+
 // ==================== INTERFACES ====================
 
 interface UserAttributes {
@@ -2068,6 +2075,103 @@ Consultation.init(
   }
 );
 
+// ==================== ACCOUNT DISPUTE MODEL ====================
+
+export class AccountDispute extends Model {
+  declare id: string;
+  declare userId: string;
+  declare stripeTransactionId: string;
+  declare cardholderName: string;
+  declare userName: string;
+  declare status: AccountDisputeStatus;
+  declare disputeEmail?: string;
+  declare disputeInfo?: string;
+  declare disputeReason?: string;
+  declare submittedAt?: Date;
+  declare autoUnblockAt?: Date;
+  declare resolvedAt?: Date;
+  declare resolvedBy?: string;
+  declare adminNotes?: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+
+  // Associations
+  declare readonly user?: User;
+  declare readonly resolver?: User;
+}
+
+AccountDispute.init(
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+    },
+    stripeTransactionId: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    cardholderName: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    userName: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    status: {
+      type: DataTypes.ENUM(...Object.values(AccountDisputeStatus)),
+      defaultValue: AccountDisputeStatus.PENDING,
+    },
+    disputeEmail: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    disputeInfo: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    disputeReason: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    submittedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    autoUnblockAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    resolvedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    resolvedBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
+    adminNotes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+  },
+  {
+    sequelize,
+    tableName: 'account_disputes',
+    indexes: [
+      { fields: ['userId'] },
+      { fields: ['status'] },
+      { fields: ['stripeTransactionId'] },
+      { fields: ['autoUnblockAt'] },
+    ],
+  }
+);
+
 // ==================== ASSOCIATIONS ====================
 
 // User associations
@@ -2174,6 +2278,11 @@ PremiumRequest.belongsTo(Listing, { foreignKey: 'listingId', as: 'listing' });
 // AdminAction associations
 AdminAction.belongsTo(User, { foreignKey: 'adminId', as: 'admin' });
 
+// AccountDispute associations
+AccountDispute.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+AccountDispute.belongsTo(User, { foreignKey: 'resolvedBy', as: 'resolver' });
+User.hasMany(AccountDispute, { foreignKey: 'userId', as: 'accountDisputes' });
+
 // Export all models
 export {
   sequelize,
@@ -2202,5 +2311,6 @@ export default {
   AdminAction,
   PlatformSetting,
   Consultation,
+  AccountDispute,
   sequelize,
 };

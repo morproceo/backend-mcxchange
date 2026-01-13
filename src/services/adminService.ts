@@ -11,6 +11,7 @@ import {
   PlatformSetting,
   RefreshToken,
   Offer,
+  AccountDispute,
   ListingStatus,
   UserStatus,
   PremiumRequestStatus,
@@ -18,9 +19,14 @@ import {
   NotificationType,
   UserRole,
   OfferStatus,
+  AccountDisputeStatus,
 } from '../models';
-import { NotFoundError } from '../middleware/errorHandler';
+import { NotFoundError, BadRequestError } from '../middleware/errorHandler';
 import { getPaginationInfo, calculateDeposit, calculatePlatformFee } from '../utils/helpers';
+import { emailService } from './emailService';
+import { adminNotificationService } from './adminNotificationService';
+import { config } from '../config';
+import logger from '../utils/logger';
 
 class AdminService {
   // Get dashboard stats
@@ -371,6 +377,46 @@ class AdminService {
     });
 
     return user;
+  }
+
+  // Adjust user credits (add or remove)
+  async adjustUserCredits(userId: string, amount: number, reason: string, adminId: string) {
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    const currentTotal = user.totalCredits || 0;
+    const currentUsed = user.usedCredits || 0;
+    const currentAvailable = currentTotal - currentUsed;
+
+    // If removing credits, ensure we don't go negative
+    if (amount < 0 && Math.abs(amount) > currentAvailable) {
+      throw new BadRequestError(`Cannot remove ${Math.abs(amount)} credits. User only has ${currentAvailable} available credits.`);
+    }
+
+    // Update credits
+    const newTotal = currentTotal + amount;
+    await user.update({ totalCredits: newTotal });
+
+    // Record admin action
+    await AdminAction.create({
+      adminId,
+      action: amount >= 0 ? 'ADD_CREDITS' : 'REMOVE_CREDITS',
+      targetType: 'USER',
+      targetId: userId,
+      reason: `${amount >= 0 ? 'Added' : 'Removed'} ${Math.abs(amount)} credits. Reason: ${reason}`,
+    });
+
+    return {
+      userId: user.id,
+      previousTotal: currentTotal,
+      adjustment: amount,
+      newTotal,
+      usedCredits: currentUsed,
+      availableCredits: newTotal - currentUsed,
+    };
   }
 
   // Get premium requests
@@ -1396,6 +1442,329 @@ class AdminService {
     });
 
     return listing;
+  }
+
+  // ============================================
+  // Account Dispute Management
+  // ============================================
+
+  // Block user for cardholder name mismatch and create dispute record
+  async blockUserForMismatch(data: {
+    userId: string;
+    stripeTransactionId: string;
+    cardholderName: string;
+    userName: string;
+    adminId?: string;
+  }) {
+    const user = await User.findByPk(data.userId);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    // Check if there's already a pending dispute for this user
+    const existingDispute = await AccountDispute.findOne({
+      where: {
+        userId: data.userId,
+        status: { [Op.in]: [AccountDisputeStatus.PENDING, AccountDisputeStatus.SUBMITTED] },
+      },
+    });
+
+    if (existingDispute) {
+      // Already has a pending dispute, don't create another
+      return { user, dispute: existingDispute, alreadyExists: true };
+    }
+
+    // Block the user
+    await user.update({ status: UserStatus.BLOCKED });
+
+    // Invalidate all refresh tokens
+    await RefreshToken.destroy({ where: { userId: data.userId } });
+
+    // Create dispute record
+    const dispute = await AccountDispute.create({
+      userId: data.userId,
+      stripeTransactionId: data.stripeTransactionId,
+      cardholderName: data.cardholderName,
+      userName: data.userName,
+      status: AccountDisputeStatus.PENDING,
+    });
+
+    // Record admin action if admin triggered it
+    if (data.adminId) {
+      await AdminAction.create({
+        adminId: data.adminId,
+        action: 'BLOCK_USER_MISMATCH',
+        targetType: 'USER',
+        targetId: data.userId,
+        reason: `Cardholder name mismatch: "${data.cardholderName}" vs "${data.userName}"`,
+        metadata: JSON.stringify({ disputeId: dispute.id, stripeTransactionId: data.stripeTransactionId }),
+      });
+    }
+
+    // Send email notification with dispute link
+    const frontendUrl = config.frontendUrl || 'http://localhost:5173';
+    const disputeUrl = `${frontendUrl}/dispute/${dispute.id}`;
+
+    await emailService.sendAccountBlockedEmail(user.email, {
+      userName: user.name,
+      cardholderName: data.cardholderName,
+      accountName: data.userName,
+      disputeUrl,
+    });
+
+    // Also create in-app notification
+    await Notification.create({
+      userId: data.userId,
+      type: NotificationType.SYSTEM,
+      title: 'Account Blocked',
+      message: 'Your account has been blocked due to a payment verification issue. Please check your email for instructions.',
+      link: `/dispute/${dispute.id}`,
+    });
+
+    // Notify admins of the block (async, don't wait)
+    adminNotificationService.notifyDispute({
+      userName: data.userName,
+      userEmail: user.email,
+      cardholderName: data.cardholderName,
+      accountName: data.userName,
+      disputeType: 'blocked',
+    }).catch(err => {
+      logger.error('Failed to send admin notification for user block', err);
+    });
+
+    return { user, dispute, alreadyExists: false };
+  }
+
+  // Get dispute by ID (public - no auth required)
+  async getDispute(disputeId: string) {
+    const dispute = await AccountDispute.findByPk(disputeId, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'name', 'email'],
+        },
+      ],
+    });
+
+    if (!dispute) {
+      throw new NotFoundError('Dispute');
+    }
+
+    return dispute;
+  }
+
+  // Submit dispute form (public - user fills in their info)
+  async submitDispute(disputeId: string, data: {
+    disputeEmail: string;
+    disputeInfo: string;
+    disputeReason: string;
+  }) {
+    const dispute = await AccountDispute.findByPk(disputeId);
+
+    if (!dispute) {
+      throw new NotFoundError('Dispute');
+    }
+
+    if (dispute.status !== AccountDisputeStatus.PENDING) {
+      throw new BadRequestError('Dispute has already been submitted or resolved');
+    }
+
+    // Calculate auto-unblock time (24 hours from now)
+    const autoUnblockAt = new Date();
+    autoUnblockAt.setHours(autoUnblockAt.getHours() + 24);
+
+    await dispute.update({
+      disputeEmail: data.disputeEmail,
+      disputeInfo: data.disputeInfo,
+      disputeReason: data.disputeReason,
+      submittedAt: new Date(),
+      autoUnblockAt,
+      status: AccountDisputeStatus.SUBMITTED,
+    });
+
+    // Notify admins of the dispute submission (async, don't wait)
+    adminNotificationService.notifyDispute({
+      userName: dispute.userName,
+      userEmail: data.disputeEmail,
+      cardholderName: dispute.cardholderName,
+      accountName: dispute.userName,
+      disputeType: 'submitted',
+      disputeReason: data.disputeReason,
+    }).catch(err => {
+      logger.error('Failed to send admin notification for dispute submission', err);
+    });
+
+    return dispute;
+  }
+
+  // Get all disputes (admin)
+  async getAllDisputes(params: {
+    page?: number;
+    limit?: number;
+    status?: string;
+  }) {
+    const { page = 1, limit = 20, status } = params;
+    const offset = (page - 1) * limit;
+
+    const where: any = {};
+    if (status) {
+      where.status = status;
+    }
+
+    const { count: total, rows: disputes } = await AccountDispute.findAndCountAll({
+      where,
+      order: [['createdAt', 'DESC']],
+      offset,
+      limit,
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'name', 'email', 'status'],
+        },
+        {
+          model: User,
+          as: 'resolver',
+          attributes: ['id', 'name', 'email'],
+        },
+      ],
+    });
+
+    return {
+      disputes,
+      pagination: getPaginationInfo(page, limit, total),
+    };
+  }
+
+  // Resolve dispute (admin) - unblocks user
+  async resolveDispute(disputeId: string, adminId: string, notes?: string) {
+    const dispute = await AccountDispute.findByPk(disputeId, {
+      include: [{ model: User, as: 'user' }],
+    });
+
+    if (!dispute) {
+      throw new NotFoundError('Dispute');
+    }
+
+    if (dispute.status === AccountDisputeStatus.RESOLVED) {
+      throw new BadRequestError('Dispute is already resolved');
+    }
+
+    const user = (dispute as any).user;
+    if (!user) {
+      throw new NotFoundError('User associated with dispute');
+    }
+
+    // Unblock the user
+    await user.update({ status: UserStatus.ACTIVE });
+
+    // Update dispute
+    await dispute.update({
+      status: AccountDisputeStatus.RESOLVED,
+      resolvedAt: new Date(),
+      resolvedBy: adminId,
+      adminNotes: notes,
+    });
+
+    // Record admin action
+    await AdminAction.create({
+      adminId,
+      action: 'RESOLVE_DISPUTE',
+      targetType: 'DISPUTE',
+      targetId: disputeId,
+      reason: notes || 'Dispute resolved - user unblocked',
+      metadata: JSON.stringify({ userId: user.id }),
+    });
+
+    // Notify user
+    await Notification.create({
+      userId: user.id,
+      type: NotificationType.SYSTEM,
+      title: 'Account Restored',
+      message: 'Your account has been restored. Thank you for verifying your information.',
+      link: '/dashboard',
+    });
+
+    return { dispute, user };
+  }
+
+  // Reject dispute (admin)
+  async rejectDispute(disputeId: string, adminId: string, reason?: string) {
+    const dispute = await AccountDispute.findByPk(disputeId, {
+      include: [{ model: User, as: 'user' }],
+    });
+
+    if (!dispute) {
+      throw new NotFoundError('Dispute');
+    }
+
+    // Update dispute
+    await dispute.update({
+      status: AccountDisputeStatus.REJECTED,
+      resolvedAt: new Date(),
+      resolvedBy: adminId,
+      adminNotes: reason || 'Dispute rejected',
+    });
+
+    // Record admin action
+    await AdminAction.create({
+      adminId,
+      action: 'REJECT_DISPUTE',
+      targetType: 'DISPUTE',
+      targetId: disputeId,
+      reason: reason || 'Dispute rejected - account remains blocked',
+    });
+
+    return dispute;
+  }
+
+  // Process auto-unblock for submitted disputes (called by cron job or admin)
+  async processAutoUnblock() {
+    const now = new Date();
+
+    // Find all submitted disputes where autoUnblockAt has passed
+    const disputes = await AccountDispute.findAll({
+      where: {
+        status: AccountDisputeStatus.SUBMITTED,
+        autoUnblockAt: { [Op.lte]: now },
+      },
+      include: [{ model: User, as: 'user' }],
+    });
+
+    const results: Array<{ disputeId: string; userId: string; success: boolean; error?: string }> = [];
+
+    for (const dispute of disputes) {
+      try {
+        const user = (dispute as any).user;
+        if (user) {
+          // Unblock the user
+          await user.update({ status: UserStatus.ACTIVE });
+
+          // Update dispute
+          await dispute.update({
+            status: AccountDisputeStatus.RESOLVED,
+            resolvedAt: now,
+            adminNotes: 'Auto-resolved after 24 hours',
+          });
+
+          // Notify user
+          await Notification.create({
+            userId: user.id,
+            type: NotificationType.SYSTEM,
+            title: 'Account Restored',
+            message: 'Your account has been automatically restored after review. Thank you for your patience.',
+            link: '/dashboard',
+          });
+
+          results.push({ disputeId: dispute.id, userId: user.id, success: true });
+        }
+      } catch (error: any) {
+        results.push({ disputeId: dispute.id, userId: dispute.userId, success: false, error: error.message });
+      }
+    }
+
+    return results;
   }
 }
 

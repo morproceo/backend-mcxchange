@@ -92,6 +92,29 @@ export interface FMCSACarrierData {
   cargoOnFile: number;
   bondOnFile: number;
   cargoTypes: string[];
+  // Inspection Data (from FMCSA carrier endpoint)
+  driverInsp: number;
+  driverOosInsp: number;
+  driverOosRate: number;
+  vehicleInsp: number;
+  vehicleOosInsp: number;
+  vehicleOosRate: number;
+  hazmatInsp: number;
+  hazmatOosInsp: number;
+  hazmatOosRate: number;
+  // Crash Data
+  crashTotal: number;
+  fatalCrash: number;
+  injuryCrash: number;
+  towCrash: number;
+  // BASIC Scores
+  unsafeDrivingBasic: number;
+  hoursOfServiceBasic: number;
+  driverFitnessBasic: number;
+  controlledSubstancesBasic: number;
+  vehicleMaintenanceBasic: number;
+  hazmatBasic: number;
+  crashIndicatorBasic: number;
 }
 
 export interface FMCSAAuthorityHistory {
