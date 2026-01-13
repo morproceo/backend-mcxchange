@@ -162,3 +162,31 @@ export const verifyMC = asyncHandler(async (req: Request, res: Response) => {
     data: result,
   });
 });
+
+// Get SMS (Safety Measurement System) data - inspections, crashes, BASIC scores
+export const getSMSData = asyncHandler(async (req: Request, res: Response) => {
+  const { dotNumber } = req.params;
+
+  if (!dotNumber) {
+    res.status(400).json({
+      success: false,
+      error: 'DOT number is required',
+    });
+    return;
+  }
+
+  const smsData = await fmcsaService.getSMSData(dotNumber);
+
+  if (!smsData) {
+    res.status(404).json({
+      success: false,
+      error: 'SMS data not found for this carrier',
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: smsData,
+  });
+});

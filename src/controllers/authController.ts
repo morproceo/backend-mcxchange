@@ -172,3 +172,38 @@ export const requestPasswordReset = asyncHandler(async (req: Request, res: Respo
     message: 'If an account exists with this email, a reset link will be sent',
   });
 });
+
+// Verify email
+export const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
+  const { token } = req.body;
+
+  if (!token) {
+    res.status(400).json({
+      success: false,
+      error: 'Verification token is required',
+    });
+    return;
+  }
+
+  const result = await authService.verifyEmail(token);
+
+  res.json({
+    success: true,
+    message: result.message,
+  });
+});
+
+// Resend verification email
+export const resendVerificationEmail = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const result = await authService.resendVerificationEmail(req.user.id);
+
+  res.json({
+    success: true,
+    message: result.message,
+  });
+});

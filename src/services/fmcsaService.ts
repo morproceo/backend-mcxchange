@@ -1,6 +1,40 @@
 import { config } from '../config';
 import { FMCSACarrierData, FMCSAAuthorityHistory, FMCSAInsuranceHistory } from '../types';
 
+// SMS (Safety Measurement System) data types
+export interface FMCSASMSBasic {
+  basicName: string;
+  basicCode: string;
+  percentile: number;
+  totalInspections: number;
+  totalViolations: number;
+  oosInspections: number;
+  oosRate: number;
+  thresholdPercent: number;
+  exceedsThreshold: boolean;
+}
+
+export interface FMCSASMSData {
+  dotNumber: string;
+  totalInspections: number;
+  totalDriverInspections: number;
+  totalVehicleInspections: number;
+  totalHazmatInspections: number;
+  totalIepInspections: number;
+  driverOosRate: number;
+  vehicleOosRate: number;
+  driverOosInspections: number;
+  vehicleOosInspections: number;
+  totalCrashes: number;
+  fatalCrashes: number;
+  injuryCrashes: number;
+  towCrashes: number;
+  basics: FMCSASMSBasic[];
+  safetyRating: string;
+  safetyRatingDate?: string;
+  snapshotDate?: string;
+}
+
 interface FMCSACarrierRaw {
   dotNumber: number | string;
   legalName: string;
@@ -195,6 +229,107 @@ class FMCSAService {
       }));
     } catch (error) {
       console.error('FMCSA insurance history error:', error);
+      return null;
+    }
+  }
+
+  // Get SMS (Safety Measurement System) data - includes inspections, crashes, and BASIC scores
+  async getSMSData(dotNumber: string): Promise<FMCSASMSData | null> {
+    try {
+      // The FMCSA API provides basics endpoint for BASIC scores
+      const basicsUrl = `${this.baseUrl}/carriers/${dotNumber}/basics?webKey=${this.apiKey}`;
+      const oosUrl = `${this.baseUrl}/carriers/${dotNumber}/oos?webKey=${this.apiKey}`;
+
+      console.log('FMCSA SMS lookup URLs:', basicsUrl, oosUrl);
+
+      const [basicsResponse, oosResponse] = await Promise.all([
+        fetch(basicsUrl).catch(() => null),
+        fetch(oosUrl).catch(() => null),
+      ]);
+
+      // Parse BASIC scores
+      interface BasicRaw {
+        basicsId?: number;
+        basBasicCd?: string;
+        basBasicDesc?: string;
+        basMeasure?: number;
+        basTotInsp?: number;
+        basTotViol?: number;
+        basOosInsp?: number;
+        basOosRate?: number;
+        basThreshPct?: number;
+        basExceedFlag?: string;
+      }
+
+      let basics: FMCSASMSBasic[] = [];
+      if (basicsResponse?.ok) {
+        const basicsData = await basicsResponse.json() as { content?: BasicRaw[] };
+        if (basicsData.content && Array.isArray(basicsData.content)) {
+          basics = basicsData.content.map((b: BasicRaw) => ({
+            basicName: b.basBasicDesc || 'Unknown',
+            basicCode: b.basBasicCd || '',
+            percentile: b.basMeasure || 0,
+            totalInspections: b.basTotInsp || 0,
+            totalViolations: b.basTotViol || 0,
+            oosInspections: b.basOosInsp || 0,
+            oosRate: b.basOosRate || 0,
+            thresholdPercent: b.basThreshPct || 0,
+            exceedsThreshold: b.basExceedFlag === 'Y',
+          }));
+        }
+      }
+
+      // Parse OOS (Out of Service) data
+      interface OOSRaw {
+        oosDriverInsp?: number;
+        oosDriverOos?: number;
+        oosDriverOosRate?: number;
+        oosVehicleInsp?: number;
+        oosVehicleOos?: number;
+        oosVehicleOosRate?: number;
+        oosHazmatInsp?: number;
+        oosHazmatOos?: number;
+        oosIepInsp?: number;
+        oosTotInsp?: number;
+        oosTotCrashes?: number;
+        oosFatalCrashes?: number;
+        oosInjCrashes?: number;
+        oosTowCrashes?: number;
+      }
+
+      let oosData: OOSRaw = {};
+      if (oosResponse?.ok) {
+        const oosResult = await oosResponse.json() as { content?: OOSRaw };
+        if (oosResult.content) {
+          oosData = oosResult.content;
+        }
+      }
+
+      // Calculate totals
+      const totalInspections = oosData.oosTotInsp ||
+        (oosData.oosDriverInsp || 0) + (oosData.oosVehicleInsp || 0);
+
+      return {
+        dotNumber,
+        totalInspections,
+        totalDriverInspections: oosData.oosDriverInsp || 0,
+        totalVehicleInspections: oosData.oosVehicleInsp || 0,
+        totalHazmatInspections: oosData.oosHazmatInsp || 0,
+        totalIepInspections: oosData.oosIepInsp || 0,
+        driverOosRate: oosData.oosDriverOosRate || 0,
+        vehicleOosRate: oosData.oosVehicleOosRate || 0,
+        driverOosInspections: oosData.oosDriverOos || 0,
+        vehicleOosInspections: oosData.oosVehicleOos || 0,
+        totalCrashes: oosData.oosTotCrashes || 0,
+        fatalCrashes: oosData.oosFatalCrashes || 0,
+        injuryCrashes: oosData.oosInjCrashes || 0,
+        towCrashes: oosData.oosTowCrashes || 0,
+        basics,
+        safetyRating: 'N/A', // Will be filled from carrier data
+        snapshotDate: new Date().toISOString().split('T')[0],
+      };
+    } catch (error) {
+      console.error('FMCSA SMS data error:', error);
       return null;
     }
   }

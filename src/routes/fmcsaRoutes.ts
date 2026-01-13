@@ -6,6 +6,7 @@ import {
   getAuthorityHistory,
   getInsuranceHistory,
   verifyMC,
+  getSMSData,
 } from '../controllers/fmcsaController';
 
 const router = Router();
@@ -17,5 +18,6 @@ router.get('/snapshot/:identifier', getCarrierSnapshot);
 router.get('/authority/:dotNumber', getAuthorityHistory);
 router.get('/insurance/:dotNumber', getInsuranceHistory);
 router.get('/verify/:mcNumber', verifyMC);
+router.get('/sms/:dotNumber', getSMSData);
 
 export default router;
