@@ -1,5 +1,6 @@
-import { Op } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 import sequelize from '../config/database';
+import { cacheService, CacheKeys, CacheTTL } from './cacheService';
 import {
   User,
   Listing,
@@ -29,70 +30,82 @@ import { config } from '../config';
 import logger from '../utils/logger';
 
 class AdminService {
-  // Get dashboard stats
+  // Get dashboard stats (cached for 5 minutes to reduce query load)
   async getDashboardStats() {
-    const [
-      totalUsers,
-      totalSellers,
-      totalBuyers,
-      activeUsers,
-      totalListings,
-      activeListings,
-      pendingListings,
-      soldListings,
-      totalTransactions,
-      activeTransactions,
-      completedTransactions,
-      pendingPremiumRequests,
-      totalOffers,
-      pendingOffers,
-    ] = await Promise.all([
-      User.count(),
-      User.count({ where: { role: 'SELLER' } }),
-      User.count({ where: { role: 'BUYER' } }),
-      User.count({ where: { status: 'ACTIVE' } }),
-      Listing.count(),
-      Listing.count({ where: { status: ListingStatus.ACTIVE } }),
-      Listing.count({ where: { status: ListingStatus.PENDING_REVIEW } }),
-      Listing.count({ where: { status: ListingStatus.SOLD } }),
-      Transaction.count(),
-      Transaction.count({ where: { status: { [Op.ne]: TransactionStatus.COMPLETED } } }),
-      Transaction.count({ where: { status: TransactionStatus.COMPLETED } }),
-      PremiumRequest.count({ where: { status: PremiumRequestStatus.PENDING } }),
-      Offer.count(),
-      Offer.count({ where: { status: 'PENDING' } }),
-    ]);
+    // Try cache first
+    const cacheKey = `${CacheKeys.STATS}dashboard`;
+    const cached = await cacheService.get<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
 
-    // Calculate total revenue from completed transactions
-    const revenueResult = await Transaction.sum('platformFee', {
-      where: { status: TransactionStatus.COMPLETED },
-    });
+    // OPTIMIZED: Use a single raw query instead of 14 separate COUNT queries
+    const statsQuery = `
+      SELECT
+        (SELECT COUNT(*) FROM Users) as totalUsers,
+        (SELECT COUNT(*) FROM Users WHERE role = 'SELLER') as totalSellers,
+        (SELECT COUNT(*) FROM Users WHERE role = 'BUYER') as totalBuyers,
+        (SELECT COUNT(*) FROM Users WHERE status = 'ACTIVE') as activeUsers,
+        (SELECT COUNT(*) FROM Listings) as totalListings,
+        (SELECT COUNT(*) FROM Listings WHERE status = 'ACTIVE') as activeListings,
+        (SELECT COUNT(*) FROM Listings WHERE status = 'PENDING_REVIEW') as pendingListings,
+        (SELECT COUNT(*) FROM Listings WHERE status = 'SOLD') as soldListings,
+        (SELECT COUNT(*) FROM Transactions) as totalTransactions,
+        (SELECT COUNT(*) FROM Transactions WHERE status != 'COMPLETED') as activeTransactions,
+        (SELECT COUNT(*) FROM Transactions WHERE status = 'COMPLETED') as completedTransactions,
+        (SELECT COUNT(*) FROM PremiumRequests WHERE status = 'PENDING') as pendingPremiumRequests,
+        (SELECT COUNT(*) FROM Offers) as totalOffers,
+        (SELECT COUNT(*) FROM Offers WHERE status = 'PENDING') as pendingOffers,
+        (SELECT COALESCE(SUM(platformFee), 0) FROM Transactions WHERE status = 'COMPLETED') as totalRevenue
+    `;
 
-    // Return flat structure for frontend
-    return {
+    const [result] = await sequelize.query<{
+      totalUsers: string;
+      totalSellers: string;
+      totalBuyers: string;
+      activeUsers: string;
+      totalListings: string;
+      activeListings: string;
+      pendingListings: string;
+      soldListings: string;
+      totalTransactions: string;
+      activeTransactions: string;
+      completedTransactions: string;
+      pendingPremiumRequests: string;
+      totalOffers: string;
+      pendingOffers: string;
+      totalRevenue: string;
+    }>(statsQuery, { type: QueryTypes.SELECT });
+
+    const stats = {
       // Users
-      totalUsers,
-      totalSellers,
-      totalBuyers,
-      activeUsers,
+      totalUsers: parseInt(result.totalUsers || '0', 10),
+      totalSellers: parseInt(result.totalSellers || '0', 10),
+      totalBuyers: parseInt(result.totalBuyers || '0', 10),
+      activeUsers: parseInt(result.activeUsers || '0', 10),
       // Listings
-      totalListings,
-      activeListings,
-      pendingListings,
-      soldListings,
+      totalListings: parseInt(result.totalListings || '0', 10),
+      activeListings: parseInt(result.activeListings || '0', 10),
+      pendingListings: parseInt(result.pendingListings || '0', 10),
+      soldListings: parseInt(result.soldListings || '0', 10),
       // Transactions
-      totalTransactions,
-      activeTransactions,
-      completedTransactions,
+      totalTransactions: parseInt(result.totalTransactions || '0', 10),
+      activeTransactions: parseInt(result.activeTransactions || '0', 10),
+      completedTransactions: parseInt(result.completedTransactions || '0', 10),
       // Offers
-      totalOffers,
-      pendingOffers,
+      totalOffers: parseInt(result.totalOffers || '0', 10),
+      pendingOffers: parseInt(result.pendingOffers || '0', 10),
       // Premium
-      premiumRequests: pendingPremiumRequests,
+      premiumRequests: parseInt(result.pendingPremiumRequests || '0', 10),
       // Revenue
-      totalRevenue: revenueResult || 0,
+      totalRevenue: parseFloat(result.totalRevenue || '0'),
       monthlyRevenue: 0, // Would need date filtering for this
     };
+
+    // Cache for 5 minutes
+    await cacheService.set(cacheKey, stats, CacheTTL.MEDIUM);
+
+    return stats;
   }
 
   // Get pending listings for review
@@ -246,28 +259,58 @@ class AdminService {
       ],
     });
 
-    // Get counts for each user
-    const usersWithCounts = await Promise.all(
-      users.map(async (user) => {
-        const [listingsCount, sentOffersCount, buyerTransactionsCount, sellerTransactionsCount] =
-          await Promise.all([
-            Listing.count({ where: { sellerId: user.id } }),
-            (await import('../models')).Offer.count({ where: { buyerId: user.id } }),
-            Transaction.count({ where: { buyerId: user.id } }),
-            Transaction.count({ where: { sellerId: user.id } }),
-          ]);
+    // OPTIMIZED: Get counts for all users in a SINGLE query instead of N+1
+    // This reduces 4*N queries to just 1 query!
+    const userIds = users.map(u => u.id);
 
-        return {
-          ...user.toJSON(),
-          _count: {
-            listings: listingsCount,
-            sentOffers: sentOffersCount,
-            buyerTransactions: buyerTransactionsCount,
-            sellerTransactions: sellerTransactionsCount,
-          },
-        };
-      })
-    );
+    if (userIds.length === 0) {
+      return { users: [], pagination: getPaginationInfo(page, limit, total) };
+    }
+
+    // Single aggregated query for all user stats
+    const statsQuery = `
+      SELECT
+        u.id as userId,
+        COALESCE(l.cnt, 0) as listingsCount,
+        COALESCE(o.cnt, 0) as sentOffersCount,
+        COALESCE(tb.cnt, 0) as buyerTransactionsCount,
+        COALESCE(ts.cnt, 0) as sellerTransactionsCount
+      FROM Users u
+      LEFT JOIN (SELECT sellerId, COUNT(*) as cnt FROM Listings GROUP BY sellerId) l ON u.id = l.sellerId
+      LEFT JOIN (SELECT buyerId, COUNT(*) as cnt FROM Offers GROUP BY buyerId) o ON u.id = o.buyerId
+      LEFT JOIN (SELECT buyerId, COUNT(*) as cnt FROM Transactions GROUP BY buyerId) tb ON u.id = tb.buyerId
+      LEFT JOIN (SELECT sellerId, COUNT(*) as cnt FROM Transactions GROUP BY sellerId) ts ON u.id = ts.sellerId
+      WHERE u.id IN (:userIds)
+    `;
+
+    const stats = await sequelize.query<{
+      userId: string;
+      listingsCount: string;
+      sentOffersCount: string;
+      buyerTransactionsCount: string;
+      sellerTransactionsCount: string;
+    }>(statsQuery, {
+      replacements: { userIds },
+      type: QueryTypes.SELECT,
+    });
+
+    // Create a map for quick lookup
+    const statsMap = new Map(stats.map(s => [s.userId, {
+      listings: parseInt(s.listingsCount || '0', 10),
+      sentOffers: parseInt(s.sentOffersCount || '0', 10),
+      buyerTransactions: parseInt(s.buyerTransactionsCount || '0', 10),
+      sellerTransactions: parseInt(s.sellerTransactionsCount || '0', 10),
+    }]));
+
+    const usersWithCounts = users.map(user => ({
+      ...user.toJSON(),
+      _count: statsMap.get(user.id) || {
+        listings: 0,
+        sentOffers: 0,
+        buyerTransactions: 0,
+        sellerTransactions: 0,
+      },
+    }));
 
     return {
       users: usersWithCounts,
