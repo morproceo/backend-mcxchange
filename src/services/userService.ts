@@ -58,6 +58,7 @@ class UserService {
 
     if (!stats) {
       // Cache miss - use single aggregation query instead of 6 separate queries
+      // NOTE: Table names must be lowercase to match Sequelize-created tables on Linux (case-sensitive)
       const [result] = await sequelize.query<{
         listingsCount: string;
         sentOffersCount: string;
@@ -67,12 +68,12 @@ class UserService {
         reviewsReceivedCount: string;
       }>(`
         SELECT
-          (SELECT COUNT(*) FROM Listings WHERE sellerId = :userId) as listingsCount,
-          (SELECT COUNT(*) FROM Offers WHERE buyerId = :userId) as sentOffersCount,
-          (SELECT COUNT(*) FROM Offers WHERE sellerId = :userId) as receivedOffersCount,
-          (SELECT COUNT(*) FROM Transactions WHERE buyerId = :userId) as buyerTransactionsCount,
-          (SELECT COUNT(*) FROM Transactions WHERE sellerId = :userId) as sellerTransactionsCount,
-          (SELECT COUNT(*) FROM Reviews WHERE toUserId = :userId) as reviewsReceivedCount
+          (SELECT COUNT(*) FROM listings WHERE sellerId = :userId) as listingsCount,
+          (SELECT COUNT(*) FROM offers WHERE buyerId = :userId) as sentOffersCount,
+          (SELECT COUNT(*) FROM offers WHERE sellerId = :userId) as receivedOffersCount,
+          (SELECT COUNT(*) FROM transactions WHERE buyerId = :userId) as buyerTransactionsCount,
+          (SELECT COUNT(*) FROM transactions WHERE sellerId = :userId) as sellerTransactionsCount,
+          (SELECT COUNT(*) FROM reviews WHERE toUserId = :userId) as reviewsReceivedCount
       `, {
         replacements: { userId },
         type: QueryTypes.SELECT,

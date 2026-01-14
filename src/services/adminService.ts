@@ -40,23 +40,24 @@ class AdminService {
     }
 
     // OPTIMIZED: Use a single raw query instead of 14 separate COUNT queries
+    // NOTE: Table names must be lowercase to match Sequelize-created tables on Linux (case-sensitive)
     const statsQuery = `
       SELECT
-        (SELECT COUNT(*) FROM Users) as totalUsers,
-        (SELECT COUNT(*) FROM Users WHERE role = 'SELLER') as totalSellers,
-        (SELECT COUNT(*) FROM Users WHERE role = 'BUYER') as totalBuyers,
-        (SELECT COUNT(*) FROM Users WHERE status = 'ACTIVE') as activeUsers,
-        (SELECT COUNT(*) FROM Listings) as totalListings,
-        (SELECT COUNT(*) FROM Listings WHERE status = 'ACTIVE') as activeListings,
-        (SELECT COUNT(*) FROM Listings WHERE status = 'PENDING_REVIEW') as pendingListings,
-        (SELECT COUNT(*) FROM Listings WHERE status = 'SOLD') as soldListings,
-        (SELECT COUNT(*) FROM Transactions) as totalTransactions,
-        (SELECT COUNT(*) FROM Transactions WHERE status != 'COMPLETED') as activeTransactions,
-        (SELECT COUNT(*) FROM Transactions WHERE status = 'COMPLETED') as completedTransactions,
-        (SELECT COUNT(*) FROM PremiumRequests WHERE status = 'PENDING') as pendingPremiumRequests,
-        (SELECT COUNT(*) FROM Offers) as totalOffers,
-        (SELECT COUNT(*) FROM Offers WHERE status = 'PENDING') as pendingOffers,
-        (SELECT COALESCE(SUM(platformFee), 0) FROM Transactions WHERE status = 'COMPLETED') as totalRevenue
+        (SELECT COUNT(*) FROM users) as totalUsers,
+        (SELECT COUNT(*) FROM users WHERE role = 'SELLER') as totalSellers,
+        (SELECT COUNT(*) FROM users WHERE role = 'BUYER') as totalBuyers,
+        (SELECT COUNT(*) FROM users WHERE status = 'ACTIVE') as activeUsers,
+        (SELECT COUNT(*) FROM listings) as totalListings,
+        (SELECT COUNT(*) FROM listings WHERE status = 'ACTIVE') as activeListings,
+        (SELECT COUNT(*) FROM listings WHERE status = 'PENDING_REVIEW') as pendingListings,
+        (SELECT COUNT(*) FROM listings WHERE status = 'SOLD') as soldListings,
+        (SELECT COUNT(*) FROM transactions) as totalTransactions,
+        (SELECT COUNT(*) FROM transactions WHERE status != 'COMPLETED') as activeTransactions,
+        (SELECT COUNT(*) FROM transactions WHERE status = 'COMPLETED') as completedTransactions,
+        (SELECT COUNT(*) FROM premium_requests WHERE status = 'PENDING') as pendingPremiumRequests,
+        (SELECT COUNT(*) FROM offers) as totalOffers,
+        (SELECT COUNT(*) FROM offers WHERE status = 'PENDING') as pendingOffers,
+        (SELECT COALESCE(SUM(platformFee), 0) FROM transactions WHERE status = 'COMPLETED') as totalRevenue
     `;
 
     const [result] = await sequelize.query<{
@@ -268,6 +269,7 @@ class AdminService {
     }
 
     // Single aggregated query for all user stats
+    // NOTE: Table names must be lowercase to match Sequelize-created tables on Linux (case-sensitive)
     const statsQuery = `
       SELECT
         u.id as userId,
@@ -275,11 +277,11 @@ class AdminService {
         COALESCE(o.cnt, 0) as sentOffersCount,
         COALESCE(tb.cnt, 0) as buyerTransactionsCount,
         COALESCE(ts.cnt, 0) as sellerTransactionsCount
-      FROM Users u
-      LEFT JOIN (SELECT sellerId, COUNT(*) as cnt FROM Listings GROUP BY sellerId) l ON u.id = l.sellerId
-      LEFT JOIN (SELECT buyerId, COUNT(*) as cnt FROM Offers GROUP BY buyerId) o ON u.id = o.buyerId
-      LEFT JOIN (SELECT buyerId, COUNT(*) as cnt FROM Transactions GROUP BY buyerId) tb ON u.id = tb.buyerId
-      LEFT JOIN (SELECT sellerId, COUNT(*) as cnt FROM Transactions GROUP BY sellerId) ts ON u.id = ts.sellerId
+      FROM users u
+      LEFT JOIN (SELECT sellerId, COUNT(*) as cnt FROM listings GROUP BY sellerId) l ON u.id = l.sellerId
+      LEFT JOIN (SELECT buyerId, COUNT(*) as cnt FROM offers GROUP BY buyerId) o ON u.id = o.buyerId
+      LEFT JOIN (SELECT buyerId, COUNT(*) as cnt FROM transactions GROUP BY buyerId) tb ON u.id = tb.buyerId
+      LEFT JOIN (SELECT sellerId, COUNT(*) as cnt FROM transactions GROUP BY sellerId) ts ON u.id = ts.sellerId
       WHERE u.id IN (:userIds)
     `;
 
