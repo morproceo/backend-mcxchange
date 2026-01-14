@@ -763,6 +763,7 @@ Listing.init(
     sequelize,
     tableName: 'listings',
     indexes: [
+      // Single column indexes
       { fields: ['mcNumber'] },
       { fields: ['dotNumber'] },
       { fields: ['sellerId'] },
@@ -771,6 +772,11 @@ Listing.init(
       { fields: ['askingPrice'] },
       { fields: ['listingPrice'] },
       { fields: ['isPremium'] },
+      // Composite indexes for common search patterns (reduces query cost)
+      { fields: ['status', 'visibility'], name: 'idx_listings_status_visibility' },
+      { fields: ['status', 'state', 'isPremium'], name: 'idx_listings_search_filters' },
+      { fields: ['sellerId', 'status'], name: 'idx_listings_seller_status' },
+      { fields: ['status', 'createdAt'], name: 'idx_listings_status_created' },
     ],
   }
 );
@@ -963,10 +969,15 @@ Offer.init(
     sequelize,
     tableName: 'offers',
     indexes: [
+      // Single column indexes
       { fields: ['listingId'] },
       { fields: ['buyerId'] },
       { fields: ['sellerId'] },
       { fields: ['status'] },
+      // Composite indexes for common query patterns
+      { fields: ['listingId', 'buyerId', 'status'], name: 'idx_offers_listing_buyer_status' },
+      { fields: ['sellerId', 'status'], name: 'idx_offers_seller_status' },
+      { fields: ['buyerId', 'status'], name: 'idx_offers_buyer_status' },
     ],
   }
 );
@@ -1188,10 +1199,14 @@ Transaction.init(
     sequelize,
     tableName: 'transactions',
     indexes: [
+      // Single column indexes
       { fields: ['listingId'] },
       { fields: ['buyerId'] },
       { fields: ['sellerId'] },
       { fields: ['status'] },
+      // Composite indexes for common query patterns
+      { fields: ['buyerId', 'status'], name: 'idx_transactions_buyer_status' },
+      { fields: ['sellerId', 'status'], name: 'idx_transactions_seller_status' },
     ],
   }
 );

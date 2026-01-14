@@ -29,10 +29,10 @@ export const config = {
     name: process.env.DB_NAME || 'mc_exchange',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
-    // Connection pool settings
+    // Connection pool settings - keep low for JawsDB free tier (10 max connections)
     pool: {
-      max: parseInt(process.env.DB_POOL_MAX || '10', 10),
-      min: parseInt(process.env.DB_POOL_MIN || '0', 10),
+      max: parseInt(process.env.DB_POOL_MAX || '5', 10),      // Default 5 to leave headroom
+      min: parseInt(process.env.DB_POOL_MIN || '1', 10),      // Keep 1 warm connection
       acquire: parseInt(process.env.DB_POOL_ACQUIRE || '30000', 10),
       idle: parseInt(process.env.DB_POOL_IDLE || '10000', 10),
     },

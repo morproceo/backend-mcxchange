@@ -16,6 +16,8 @@ import {
 import { ListingQueryParams, CreateListingData, PaginationInfo } from '../types';
 import { NotFoundError, ForbiddenError } from '../middleware/errorHandler';
 import { getPaginationInfo } from '../utils/helpers';
+import { cacheService, CacheKeys, CacheTTL } from './cacheService';
+import logger from '../utils/logger';
 
 // Helper function to normalize safety rating to valid enum value
 function normalizeSafetyRating(rating: string | undefined | null): SafetyRating {
@@ -169,7 +171,21 @@ class ListingService {
         break;
     }
 
-    // Execute query
+    // Build cache key from query params (for search results caching)
+    const cacheKey = `${CacheKeys.LISTINGS}${JSON.stringify({
+      status, state, search, minPrice, maxPrice, safetyRating, amazonStatus,
+      verified, premium, highwaySetup, hasEmail, hasPhone, minYears,
+      sortBy, sellerId, page, limit,
+    })}`;
+
+    // Try to get from cache first (5 minute TTL)
+    const cached = await cacheService.get<{ listings: Listing[]; pagination: any }>(cacheKey);
+    if (cached) {
+      logger.debug('Cache hit for listings search', { cacheKey });
+      return cached;
+    }
+
+    // Execute query (cache miss)
     const { rows: listings, count: total } = await Listing.findAndCountAll({
       where,
       order,
@@ -188,7 +204,12 @@ class ListingService {
 
     const pagination = getPaginationInfo(page, limit, total);
 
-    return { listings, pagination };
+    const result = { listings, pagination };
+
+    // Cache the result for 5 minutes
+    await cacheService.set(cacheKey, result, CacheTTL.LISTING);
+
+    return result;
   }
 
   // Get single listing by ID
@@ -296,6 +317,9 @@ class ListingService {
       }],
     });
 
+    // Invalidate listings cache (new listing added)
+    await cacheService.delPattern(`${CacheKeys.LISTINGS}*`);
+
     return listingWithSeller;
   }
 
@@ -348,6 +372,9 @@ class ListingService {
       }],
     });
 
+    // Invalidate caches for this listing and search results
+    await cacheService.invalidateListing(id);
+
     return updated;
   }
 
@@ -369,6 +396,9 @@ class ListingService {
 
     await listing.update({ status: ListingStatus.PENDING_REVIEW });
 
+    // Invalidate caches (status changed)
+    await cacheService.invalidateListing(id);
+
     return listing;
   }
 
@@ -389,6 +419,9 @@ class ListingService {
     }
 
     await listing.destroy();
+
+    // Invalidate caches
+    await cacheService.invalidateListing(id);
 
     return { success: true };
   }

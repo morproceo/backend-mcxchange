@@ -286,8 +286,8 @@ class AuthService {
       throw new UnauthorizedError('Invalid refresh token');
     }
 
-    // Get user from association
-    const user = await User.findByPk(storedToken.userId);
+    // Use user from include (already fetched, avoid redundant query)
+    const user = storedToken.user;
     if (!user) {
       throw new UnauthorizedError('User not found');
     }

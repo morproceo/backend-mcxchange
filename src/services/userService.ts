@@ -1,4 +1,5 @@
-import { Op, fn, col } from 'sequelize';
+import { Op, fn, col, QueryTypes } from 'sequelize';
+import sequelize from '../config/database';
 import {
   User,
   Listing,
@@ -13,6 +14,8 @@ import {
 } from '../models';
 import { NotFoundError, ForbiddenError } from '../middleware/errorHandler';
 import { getPaginationInfo } from '../utils/helpers';
+import { cacheService, CacheKeys, CacheTTL } from './cacheService';
+import logger from '../utils/logger';
 
 interface UpdateProfileData {
   name?: string;
@@ -42,32 +45,64 @@ class UserService {
       throw new NotFoundError('User');
     }
 
-    // Get counts
-    const [
-      listingsCount,
-      sentOffersCount,
-      receivedOffersCount,
-      buyerTransactionsCount,
-      sellerTransactionsCount,
-      reviewsReceivedCount,
-    ] = await Promise.all([
-      Listing.count({ where: { sellerId: userId } }),
-      Offer.count({ where: { buyerId: userId } }),
-      Offer.count({ where: { sellerId: userId } }),
-      Transaction.count({ where: { buyerId: userId } }),
-      Transaction.count({ where: { sellerId: userId } }),
-      Review.count({ where: { toUserId: userId } }),
-    ]);
+    // Try to get cached stats first (avoids 6 COUNT queries)
+    const cacheKey = `${CacheKeys.USER}${userId}:stats`;
+    let stats = await cacheService.get<{
+      listingsCount: number;
+      sentOffersCount: number;
+      receivedOffersCount: number;
+      buyerTransactionsCount: number;
+      sellerTransactionsCount: number;
+      reviewsReceivedCount: number;
+    }>(cacheKey);
+
+    if (!stats) {
+      // Cache miss - use single aggregation query instead of 6 separate queries
+      const [result] = await sequelize.query<{
+        listingsCount: string;
+        sentOffersCount: string;
+        receivedOffersCount: string;
+        buyerTransactionsCount: string;
+        sellerTransactionsCount: string;
+        reviewsReceivedCount: string;
+      }>(`
+        SELECT
+          (SELECT COUNT(*) FROM Listings WHERE sellerId = :userId) as listingsCount,
+          (SELECT COUNT(*) FROM Offers WHERE buyerId = :userId) as sentOffersCount,
+          (SELECT COUNT(*) FROM Offers WHERE sellerId = :userId) as receivedOffersCount,
+          (SELECT COUNT(*) FROM Transactions WHERE buyerId = :userId) as buyerTransactionsCount,
+          (SELECT COUNT(*) FROM Transactions WHERE sellerId = :userId) as sellerTransactionsCount,
+          (SELECT COUNT(*) FROM Reviews WHERE toUserId = :userId) as reviewsReceivedCount
+      `, {
+        replacements: { userId },
+        type: QueryTypes.SELECT,
+      });
+
+      stats = {
+        listingsCount: parseInt(result.listingsCount || '0', 10),
+        sentOffersCount: parseInt(result.sentOffersCount || '0', 10),
+        receivedOffersCount: parseInt(result.receivedOffersCount || '0', 10),
+        buyerTransactionsCount: parseInt(result.buyerTransactionsCount || '0', 10),
+        sellerTransactionsCount: parseInt(result.sellerTransactionsCount || '0', 10),
+        reviewsReceivedCount: parseInt(result.reviewsReceivedCount || '0', 10),
+      };
+
+      // Cache for 10 minutes
+      await cacheService.set(cacheKey, stats, CacheTTL.USER);
+      logger.debug('Cached user stats', { userId, cacheKey });
+    } else {
+      logger.debug('Cache hit for user stats', { userId, cacheKey });
+    }
 
     return {
       ...user.toJSON(),
       _count: {
-        listings: listingsCount,
-        sentOffers: sentOffersCount,
-        receivedOffers: receivedOffersCount,
-        buyerTransactions: buyerTransactionsCount,
-        sellerTransactions: sellerTransactionsCount,
-        reviewsReceived: reviewsReceivedCount,
+        listings: stats.listingsCount,
+        sentOffers: stats.sentOffersCount,
+        receivedOffers: stats.receivedOffersCount,
+        buyerTransactions: stats.buyerTransactionsCount,
+        sellerTransactions: stats.sellerTransactionsCount,
+        reviewsReceived: stats.reviewsReceivedCount,
       },
     };
   }
@@ -91,6 +126,9 @@ class UserService {
       zipCode: data.zipCode,
       ein: data.ein,
     });
+
+    // Invalidate user stats cache
+    await cacheService.invalidateUser(userId);
 
     return user;
   }
