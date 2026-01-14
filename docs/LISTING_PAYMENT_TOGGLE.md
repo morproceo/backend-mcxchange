@@ -6,7 +6,18 @@ This feature allows administrators to control whether sellers must pay a listing
 
 ## Admin Configuration
 
-### Enable Payment Requirement (Default)
+### Using the Admin UI (Recommended)
+
+1. Go to **Admin Dashboard** → **Settings**
+2. In the **General** tab, find **"Site Features"** section
+3. Toggle **"Require Listing Payment"** ON or OFF
+4. Changes save automatically
+
+The toggle is highlighted with a border and includes a description explaining its purpose.
+
+### Using the API
+
+#### Enable Payment Requirement (Default)
 
 ```bash
 PUT /api/admin/settings
@@ -20,7 +31,7 @@ Content-Type: application/json
 }
 ```
 
-### Disable Payment Requirement
+#### Disable Payment Requirement
 
 ```bash
 PUT /api/admin/settings
@@ -36,7 +47,7 @@ Content-Type: application/json
 
 ## Frontend Integration
 
-### Check Setting (Public Endpoint)
+### Public Settings Endpoint
 
 ```bash
 GET /api/settings/public
@@ -52,32 +63,75 @@ GET /api/settings/public
 }
 ```
 
-### Frontend Logic
+### Create Listing Page Behavior
+
+The `CreateListingPage.tsx` component fetches the setting on mount and adjusts the UI:
+
+**When Payment Required (default):**
+- Shows 6 steps: Authority Info → Listing Details → Authority Details → Documents → **Payment** → Confirmation
+- Step 4 button: "Continue to Payment"
+- Redirects to Stripe checkout for $35 fee
+
+**When Payment Disabled:**
+- Shows 5 steps: Authority Info → Listing Details → Authority Details → Documents → Confirmation
+- Step 4 button: "Submit Listing"
+- Creates listing and submits for review directly (no payment)
+- Payment step completely hidden from UI and step indicators
+
+### Implementation Details
 
 ```javascript
-// On app load or before listing creation
-const response = await fetch('/api/settings/public');
-const { data } = await response.json();
+// CreateListingPage.tsx
 
-if (data.listingPaymentRequired) {
-  // Show payment step in listing creation flow
-} else {
-  // Skip payment step, go directly to submit
-}
+// Fetch setting on mount
+useEffect(() => {
+  const fetchPaymentSetting = async () => {
+    const response = await api.getPublicSettings()
+    setListingPaymentRequired(response.data.listingPaymentRequired)
+  }
+  fetchPaymentSetting()
+}, [])
+
+// Filter steps based on setting
+const stepInfo = listingPaymentRequired
+  ? allSteps
+  : allSteps.filter(s => !s.isPaymentStep)
 ```
 
 ## Flow Diagrams
 
-### With Payment Required (Default)
+### With Payment Required (Default) - 6 Steps
 
 ```
-Create Listing (DRAFT) → Pay Fee ($35) → Submit for Review → Admin Approves → ACTIVE
+Step 1: Authority Info
+    ↓
+Step 2: Listing Details
+    ↓
+Step 3: Authority Details
+    ↓
+Step 4: Documents
+    ↓
+Step 5: Payment ($35 via Stripe)
+    ↓
+Step 6: Confirmation
+    ↓
+Listing Status: PENDING_REVIEW → Admin Approves → ACTIVE
 ```
 
-### Without Payment Required
+### Without Payment Required - 5 Steps
 
 ```
-Create Listing (DRAFT) → Submit for Review → Admin Approves → ACTIVE
+Step 1: Authority Info
+    ↓
+Step 2: Listing Details
+    ↓
+Step 3: Authority Details
+    ↓
+Step 4: Documents → [Submit Listing]
+    ↓
+Step 5: Confirmation
+    ↓
+Listing Status: PENDING_REVIEW → Admin Approves → ACTIVE
 ```
 
 ## Database Schema
@@ -121,13 +175,23 @@ When a seller completes payment via Stripe checkout:
 
 ## Files Modified
 
+### Backend (`/backend/src/`)
+
 | File | Changes |
 |------|---------|
-| `src/models/index.ts` | Added `listingFeePaid` field to Listing model |
-| `src/services/adminService.ts` | Added `isListingPaymentRequired()` helper |
-| `src/services/listingService.ts` | Enforces payment in `submitForReview` |
-| `src/controllers/webhookController.ts` | Marks listing paid on checkout completion |
-| `src/routes/index.ts` | Added `/api/settings/public` endpoint |
+| `models/index.ts` | Added `listingFeePaid` field to Listing model |
+| `services/adminService.ts` | Added `isListingPaymentRequired()` helper |
+| `services/listingService.ts` | Enforces payment in `submitForReview` |
+| `controllers/webhookController.ts` | Marks listing paid on checkout completion |
+| `routes/index.ts` | Added `/api/settings/public` endpoint |
+
+### Frontend (`/frontend/src/`)
+
+| File | Changes |
+|------|---------|
+| `services/api.ts` | Added `getPublicSettings()`, `getPlatformSettings()`, `updatePlatformSettings()` |
+| `pages/AdminSettingsPage.tsx` | Added "Require Listing Payment" toggle in Site Features |
+| `pages/CreateListingPage.tsx` | Conditionally hides payment step based on setting |
 
 ## Testing
 
