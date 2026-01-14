@@ -369,6 +369,9 @@ export class RefreshToken extends Model {
   declare userId: string;
   declare expiresAt: Date;
   declare readonly createdAt: Date;
+
+  // Association
+  declare user?: User;
 }
 
 RefreshToken.init(
