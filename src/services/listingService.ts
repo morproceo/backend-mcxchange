@@ -394,6 +394,14 @@ class ListingService {
       throw new ForbiddenError('Only draft or rejected listings can be submitted for review');
     }
 
+    // Check if listing payment is required (admin-configurable setting)
+    const { adminService } = await import('./adminService');
+    const paymentRequired = await adminService.isListingPaymentRequired();
+
+    if (paymentRequired && !listing.listingFeePaid) {
+      throw new ForbiddenError('Listing fee payment is required before submission. Please complete the payment first.');
+    }
+
     await listing.update({ status: ListingStatus.PENDING_REVIEW });
 
     // Invalidate caches (status changed)

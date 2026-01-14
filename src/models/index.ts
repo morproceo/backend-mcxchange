@@ -571,6 +571,7 @@ export class Listing extends Model {
   declare publishedAt?: Date;
   declare soldAt?: Date;
   declare sellerId: string;
+  declare listingFeePaid: boolean;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 
@@ -760,6 +761,12 @@ Listing.init(
     sellerId: {
       type: DataTypes.UUID,
       allowNull: false,
+    },
+    listingFeePaid: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+      comment: 'Tracks whether the listing fee has been paid',
     },
   },
   {

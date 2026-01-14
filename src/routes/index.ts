@@ -153,6 +153,32 @@ router.get('/config', (_req: Request, res: Response) => {
   });
 });
 
+/**
+ * Get public platform settings (for frontend feature flags)
+ * Returns settings that control frontend behavior without requiring authentication
+ */
+router.get('/settings/public', async (_req: Request, res: Response) => {
+  try {
+    const { adminService } = await import('../services/adminService');
+    const listingPaymentRequired = await adminService.isListingPaymentRequired();
+
+    res.json({
+      success: true,
+      data: {
+        listingPaymentRequired,
+      },
+    });
+  } catch (error) {
+    // Default to true (payment required) on error for safety
+    res.json({
+      success: true,
+      data: {
+        listingPaymentRequired: true,
+      },
+    });
+  }
+});
+
 // ============================================
 // Mount API Routes
 // ============================================

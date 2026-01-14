@@ -866,6 +866,13 @@ class AdminService {
     return results;
   }
 
+  // Check if listing payment is required (admin-configurable)
+  async isListingPaymentRequired(): Promise<boolean> {
+    const setting = await this.getSetting('listing_payment_required');
+    // Default to true (payment required) if setting doesn't exist
+    return setting?.value !== false;
+  }
+
   // ==================== ANALYTICS ====================
 
   // Get revenue analytics

@@ -9,10 +9,13 @@ import {
   Payment,
   Subscription,
   Transaction,
+  Listing,
   PaymentStatus,
   PaymentType,
   SubscriptionPlan,
-  TransactionStatus
+  TransactionStatus,
+  ListingStatus,
+  NotificationType,
 } from '../models';
 import logger, { logError } from '../utils/logger';
 import { config } from '../config';
@@ -504,6 +507,67 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
       logger.warn('Transaction not found or not awaiting deposit', {
         transactionId,
         currentStatus: transaction?.status,
+      });
+    }
+  }
+
+  // Handle listing fee payments from checkout
+  if (type === 'listing_fee') {
+    const mcNumber = metadata?.mcNumber;
+    const sellerId = metadata?.sellerId;
+
+    if (!mcNumber || !sellerId) {
+      logger.warn('Listing fee checkout missing required metadata', {
+        sessionId: session.id,
+        metadata,
+      });
+      return;
+    }
+
+    // Find the listing by mcNumber and sellerId (only update DRAFT listings)
+    const listing = await Listing.findOne({
+      where: {
+        mcNumber,
+        sellerId,
+        status: ListingStatus.DRAFT,
+      },
+    });
+
+    if (listing) {
+      await listing.update({ listingFeePaid: true });
+
+      logger.info('Listing fee paid - listing marked as paid', {
+        listingId: listing.id,
+        mcNumber,
+        sellerId,
+      });
+
+      // Get seller for notification
+      const seller = await User.findByPk(sellerId);
+
+      if (seller) {
+        // Notify seller
+        await notificationService.create({
+          userId: sellerId,
+          type: NotificationType.SYSTEM,
+          title: 'Listing Fee Paid',
+          message: `Your listing fee for MC #${mcNumber} has been processed. You can now submit your listing for review.`,
+          link: '/seller/listings',
+        });
+
+        // Send email to seller
+        await emailService.sendPaymentReceived(seller.email, {
+          userName: seller.name,
+          mcNumber,
+          amount: session.amount_total ? session.amount_total / 100 : 35,
+          paymentType: 'listing fee',
+          transactionUrl: `${config.frontendUrl}/seller/listings`,
+        });
+      }
+    } else {
+      logger.warn('Listing not found for fee payment (or not in DRAFT status)', {
+        mcNumber,
+        sellerId,
       });
     }
   }
