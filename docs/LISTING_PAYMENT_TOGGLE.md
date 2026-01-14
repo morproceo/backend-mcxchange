@@ -173,6 +173,21 @@ When a seller completes payment via Stripe checkout:
 4. Updates `listingFeePaid = true`
 5. Sends notification to seller
 
+## Database Migration
+
+The `listingFeePaid` column must be added to the listings table. Run the migration:
+
+```bash
+# Via Heroku
+heroku run "node dist/migrations/add-listing-fee-paid.js" --app mcxchange
+
+# Or locally
+npx ts-node src/migrations/add-listing-fee-paid.ts
+
+# Or direct SQL
+ALTER TABLE listings ADD COLUMN listingFeePaid BOOLEAN DEFAULT false NOT NULL;
+```
+
 ## Files Modified
 
 ### Backend (`/backend/src/`)
@@ -184,6 +199,7 @@ When a seller completes payment via Stripe checkout:
 | `services/listingService.ts` | Enforces payment in `submitForReview` |
 | `controllers/webhookController.ts` | Marks listing paid on checkout completion |
 | `routes/index.ts` | Added `/api/settings/public` endpoint |
+| `migrations/add-listing-fee-paid.ts` | Migration to add column to database |
 
 ### Frontend (`/frontend/src/`)
 
