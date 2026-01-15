@@ -55,14 +55,14 @@ const createStore = async () => {
 
 /**
  * Global rate limiter - applies to all routes
- * Production: 300 requests per 15 minutes per IP (allows normal browsing)
- * Development: 1000 requests per 15 minutes per IP (more lenient for testing)
+ * Production: 500 requests per 15 minutes per IP (allows normal browsing)
+ * Development: 2000 requests per 15 minutes per IP (more lenient for testing)
  */
 export const globalLimiter = rateLimit({
   windowMs: parseInt(config.rateLimit?.windowMs || '900000'), // 15 minutes
   max: config.isDevelopment
-    ? 1000  // Much higher limit for development
-    : parseInt(config.rateLimit?.maxRequests || '300'),
+    ? 2000  // Much higher limit for development
+    : parseInt(config.rateLimit?.maxRequests || '500'),
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -77,12 +77,12 @@ export const globalLimiter = rateLimit({
 
 /**
  * Strict rate limiter for auth endpoints
- * Production: 20 requests per 15 minutes per IP (prevents brute force while allowing normal usage)
- * Development: 100 requests per 15 minutes (more lenient for testing)
+ * Production: 50 requests per 15 minutes per IP (prevents brute force while allowing normal usage)
+ * Development: 200 requests per 15 minutes (more lenient for testing)
  */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: config.isDevelopment ? 100 : 20,
+  max: config.isDevelopment ? 200 : 50,
   message: 'Too many authentication attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
