@@ -5,6 +5,7 @@ import { asyncHandler, BadRequestError } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { parseIntParam } from '../utils/helpers';
 import { config } from '../config';
+import { User } from '../models';
 
 // Get buyer dashboard stats
 export const getDashboardStats = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -128,12 +129,18 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
     throw new BadRequestError('Invalid subscription plan');
   }
 
-  // Get or create Stripe customer
+  // Get or create Stripe customer (validates existing ID and recreates if invalid)
   const customer = await stripeService.getOrCreateCustomer(
     req.user.id,
     req.user.email,
-    req.user.name || req.user.email
+    req.user.name || req.user.email,
+    req.user.stripeCustomerId || undefined
   );
+
+  // Update user's stripeCustomerId if it changed (new customer created)
+  if (customer.id !== req.user.stripeCustomerId) {
+    await User.update({ stripeCustomerId: customer.id }, { where: { id: req.user.id } });
+  }
 
   // Get the price ID for the selected plan
   const priceId = stripeService.getPriceId(
@@ -326,5 +333,47 @@ export const getStripePaymentHistory = asyncHandler(async (req: AuthRequest, res
       subscriptions: transformedSubscriptions,
       stripeCustomerId: user.stripeCustomerId,
     },
+  });
+});
+
+// Create a premium request for a listing
+export const createPremiumRequest = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { listingId, message } = req.body;
+
+  if (!listingId) {
+    res.status(400).json({ success: false, error: 'Listing ID is required' });
+    return;
+  }
+
+  const request = await buyerService.createPremiumRequest(req.user.id, listingId, message);
+
+  res.status(201).json({
+    success: true,
+    data: request,
+    message: 'Premium request submitted successfully. Admin will review your request.',
+  });
+});
+
+// Get buyer's premium requests
+export const getPremiumRequests = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const page = parseIntParam(req.query.page as string) || 1;
+  const limit = parseIntParam(req.query.limit as string) || 20;
+
+  const result = await buyerService.getPremiumRequests(req.user.id, page, limit);
+
+  res.json({
+    success: true,
+    data: result.requests,
+    pagination: result.pagination,
   });
 });

@@ -13,6 +13,8 @@ import {
   RefreshToken,
   Offer,
   AccountDispute,
+  UnlockedListing,
+  CreditTransaction,
   ListingStatus,
   UserStatus,
   PremiumRequestStatus,
@@ -21,6 +23,7 @@ import {
   UserRole,
   OfferStatus,
   AccountDisputeStatus,
+  CreditTransactionType,
 } from '../models';
 import { NotFoundError, BadRequestError } from '../middleware/errorHandler';
 import { getPaginationInfo, calculateDeposit, calculatePlatformFee } from '../utils/helpers';
@@ -478,7 +481,7 @@ class AdminService {
         {
           model: User,
           as: 'buyer',
-          attributes: ['id', 'name', 'email', 'phone', 'trustScore'],
+          attributes: ['id', 'name', 'email', 'phone', 'trustScore', 'totalCredits', 'usedCredits'],
         },
         {
           model: Listing,
@@ -502,19 +505,148 @@ class AdminService {
   }
 
   // Update premium request
+  // When status is COMPLETED, this will:
+  // 1. Validate buyer has sufficient credits
+  // 2. Deduct 1 credit from buyer
+  // 3. Create UnlockedListing record
+  // 4. Create credit transaction for audit trail
+  // 5. Send notification to buyer
   async updatePremiumRequest(requestId: string, adminId: string, status: PremiumRequestStatus, notes?: string) {
-    const request = await PremiumRequest.findByPk(requestId);
+    const request = await PremiumRequest.findByPk(requestId, {
+      include: [
+        { model: User, as: 'buyer' },
+        { model: Listing, as: 'listing' },
+      ],
+    });
 
     if (!request) {
       throw new NotFoundError('Premium request');
     }
 
+    // If approving (COMPLETED status), handle credit deduction and unlock
+    if (status === PremiumRequestStatus.COMPLETED && request.status !== PremiumRequestStatus.COMPLETED) {
+      const buyer = request.buyer as User;
+      const listing = request.listing as Listing;
+
+      if (!buyer || !listing) {
+        throw new BadRequestError('Invalid request data');
+      }
+
+      // Check if already unlocked
+      const existingUnlock = await UnlockedListing.findOne({
+        where: { userId: buyer.id, listingId: listing.id },
+      });
+
+      if (existingUnlock) {
+        throw new BadRequestError('Buyer already has access to this listing');
+      }
+
+      // Check buyer has sufficient credits
+      const availableCredits = buyer.totalCredits - buyer.usedCredits;
+      if (availableCredits < 1) {
+        throw new BadRequestError(`Buyer has insufficient credits (${availableCredits} available). Cannot approve request.`);
+      }
+
+      // Use transaction for atomicity
+      const t = await sequelize.transaction();
+
+      try {
+        // 1. Create UnlockedListing record
+        await UnlockedListing.create(
+          {
+            userId: buyer.id,
+            listingId: listing.id,
+            creditsUsed: 1,
+          },
+          { transaction: t }
+        );
+
+        // 2. Deduct credit from buyer
+        await buyer.update(
+          { usedCredits: buyer.usedCredits + 1 },
+          { transaction: t }
+        );
+
+        // 3. Record credit transaction for audit trail
+        await CreditTransaction.create(
+          {
+            userId: buyer.id,
+            type: CreditTransactionType.USAGE,
+            amount: -1,
+            balance: availableCredits - 1,
+            description: `Premium listing unlocked: MC-${listing.mcNumber}`,
+            reference: listing.id,
+          },
+          { transaction: t }
+        );
+
+        // 4. Update the premium request status
+        await request.update(
+          {
+            status: PremiumRequestStatus.COMPLETED,
+            adminNotes: notes,
+            contactedAt: new Date(),
+            contactedBy: adminId,
+          },
+          { transaction: t }
+        );
+
+        // 5. Create notification for buyer
+        await Notification.create(
+          {
+            type: NotificationType.SYSTEM,
+            title: 'Premium Access Granted',
+            message: `Your request for premium listing MC-${listing.mcNumber} has been approved. You can now view the full listing details.`,
+            userId: buyer.id,
+          },
+          { transaction: t }
+        );
+
+        await t.commit();
+
+        logger.info('Premium request approved', {
+          requestId,
+          buyerId: buyer.id,
+          listingId: listing.id,
+          adminId,
+          creditsDeducted: 1,
+          newBalance: availableCredits - 1,
+        });
+
+        // Reload request with associations for response
+        await request.reload({
+          include: [
+            { model: User, as: 'buyer', attributes: ['id', 'name', 'email', 'totalCredits', 'usedCredits'] },
+            { model: Listing, as: 'listing', attributes: ['id', 'mcNumber', 'title', 'price'] },
+          ],
+        });
+
+        return request;
+      } catch (error) {
+        await t.rollback();
+        logger.error('Failed to approve premium request', { requestId, error });
+        throw error;
+      }
+    }
+
+    // For other status updates (CONTACTED, IN_PROGRESS, CANCELLED), just update the status
     await request.update({
       status,
       adminNotes: notes,
-      contactedAt: status === PremiumRequestStatus.CONTACTED ? new Date() : undefined,
-      contactedBy: status === PremiumRequestStatus.CONTACTED ? adminId : undefined,
+      contactedAt: status === PremiumRequestStatus.CONTACTED ? new Date() : request.contactedAt,
+      contactedBy: status === PremiumRequestStatus.CONTACTED ? adminId : request.contactedBy,
     });
+
+    // If cancelled, notify buyer
+    if (status === PremiumRequestStatus.CANCELLED) {
+      const listing = await Listing.findByPk(request.listingId, { attributes: ['mcNumber'] });
+      await Notification.create({
+        type: NotificationType.SYSTEM,
+        title: 'Premium Request Cancelled',
+        message: `Your request for premium listing MC-${listing?.mcNumber || 'Unknown'} has been cancelled.${notes ? ` Reason: ${notes}` : ''}`,
+        userId: request.buyerId,
+      });
+    }
 
     return request;
   }

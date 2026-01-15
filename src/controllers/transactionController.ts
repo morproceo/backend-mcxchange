@@ -350,15 +350,17 @@ export const createDepositCheckout = asyncHandler(async (req: AuthRequest, res: 
     throw new NotFoundError('Buyer not found');
   }
 
-  // Get or create Stripe customer for the buyer
-  let stripeCustomerId = buyer.stripeCustomerId;
-  if (!stripeCustomerId) {
-    const customer = await stripeService.getOrCreateCustomer(
-      buyer.id,
-      buyer.email,
-      buyer.name
-    );
-    stripeCustomerId = customer.id;
+  // Get or create Stripe customer for the buyer (validates existing ID and recreates if invalid)
+  const customer = await stripeService.getOrCreateCustomer(
+    buyer.id,
+    buyer.email,
+    buyer.name,
+    buyer.stripeCustomerId || undefined
+  );
+  const stripeCustomerId = customer.id;
+
+  // Update user's stripeCustomerId if it changed (new customer created or old one was invalid)
+  if (stripeCustomerId !== buyer.stripeCustomerId) {
     await buyer.update({ stripeCustomerId });
   }
 

@@ -3,7 +3,7 @@ import { body } from 'express-validator';
 import { creditService } from '../services/creditService';
 import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
-import { SubscriptionPlan } from '../models';
+import { SubscriptionPlan, User } from '../models';
 import { parseIntParam } from '../utils/helpers';
 import { pricingConfigService } from '../services/pricingConfigService';
 import { stripeService } from '../services/stripeService';
@@ -221,16 +221,22 @@ export const purchaseCreditPack = asyncHandler(async (req: AuthRequest, res: Res
     return;
   }
 
-  // Get or create Stripe customer
+  // Get or create Stripe customer (validates existing ID and recreates if invalid)
   const customer = await stripeService.getOrCreateCustomer(
     req.user.id,
     req.user.email,
-    req.user.name
+    req.user.name,
+    req.user.stripeCustomerId || undefined
   );
 
   if (!customer) {
     res.status(500).json({ success: false, error: 'Failed to create customer' });
     return;
+  }
+
+  // Update user's stripeCustomerId if it changed (new customer created)
+  if (customer.id !== req.user.stripeCustomerId) {
+    await User.update({ stripeCustomerId: customer.id }, { where: { id: req.user.id } });
   }
 
   // Create checkout session for one-time payment

@@ -11,6 +11,8 @@ import {
   createSubscriptionCheckout,
   cancelSubscription,
   verifySubscription,
+  createPremiumRequest,
+  getPremiumRequests,
 } from '../controllers/buyerController';
 import { authenticate, buyerOnly, requireSubscription } from '../middleware/auth';
 
@@ -35,6 +37,10 @@ router.get('/purchases', requireSubscription, getPurchases);
 router.get('/saved', requireSubscription, getSavedListings);
 router.get('/unlocked', requireSubscription, getUnlockedListings);
 router.get('/transactions', requireSubscription, getTransactions);
+
+// Premium requests - require subscription to request premium access
+router.post('/premium-requests', requireSubscription, createPremiumRequest);
+router.get('/premium-requests', requireSubscription, getPremiumRequests);
 
 // Stripe payment history - no subscription required (to see payment history)
 router.get('/stripe-history', getStripePaymentHistory);

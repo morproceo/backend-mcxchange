@@ -139,17 +139,63 @@ class StripeService {
   }
 
   /**
+   * Validate that a Stripe customer exists, returns null if not found
+   */
+  async validateCustomer(customerId: string): Promise<Stripe.Customer | null> {
+    if (!stripe) return null;
+
+    try {
+      const customer = await stripe.customers.retrieve(customerId);
+      // Check if customer was deleted
+      if ((customer as any).deleted) {
+        logger.warn('Stripe customer was deleted', { customerId });
+        return null;
+      }
+      return customer as Stripe.Customer;
+    } catch (error: any) {
+      // Customer doesn't exist in Stripe
+      if (error?.code === 'resource_missing' || error?.statusCode === 404) {
+        logger.warn('Stripe customer not found', { customerId });
+        return null;
+      }
+      logError('Failed to validate Stripe customer', error as Error, { customerId });
+      return null;
+    }
+  }
+
+  /**
    * Get or create a Stripe customer for a user
+   * Now validates existing customer IDs and recreates if invalid
    */
   async getOrCreateCustomer(
     userId: string,
     email: string,
-    name: string
+    name: string,
+    existingCustomerId?: string
   ): Promise<Stripe.Customer> {
     if (!stripe) throw new BadRequestError('Payment service not available');
 
     try {
-      // Search for existing customer by metadata
+      // If we have an existing customer ID, validate it first
+      if (existingCustomerId) {
+        const validCustomer = await this.validateCustomer(existingCustomerId);
+        if (validCustomer) {
+          // Customer exists and is valid, update metadata if needed
+          if (!validCustomer.metadata?.userId) {
+            await stripe.customers.update(validCustomer.id, {
+              metadata: { ...validCustomer.metadata, userId },
+            });
+          }
+          return validCustomer;
+        }
+        // Customer ID is invalid, log warning and proceed to create new one
+        logger.warn('Stored Stripe customer ID is invalid, creating new customer', {
+          userId,
+          invalidCustomerId: existingCustomerId,
+        });
+      }
+
+      // Search for existing customer by email
       const existingCustomers = await stripe.customers.list({
         email,
         limit: 1,

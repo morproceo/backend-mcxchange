@@ -149,12 +149,18 @@ export const createListingFeeCheckout = asyncHandler(async (req: AuthRequest, re
     throw new BadRequestError('Success and cancel URLs are required');
   }
 
-  // Get or create Stripe customer for this user
+  // Get or create Stripe customer for this user (validates existing ID and recreates if invalid)
   const customer = await stripeService.getOrCreateCustomer(
     req.user.id,
     req.user.email,
-    req.user.name || req.user.email
+    req.user.name || req.user.email,
+    req.user.stripeCustomerId || undefined
   );
+
+  // Update user's stripeCustomerId if it changed (new customer created)
+  if (customer.id !== req.user.stripeCustomerId) {
+    await User.update({ stripeCustomerId: customer.id }, { where: { id: req.user.id } });
+  }
 
   // Create the checkout session for $35 listing fee
   const result = await stripeService.createListingFeeCheckout({

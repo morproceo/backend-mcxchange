@@ -1848,6 +1848,10 @@ export class PremiumRequest extends Model {
   declare listingId: string;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
+
+  // Associations (populated when included in queries)
+  declare buyer?: User;
+  declare listing?: Listing;
 }
 
 PremiumRequest.init(

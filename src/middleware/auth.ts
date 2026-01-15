@@ -35,7 +35,7 @@ export const authenticate = async (
 
     // Verify user still exists and is active
     const user = await User.findByPk(decoded.id, {
-      attributes: ['id', 'email', 'role', 'name', 'status'],
+      attributes: ['id', 'email', 'role', 'name', 'status', 'stripeCustomerId'],
     });
 
     if (!user) {
@@ -59,6 +59,7 @@ export const authenticate = async (
       email: user.email,
       role: user.role,
       name: user.name,
+      stripeCustomerId: user.stripeCustomerId,
     };
 
     next();

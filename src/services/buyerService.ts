@@ -14,6 +14,8 @@ import {
   SubscriptionStatus,
   SubscriptionPlan,
   CreditTransactionType,
+  PremiumRequest,
+  PremiumRequestStatus,
 } from '../models';
 import { getPaginationInfo } from '../utils/helpers';
 import { stripeService } from './stripeService';
@@ -483,6 +485,84 @@ class BuyerService {
       logger.error('Failed to fulfill subscription', { buyerId, error });
       throw error;
     }
+  }
+
+  // Create a premium request to access a premium listing
+  async createPremiumRequest(buyerId: string, listingId: string, message?: string) {
+    // Check if listing exists and is premium
+    const listing = await Listing.findByPk(listingId);
+    if (!listing) {
+      throw new NotFoundError('Listing not found');
+    }
+
+    if (!listing.isPremium) {
+      throw new BadRequestError('This listing is not premium. You can unlock it directly.');
+    }
+
+    // Check if buyer already has access (already unlocked)
+    const existingUnlock = await UnlockedListing.findOne({
+      where: { userId: buyerId, listingId },
+    });
+    if (existingUnlock) {
+      throw new BadRequestError('You already have access to this listing');
+    }
+
+    // Check if there's already a pending request
+    const existingRequest = await PremiumRequest.findOne({
+      where: {
+        buyerId,
+        listingId,
+        status: { [Op.in]: [PremiumRequestStatus.PENDING, PremiumRequestStatus.CONTACTED, PremiumRequestStatus.IN_PROGRESS] },
+      },
+    });
+    if (existingRequest) {
+      throw new BadRequestError('You already have a pending request for this listing');
+    }
+
+    // Check if buyer has enough credits
+    const user = await User.findByPk(buyerId);
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    const availableCredits = user.totalCredits - user.usedCredits;
+    if (availableCredits < 1) {
+      throw new BadRequestError('Insufficient credits. Please purchase more credits to request premium access.');
+    }
+
+    // Create the premium request
+    const request = await PremiumRequest.create({
+      buyerId,
+      listingId,
+      message,
+      status: PremiumRequestStatus.PENDING,
+    });
+
+    logger.info('Premium request created', { buyerId, listingId, requestId: request.id });
+
+    return request;
+  }
+
+  // Get buyer's premium requests
+  async getPremiumRequests(buyerId: string, page: number = 1, limit: number = 20) {
+    const offset = (page - 1) * limit;
+
+    const { rows: requests, count: total } = await PremiumRequest.findAndCountAll({
+      where: { buyerId },
+      order: [['createdAt', 'DESC']],
+      offset,
+      limit,
+      include: [{
+        model: Listing,
+        as: 'listing',
+        attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'price', 'city', 'state', 'isPremium'],
+      }],
+    });
+
+    return {
+      requests,
+      pagination: getPaginationInfo(page, limit, total),
+    };
   }
 }
 

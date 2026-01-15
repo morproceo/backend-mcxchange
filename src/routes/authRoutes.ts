@@ -15,16 +15,17 @@ import {
 } from '../controllers/authController';
 import { authenticate } from '../middleware/auth';
 import validate from '../middleware/validate';
+import { authLimiter, passwordResetLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
-// Public routes
-router.post('/register', validate(registerValidation), register);
-router.post('/login', validate(loginValidation), login);
-router.post('/refresh-token', refreshToken);
+// Public routes (with rate limiting)
+router.post('/register', authLimiter, validate(registerValidation), register);
+router.post('/login', authLimiter, validate(loginValidation), login);
+router.post('/refresh-token', authLimiter, refreshToken);
 router.post('/logout', logout);
-router.post('/forgot-password', requestPasswordReset);
-router.post('/verify-email', verifyEmail);
+router.post('/forgot-password', passwordResetLimiter, requestPasswordReset);
+router.post('/verify-email', authLimiter, verifyEmail);
 
 // Protected routes
 router.get('/me', authenticate, getCurrentUser);
