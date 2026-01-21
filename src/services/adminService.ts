@@ -2134,6 +2134,7 @@ class AdminService {
           userId: unlock.userId,
           userName: user?.name || 'Unknown',
           userEmail: user?.email || '',
+          listingId: unlock.listingId,
           mcNumber: listing?.mcNumber || 'N/A',
           listingTitle: listing?.title || 'Unknown',
           location: listing ? `${listing.city || ''}, ${listing.state || ''}`.trim().replace(/^,\s*|,\s*$/g, '') : '',
