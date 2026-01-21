@@ -2201,6 +2201,79 @@ AccountDispute.init(
   }
 );
 
+// ==================== USER TERMS ACCEPTANCE MODEL ====================
+// Tracks when users accept the Terms of Service - required for premium requests
+
+export class UserTermsAcceptance extends Model {
+  declare id: string;
+  declare userId: string;
+  declare termsVersion: string;
+  declare signatureName: string;
+  declare acceptedAt: Date;
+  declare ipAddress?: string;
+  declare userAgent?: string;
+  declare pdfUrl?: string;
+  declare emailedToAdminAt?: Date;
+  declare readonly createdAt: Date;
+
+  // Associations
+  declare readonly user?: User;
+}
+
+UserTermsAcceptance.init(
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+    },
+    termsVersion: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: '1.0',
+    },
+    signatureName: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    acceptedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
+    ipAddress: {
+      type: DataTypes.STRING(45),
+      allowNull: true,
+    },
+    userAgent: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    pdfUrl: {
+      type: DataTypes.STRING(500),
+      allowNull: true,
+    },
+    emailedToAdminAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+  },
+  {
+    sequelize,
+    tableName: 'user_terms_acceptances',
+    updatedAt: false,
+    indexes: [
+      { unique: true, fields: ['userId', 'termsVersion'] },
+      { fields: ['userId'] },
+      { fields: ['acceptedAt'] },
+    ],
+  }
+);
+
 // ==================== PROCESSED WEBHOOK EVENT MODEL ====================
 // Used for webhook idempotency - prevents duplicate processing of Stripe events
 
@@ -2356,6 +2429,10 @@ AccountDispute.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 AccountDispute.belongsTo(User, { foreignKey: 'resolvedBy', as: 'resolver' });
 User.hasMany(AccountDispute, { foreignKey: 'userId', as: 'accountDisputes' });
 
+// UserTermsAcceptance associations
+UserTermsAcceptance.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+User.hasMany(UserTermsAcceptance, { foreignKey: 'userId', as: 'termsAcceptances' });
+
 // Export all models
 export {
   sequelize,
@@ -2386,5 +2463,6 @@ export default {
   Consultation,
   AccountDispute,
   ProcessedWebhookEvent,
+  UserTermsAcceptance,
   sequelize,
 };

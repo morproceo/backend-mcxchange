@@ -1251,6 +1251,58 @@ class EmailService {
   }
 
   /**
+   * Send an email with attachments (generic method)
+   */
+  async sendEmail(options: {
+    to: string;
+    subject: string;
+    html: string;
+    text?: string;
+    attachments?: Array<{
+      filename: string;
+      content: Buffer | string;
+      contentType?: string;
+    }>;
+  }): Promise<boolean> {
+    if (!this.enabled || !this.transporter) {
+      logger.warn('Email not sent - service disabled', { to: options.to, subject: options.subject });
+      return false;
+    }
+
+    try {
+      const mailOptions: nodemailer.SendMailOptions = {
+        from: `${config.smtp.fromName} <${config.smtp.fromEmail}>`,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+        text: options.text || this.htmlToText(options.html),
+        attachments: options.attachments,
+      };
+
+      if (config.smtp.replyTo) {
+        mailOptions.replyTo = config.smtp.replyTo;
+      }
+
+      const result = await this.transporter.sendMail(mailOptions);
+
+      logger.info('Email with attachments sent successfully', {
+        to: options.to,
+        subject: options.subject,
+        messageId: result.messageId,
+        attachmentCount: options.attachments?.length || 0,
+      });
+
+      return true;
+    } catch (error) {
+      logError('Failed to send email with attachments', error as Error, {
+        to: options.to,
+        subject: options.subject,
+      });
+      return false;
+    }
+  }
+
+  /**
    * Send account blocked notification
    */
   async sendAccountBlockedEmail(

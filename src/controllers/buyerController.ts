@@ -377,3 +377,74 @@ export const getPremiumRequests = asyncHandler(async (req: AuthRequest, res: Res
     pagination: result.pagination,
   });
 });
+
+// ============ Terms of Service ============
+
+// Get user's terms acceptance status
+export const getTermsStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const termsVersion = (req.query.version as string) || '1.0';
+  const status = await buyerService.getTermsStatus(req.user.id, termsVersion);
+
+  res.json({
+    success: true,
+    data: status,
+  });
+});
+
+// Accept terms of service
+export const acceptTerms = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { signatureName, termsVersion } = req.body;
+
+  if (!signatureName || signatureName.trim().length < 2) {
+    res.status(400).json({
+      success: false,
+      error: 'Signature name is required (at least 2 characters)'
+    });
+    return;
+  }
+
+  // Get IP address and user agent for legal records
+  const ipAddress = req.ip || req.headers['x-forwarded-for']?.toString() || undefined;
+  const userAgent = req.headers['user-agent'];
+
+  const result = await buyerService.acceptTerms(
+    req.user.id,
+    signatureName.trim(),
+    ipAddress,
+    userAgent,
+    termsVersion || '1.0'
+  );
+
+  if (result.alreadyAccepted) {
+    res.json({
+      success: true,
+      data: {
+        hasAccepted: true,
+        acceptedAt: result.acceptance.acceptedAt,
+        signatureName: result.acceptance.signatureName,
+      },
+      message: 'Terms already accepted',
+    });
+    return;
+  }
+
+  res.status(201).json({
+    success: true,
+    data: {
+      hasAccepted: true,
+      acceptedAt: result.acceptance.acceptedAt,
+      signatureName: result.acceptance.signatureName,
+    },
+    message: 'Terms of Service accepted successfully',
+  });
+});

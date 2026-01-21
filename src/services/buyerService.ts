@@ -15,6 +15,7 @@ import {
   SubscriptionPlan,
   PremiumRequest,
   PremiumRequestStatus,
+  UserTermsAcceptance,
 } from '../models';
 import { getPaginationInfo } from '../utils/helpers';
 import { stripeService } from './stripeService';
@@ -549,6 +550,190 @@ class BuyerService {
       requests,
       pagination: getPaginationInfo(page, limit, total),
     };
+  }
+
+  // ============ Terms of Service Methods ============
+
+  // Check if user has accepted the current terms
+  async getTermsStatus(userId: string, termsVersion: string = '1.0') {
+    const acceptance = await UserTermsAcceptance.findOne({
+      where: {
+        userId,
+        termsVersion,
+      },
+    });
+
+    if (acceptance) {
+      return {
+        hasAccepted: true,
+        acceptedAt: acceptance.acceptedAt,
+        signatureName: acceptance.signatureName,
+        termsVersion: acceptance.termsVersion,
+      };
+    }
+
+    return {
+      hasAccepted: false,
+      acceptedAt: null,
+      signatureName: null,
+      termsVersion,
+    };
+  }
+
+  // Accept terms of service
+  async acceptTerms(
+    userId: string,
+    signatureName: string,
+    ipAddress?: string,
+    userAgent?: string,
+    termsVersion: string = '1.0'
+  ) {
+    // Check if already accepted this version
+    const existing = await UserTermsAcceptance.findOne({
+      where: {
+        userId,
+        termsVersion,
+      },
+    });
+
+    if (existing) {
+      return {
+        alreadyAccepted: true,
+        acceptance: existing,
+      };
+    }
+
+    // Get user for the PDF
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new NotFoundError('User not found');
+    }
+
+    // Create the acceptance record
+    const acceptance = await UserTermsAcceptance.create({
+      userId,
+      signatureName,
+      termsVersion,
+      acceptedAt: new Date(),
+      ipAddress,
+      userAgent,
+    });
+
+    // Generate PDF and email admin (async - don't wait)
+    this.generateTermsPdfAndEmailAdmin(acceptance, user).catch((err) => {
+      logger.error('Failed to generate terms PDF or email admin:', err);
+    });
+
+    return {
+      alreadyAccepted: false,
+      acceptance,
+    };
+  }
+
+  // Generate PDF and email to admin (called asynchronously)
+  private async generateTermsPdfAndEmailAdmin(
+    acceptance: UserTermsAcceptance,
+    user: User
+  ) {
+    try {
+      // Import dynamically to avoid issues if pdfkit isn't installed
+      const PDFDocument = (await import('pdfkit')).default;
+      const { emailService } = await import('./emailService');
+
+      // Create PDF in memory
+      const doc = new PDFDocument({ margin: 50 });
+      const chunks: Buffer[] = [];
+
+      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+
+      // Add content to PDF
+      doc
+        .fontSize(20)
+        .text('MC-Xchange Terms of Service Acceptance', { align: 'center' })
+        .moveDown();
+
+      doc
+        .fontSize(12)
+        .text(`Document ID: ${acceptance.id}`)
+        .text(`Terms Version: ${acceptance.termsVersion}`)
+        .moveDown();
+
+      doc
+        .fontSize(14)
+        .text('User Information', { underline: true })
+        .fontSize(12)
+        .text(`Name: ${user.name}`)
+        .text(`Email: ${user.email}`)
+        .text(`User ID: ${user.id}`)
+        .moveDown();
+
+      doc
+        .fontSize(14)
+        .text('Acceptance Details', { underline: true })
+        .fontSize(12)
+        .text(`Signature Name: ${acceptance.signatureName}`)
+        .text(`Accepted At: ${acceptance.acceptedAt.toISOString()}`)
+        .text(`IP Address: ${acceptance.ipAddress || 'Not recorded'}`)
+        .moveDown();
+
+      doc
+        .fontSize(10)
+        .text('This document confirms that the user has read and accepted the MC-Xchange Terms of Service.', { align: 'center' })
+        .moveDown(2);
+
+      doc
+        .fontSize(14)
+        .text('Electronic Signature:', { underline: true })
+        .moveDown()
+        .fontSize(16)
+        .font('Helvetica-Oblique')
+        .text(acceptance.signatureName, { align: 'center' })
+        .font('Helvetica')
+        .fontSize(10)
+        .text(`Signed on: ${acceptance.acceptedAt.toLocaleString()}`, { align: 'center' });
+
+      doc.end();
+
+      // Wait for PDF to finish
+      const pdfBuffer = await new Promise<Buffer>((resolve) => {
+        doc.on('end', () => {
+          resolve(Buffer.concat(chunks));
+        });
+      });
+
+      // Email to admin with PDF attachment
+      await emailService.sendEmail({
+        to: 'admin@domilea.com',
+        subject: `Terms Accepted: ${user.name} (${user.email})`,
+        html: `
+          <h2>New Terms of Service Acceptance</h2>
+          <p><strong>User:</strong> ${user.name}</p>
+          <p><strong>Email:</strong> ${user.email}</p>
+          <p><strong>Signature:</strong> ${acceptance.signatureName}</p>
+          <p><strong>Accepted At:</strong> ${acceptance.acceptedAt.toLocaleString()}</p>
+          <p><strong>Terms Version:</strong> ${acceptance.termsVersion}</p>
+          <p><strong>IP Address:</strong> ${acceptance.ipAddress || 'Not recorded'}</p>
+          <p>The signed Terms of Service acceptance document is attached as a PDF.</p>
+        `,
+        attachments: [
+          {
+            filename: `terms-acceptance-${user.id}-${Date.now()}.pdf`,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          },
+        ],
+      });
+
+      // Update acceptance record with email timestamp
+      await acceptance.update({
+        emailedToAdminAt: new Date(),
+      });
+
+      logger.info(`Terms acceptance PDF generated and emailed for user ${user.id}`);
+    } catch (error) {
+      logger.error('Error generating terms PDF or emailing admin:', error);
+      throw error;
+    }
   }
 }
 

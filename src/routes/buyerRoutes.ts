@@ -13,6 +13,8 @@ import {
   verifySubscription,
   createPremiumRequest,
   getPremiumRequests,
+  getTermsStatus,
+  acceptTerms,
 } from '../controllers/buyerController';
 import { authenticate, buyerOnly, requireSubscription } from '../middleware/auth';
 
@@ -44,5 +46,9 @@ router.get('/premium-requests', requireSubscription, getPremiumRequests);
 
 // Stripe payment history - no subscription required (to see payment history)
 router.get('/stripe-history', getStripePaymentHistory);
+
+// Terms of Service - no subscription required
+router.get('/terms-status', getTermsStatus);
+router.post('/accept-terms', acceptTerms);
 
 export default router;
