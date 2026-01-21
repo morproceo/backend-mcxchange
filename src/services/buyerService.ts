@@ -671,7 +671,7 @@ class BuyerService {
         .font('Helvetica-Bold')
         .text('DISCLOSING PARTY: ', { continued: true })
         .font('Helvetica')
-        .text('The Domilea Group, a Pennsylvania limited liability company ("Provider"), acting in its capacity as the exclusive marketing consultant and intermediary for the owner(s) of the business opportunities presented hereunder ("Seller"); and')
+        .text('The Domilea Group, an Illinois limited liability company ("Provider"), acting in its capacity as the exclusive marketing consultant and intermediary for the owner(s) of the business opportunities presented hereunder ("Seller"); and')
         .moveDown(0.5);
 
       doc
