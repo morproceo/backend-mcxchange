@@ -989,3 +989,33 @@ export const getUserActivityLog = asyncHandler(async (req: AuthRequest, res: Res
     data: activityLog,
   });
 });
+
+// Get comprehensive activity log with filters
+export const getActivityLog = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const {
+    type,
+    userId,
+    mcNumber,
+    actionType,
+    dateFrom,
+    dateTo,
+    page,
+    limit,
+  } = req.query;
+
+  const activityLog = await adminService.getActivityLog({
+    type: type as string,
+    userId: userId as string,
+    mcNumber: mcNumber as string,
+    actionType: actionType as string,
+    dateFrom: dateFrom as string,
+    dateTo: dateTo as string,
+    page: page ? parseInt(page as string) : undefined,
+    limit: limit ? parseInt(limit as string) : undefined,
+  });
+
+  res.json({
+    success: true,
+    data: activityLog,
+  });
+});

@@ -2201,6 +2201,50 @@ AccountDispute.init(
   }
 );
 
+// ==================== PROCESSED WEBHOOK EVENT MODEL ====================
+// Used for webhook idempotency - prevents duplicate processing of Stripe events
+
+export class ProcessedWebhookEvent extends Model {
+  declare id: string;
+  declare eventId: string;
+  declare eventType: string;
+  declare processedAt: Date;
+  declare readonly createdAt: Date;
+}
+
+ProcessedWebhookEvent.init(
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    eventId: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      unique: true,
+    },
+    eventType: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+    },
+    processedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    sequelize,
+    tableName: 'processed_webhook_events',
+    updatedAt: false,
+    indexes: [
+      { unique: true, fields: ['eventId'] },
+      { fields: ['eventType'] },
+      { fields: ['processedAt'] },
+    ],
+  }
+);
+
 // ==================== ASSOCIATIONS ====================
 
 // User associations
@@ -2341,5 +2385,6 @@ export default {
   PlatformSetting,
   Consultation,
   AccountDispute,
+  ProcessedWebhookEvent,
   sequelize,
 };

@@ -2058,6 +2058,243 @@ class AdminService {
       creditTransactions: formattedTransactions,
     };
   }
+
+  // Get comprehensive activity log with filters
+  async getActivityLog(filters: {
+    type?: string; // 'all' | 'unlocks' | 'credits' | 'admin_actions'
+    userId?: string;
+    mcNumber?: string;
+    actionType?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const {
+      type = 'all',
+      userId,
+      mcNumber,
+      actionType,
+      dateFrom,
+      dateTo,
+      page = 1,
+      limit = 50,
+    } = filters;
+
+    const offset = (page - 1) * limit;
+    const results: any[] = [];
+
+    // Build date filter
+    const dateFilter: any = {};
+    if (dateFrom) {
+      dateFilter[Op.gte] = new Date(dateFrom);
+    }
+    if (dateTo) {
+      dateFilter[Op.lte] = new Date(dateTo + 'T23:59:59.999Z');
+    }
+
+    // Get unlocked listings
+    if (type === 'all' || type === 'unlocks') {
+      const unlockWhere: any = {};
+      if (userId) unlockWhere.userId = userId;
+      if (dateFrom || dateTo) unlockWhere.createdAt = dateFilter;
+
+      // If filtering by MC number, we need to join with listings
+      const unlockInclude: any[] = [
+        {
+          model: Listing,
+          as: 'listing',
+          attributes: ['id', 'mcNumber', 'title', 'legalName', 'city', 'state'],
+          ...(mcNumber ? { where: { mcNumber: { [Op.like]: `%${mcNumber}%` } } } : {}),
+        },
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'name', 'email'],
+        },
+      ];
+
+      const unlocks = await UnlockedListing.findAll({
+        where: unlockWhere,
+        include: unlockInclude,
+        order: [['createdAt', 'DESC']],
+      });
+
+      for (const unlock of unlocks) {
+        const listing = (unlock as any).listing;
+        const user = (unlock as any).user;
+
+        // Skip if MC number filter is set but listing doesn't match (due to inner join behavior)
+        if (mcNumber && !listing) continue;
+
+        results.push({
+          id: unlock.id,
+          activityType: 'UNLOCK',
+          timestamp: unlock.createdAt,
+          userId: unlock.userId,
+          userName: user?.name || 'Unknown',
+          userEmail: user?.email || '',
+          mcNumber: listing?.mcNumber || 'N/A',
+          listingTitle: listing?.title || 'Unknown',
+          location: listing ? `${listing.city || ''}, ${listing.state || ''}`.trim().replace(/^,\s*|,\s*$/g, '') : '',
+          creditsUsed: unlock.creditsUsed,
+          description: `Unlocked MC #${listing?.mcNumber || 'N/A'}`,
+        });
+      }
+    }
+
+    // Get credit transactions
+    if (type === 'all' || type === 'credits') {
+      const creditWhere: any = {};
+      if (userId) creditWhere.userId = userId;
+      if (dateFrom || dateTo) creditWhere.createdAt = dateFilter;
+      if (actionType && ['PURCHASE', 'USAGE', 'REFUND', 'BONUS', 'EXPIRED', 'SUBSCRIPTION'].includes(actionType)) {
+        creditWhere.type = actionType;
+      }
+
+      const credits = await CreditTransaction.findAll({
+        where: creditWhere,
+        include: [
+          {
+            model: User,
+            as: 'user',
+            attributes: ['id', 'name', 'email'],
+          },
+        ],
+        order: [['createdAt', 'DESC']],
+      });
+
+      for (const credit of credits) {
+        const user = (credit as any).user;
+        let mcNumberFromRef: string | null = null;
+        let listingTitle: string | null = null;
+
+        // Get MC number from reference if it's a listing ID
+        if (credit.reference) {
+          const listing = await Listing.findByPk(credit.reference, {
+            attributes: ['mcNumber', 'title'],
+          });
+          if (listing) {
+            mcNumberFromRef = listing.mcNumber;
+            listingTitle = listing.title;
+          }
+        }
+
+        // Skip if filtering by MC number and this transaction doesn't match
+        if (mcNumber && mcNumberFromRef && !mcNumberFromRef.includes(mcNumber)) continue;
+        if (mcNumber && !mcNumberFromRef) continue;
+
+        results.push({
+          id: credit.id,
+          activityType: 'CREDIT',
+          creditType: credit.type,
+          timestamp: credit.createdAt,
+          userId: credit.userId,
+          userName: user?.name || 'Unknown',
+          userEmail: user?.email || '',
+          mcNumber: mcNumberFromRef,
+          listingTitle,
+          amount: credit.amount,
+          balance: credit.balance,
+          description: credit.description || `Credit ${credit.type.toLowerCase()}`,
+        });
+      }
+    }
+
+    // Get admin actions
+    if (type === 'all' || type === 'admin_actions') {
+      const actionWhere: any = {};
+      if (dateFrom || dateTo) actionWhere.createdAt = dateFilter;
+      if (actionType && !['PURCHASE', 'USAGE', 'REFUND', 'BONUS', 'EXPIRED', 'SUBSCRIPTION'].includes(actionType)) {
+        actionWhere.action = actionType;
+      }
+
+      const actions = await AdminAction.findAll({
+        where: actionWhere,
+        include: [
+          {
+            model: User,
+            as: 'admin',
+            attributes: ['id', 'name', 'email'],
+          },
+        ],
+        order: [['createdAt', 'DESC']],
+      });
+
+      for (const action of actions) {
+        const admin = (action as any).admin;
+        let targetUserName: string | null = null;
+        let targetUserEmail: string | null = null;
+        let mcNumberFromAction: string | null = null;
+
+        // Get target user info if targetType is USER
+        if (action.targetType === 'USER') {
+          const targetUser = await User.findByPk(action.targetId, {
+            attributes: ['name', 'email'],
+          });
+          if (targetUser) {
+            targetUserName = targetUser.name;
+            targetUserEmail = targetUser.email;
+          }
+        }
+
+        // Get MC number if targetType is LISTING
+        if (action.targetType === 'LISTING') {
+          const listing = await Listing.findByPk(action.targetId, {
+            attributes: ['mcNumber', 'title'],
+          });
+          if (listing) {
+            mcNumberFromAction = listing.mcNumber;
+          }
+        }
+
+        // Skip if filtering by MC number and this action doesn't match
+        if (mcNumber && mcNumberFromAction && !mcNumberFromAction.includes(mcNumber)) continue;
+        if (mcNumber && !mcNumberFromAction && action.targetType === 'LISTING') continue;
+
+        // Skip if filtering by userId and this action doesn't involve that user
+        if (userId && action.targetType === 'USER' && action.targetId !== userId) continue;
+
+        results.push({
+          id: action.id,
+          activityType: 'ADMIN_ACTION',
+          actionType: action.action,
+          targetType: action.targetType,
+          targetId: action.targetId,
+          timestamp: action.createdAt,
+          adminId: action.adminId,
+          adminName: admin?.name || 'Unknown',
+          adminEmail: admin?.email || '',
+          targetUserName,
+          targetUserEmail,
+          mcNumber: mcNumberFromAction,
+          reason: action.reason,
+          description: `${action.action.replace(/_/g, ' ')} - ${action.targetType}`,
+          metadata: action.metadata ? JSON.parse(action.metadata) : null,
+        });
+      }
+    }
+
+    // Sort all results by timestamp descending
+    results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    // Apply pagination
+    const total = results.length;
+    const paginatedResults = results.slice(offset, offset + limit);
+
+    // Get summary stats
+    const stats = {
+      totalUnlocks: results.filter(r => r.activityType === 'UNLOCK').length,
+      totalCredits: results.filter(r => r.activityType === 'CREDIT').length,
+      totalAdminActions: results.filter(r => r.activityType === 'ADMIN_ACTION').length,
+    };
+
+    return {
+      activities: paginatedResults,
+      stats,
+      pagination: getPaginationInfo(page, limit, total),
+    };
+  }
 }
 
 export const adminService = new AdminService();

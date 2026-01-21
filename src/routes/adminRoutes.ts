@@ -48,6 +48,7 @@ import {
   getNotificationSettings,
   updateNotificationSettings,
   getUserActivityLog,
+  getActivityLog,
 } from '../controllers/adminController';
 import { authenticate, adminOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
@@ -95,6 +96,7 @@ router.post('/offers/:id/reject', adminRejectOffer);
 
 // Action log
 router.get('/action-log', getActionLog);
+router.get('/activity-log', getActivityLog);
 
 // Settings
 router.get('/settings', getSettings);

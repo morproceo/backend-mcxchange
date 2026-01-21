@@ -16,9 +16,39 @@ import {
   TransactionStatus,
   ListingStatus,
   NotificationType,
+  ProcessedWebhookEvent,
 } from '../models';
 import logger, { logError } from '../utils/logger';
 import { config } from '../config';
+
+// ============================================
+// Webhook Idempotency Helpers
+// ============================================
+
+/**
+ * Check if a webhook event has already been processed
+ * @param eventId - The Stripe event ID
+ * @returns true if already processed, false otherwise
+ */
+async function isEventAlreadyProcessed(eventId: string): Promise<boolean> {
+  const existing = await ProcessedWebhookEvent.findOne({
+    where: { eventId },
+  });
+  return !!existing;
+}
+
+/**
+ * Record a webhook event as processed
+ * @param eventId - The Stripe event ID
+ * @param eventType - The type of event (e.g., 'customer.subscription.created')
+ */
+async function markEventAsProcessed(eventId: string, eventType: string): Promise<void> {
+  await ProcessedWebhookEvent.create({
+    eventId,
+    eventType,
+    processedAt: new Date(),
+  });
+}
 
 // ============================================
 // Stripe Webhook Handler
@@ -45,6 +75,17 @@ export const handleStripeWebhook = async (req: Request, res: Response): Promise<
     type: event.type,
     eventId: event.id,
   });
+
+  // Check for idempotency - skip if already processed
+  const alreadyProcessed = await isEventAlreadyProcessed(event.id);
+  if (alreadyProcessed) {
+    logger.info('Webhook event already processed, skipping', {
+      type: event.type,
+      eventId: event.id,
+    });
+    res.json({ received: true, skipped: true });
+    return;
+  }
 
   try {
     // Handle different event types
@@ -97,6 +138,9 @@ export const handleStripeWebhook = async (req: Request, res: Response): Promise<
       default:
         logger.debug('Unhandled webhook event type', { type: event.type });
     }
+
+    // Mark event as processed for idempotency
+    await markEventAsProcessed(event.id, event.type);
 
     res.json({ received: true });
   } catch (error) {
@@ -570,6 +614,60 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
         sellerId,
       });
     }
+  }
+
+  // Handle credit pack purchases from checkout
+  if (type === 'credit_pack') {
+    const userId = metadata?.userId;
+    const credits = parseInt(metadata?.credits || '0');
+    const packId = metadata?.packId;
+
+    if (!userId || credits <= 0) {
+      logger.warn('Credit pack checkout missing required metadata', {
+        sessionId: session.id,
+        metadata,
+      });
+      return;
+    }
+
+    // Get user
+    const user = await User.findByPk(userId);
+    if (!user) {
+      logger.error('User not found for credit pack purchase', { userId });
+      return;
+    }
+
+    // Add credits to user
+    await creditService.addCredits(
+      userId,
+      credits,
+      'PURCHASE',
+      `Credit pack purchase - ${credits} credits`
+    );
+
+    logger.info('Credit pack purchase completed', {
+      userId,
+      credits,
+      packId,
+      sessionId: session.id,
+    });
+
+    // Notify user
+    await notificationService.create({
+      userId,
+      type: NotificationType.SYSTEM,
+      title: 'Credits Added',
+      message: `${credits} credits have been added to your account.`,
+      link: '/buyer/subscription',
+    });
+
+    // Send email to user
+    await emailService.sendPaymentReceived(user.email, {
+      userName: user.name,
+      mcNumber: 'N/A',
+      amount: session.amount_total ? session.amount_total / 100 : 0,
+      paymentType: 'credit pack',
+    });
   }
 }
 

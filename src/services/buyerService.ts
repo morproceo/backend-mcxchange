@@ -13,7 +13,6 @@ import {
   Payment,
   SubscriptionStatus,
   SubscriptionPlan,
-  CreditTransactionType,
   PremiumRequest,
   PremiumRequestStatus,
 } from '../models';
@@ -423,6 +422,8 @@ class BuyerService {
 
     try {
       // Create or update subscription in our database
+      // NOTE: Credits are NOT added here - they are granted via webhook (customer.subscription.created)
+      // to avoid double credit granting. This method only syncs the subscription record.
       if (subscription) {
         await subscription.update({
           plan,
@@ -452,32 +453,17 @@ class BuyerService {
         }, { transaction: t });
       }
 
-      // Add credits to user
-      const newTotal = user.totalCredits + planDetails.credits;
-      await user.update({ totalCredits: newTotal }, { transaction: t });
-
-      // Record credit transaction
-      await CreditTransaction.create({
-        userId: buyerId,
-        type: CreditTransactionType.SUBSCRIPTION,
-        amount: planDetails.credits,
-        balance: newTotal - user.usedCredits,
-        description: `${planDetails.name} subscription - ${planDetails.credits} credits`,
-        reference: subscription.id,
-      }, { transaction: t });
-
       await t.commit();
 
-      logger.info('Subscription fulfilled successfully', {
+      logger.info('Subscription record synced successfully', {
         buyerId,
         plan,
-        credits: planDetails.credits,
         stripeSubscriptionId: stripeSubscription.id,
       });
 
       return {
         fulfilled: true,
-        message: 'Subscription activated and credits added',
+        message: 'Subscription verified and synced',
         subscription: await this.getSubscription(buyerId),
       };
     } catch (error) {
