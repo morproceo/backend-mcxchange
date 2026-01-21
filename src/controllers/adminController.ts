@@ -973,3 +973,19 @@ export const updateNotificationSettings = asyncHandler(async (req: AuthRequest, 
     message: 'Notification settings updated successfully',
   });
 });
+
+// ============================================
+// User Activity Log
+// ============================================
+
+// Get user activity log (unlocked MCs with view counts and credit transactions)
+export const getUserActivityLog = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+
+  const activityLog = await adminService.getUserActivityLog(id);
+
+  res.json({
+    success: true,
+    data: activityLog,
+  });
+});

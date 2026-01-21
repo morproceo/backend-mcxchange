@@ -1950,6 +1950,114 @@ class AdminService {
 
     return results;
   }
+
+  // Get user activity log (unlocked MCs with view counts and credit transactions)
+  async getUserActivityLog(userId: string) {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    // Get all unlocked listings for this user with listing details
+    const unlockedListings = await UnlockedListing.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']],
+      include: [
+        {
+          model: Listing,
+          as: 'listing',
+          attributes: ['id', 'mcNumber', 'title', 'legalName', 'city', 'state', 'askingPrice', 'status', 'views'],
+        },
+      ],
+    });
+
+    // Get view counts for each unlocked MC from ListingView model if it exists,
+    // otherwise use the views from the listing
+    const unlockedMCs = await Promise.all(
+      unlockedListings.map(async (unlock) => {
+        const listing = (unlock as any).listing;
+
+        // Try to get user-specific view count from listing_views table
+        let viewCount = 0;
+        try {
+          const viewQuery = `
+            SELECT COUNT(*) as viewCount
+            FROM listing_views
+            WHERE userId = :userId AND listingId = :listingId
+          `;
+          const [result] = await sequelize.query<{ viewCount: string }>(viewQuery, {
+            replacements: { userId, listingId: unlock.listingId },
+            type: QueryTypes.SELECT,
+          });
+          viewCount = parseInt(result?.viewCount || '0', 10);
+        } catch {
+          // If listing_views table doesn't exist, default to 0
+          viewCount = 0;
+        }
+
+        return {
+          id: unlock.id,
+          listingId: unlock.listingId,
+          mcNumber: listing?.mcNumber || 'N/A',
+          title: listing?.title || 'Unknown',
+          legalName: listing?.legalName || '',
+          location: listing ? `${listing.city || ''}, ${listing.state || ''}`.trim().replace(/^,\s*|,\s*$/g, '') : '',
+          askingPrice: listing?.askingPrice || 0,
+          status: listing?.status || 'UNKNOWN',
+          creditsUsed: unlock.creditsUsed,
+          unlockedAt: unlock.createdAt,
+          viewCount,
+        };
+      })
+    );
+
+    // Get all credit transactions for this user
+    const creditTransactions = await CreditTransaction.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']],
+    });
+
+    // Format credit transactions with MC info where applicable
+    const formattedTransactions = await Promise.all(
+      creditTransactions.map(async (tx) => {
+        let mcNumber: string | null = null;
+        let listingTitle: string | null = null;
+
+        // If transaction has a reference (listingId), get the MC info
+        if (tx.reference) {
+          const listing = await Listing.findByPk(tx.reference, {
+            attributes: ['mcNumber', 'title'],
+          });
+          if (listing) {
+            mcNumber = listing.mcNumber;
+            listingTitle = listing.title;
+          }
+        }
+
+        return {
+          id: tx.id,
+          type: tx.type,
+          amount: tx.amount,
+          balance: tx.balance,
+          description: tx.description || '',
+          mcNumber,
+          listingTitle,
+          createdAt: tx.createdAt,
+        };
+      })
+    );
+
+    return {
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      totalCredits: user.totalCredits || 0,
+      usedCredits: user.usedCredits || 0,
+      availableCredits: (user.totalCredits || 0) - (user.usedCredits || 0),
+      unlockedMCs,
+      creditTransactions: formattedTransactions,
+    };
+  }
 }
 
 export const adminService = new AdminService();

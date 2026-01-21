@@ -47,6 +47,7 @@ import {
   processAutoUnblock,
   getNotificationSettings,
   updateNotificationSettings,
+  getUserActivityLog,
 } from '../controllers/adminController';
 import { authenticate, adminOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
@@ -74,6 +75,7 @@ router.get('/users', getUsers);
 router.post('/users', validate(createUserValidation), createUser);
 router.post('/users/with-listing', createUserWithListing);
 router.get('/users/:id', getUserDetails);
+router.get('/users/:id/activity-log', getUserActivityLog);
 router.post('/users/:id/block', validate(blockUserValidation), blockUser);
 router.post('/users/:id/unblock', unblockUser);
 router.post('/users/:id/verify-seller', verifySeller);
