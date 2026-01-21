@@ -28,7 +28,24 @@ let redis: Redis | null = null;
 export const getRedisClient = (): Redis => {
   if (!redis) {
     if (config.redis?.url) {
-      redis = new Redis(config.redis.url);
+      // Heroku Redis uses self-signed certificates, so we need to disable TLS verification
+      // Also handle both redis:// and rediss:// URLs
+      const url = config.redis.url;
+      const useTls = url.startsWith('rediss://');
+
+      redis = new Redis(url, {
+        tls: useTls ? { rejectUnauthorized: false } : undefined,
+        maxRetriesPerRequest: 3,
+        retryStrategy: (times: number) => {
+          if (times > 10) {
+            logger.error('Redis connection failed after 10 retries');
+            return null;
+          }
+          const delay = Math.min(times * 100, 3000);
+          logger.warn(`Redis connection attempt ${times}, retrying in ${delay}ms`);
+          return delay;
+        },
+      });
     } else {
       redis = new Redis(redisOptions);
     }
