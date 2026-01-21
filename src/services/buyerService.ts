@@ -641,56 +641,144 @@ class BuyerService {
       const { emailService } = await import('./emailService');
 
       // Create PDF in memory
-      const doc = new PDFDocument({ margin: 50 });
+      const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
       const chunks: Buffer[] = [];
 
       doc.on('data', (chunk: Buffer) => chunks.push(chunk));
 
-      // Add content to PDF
-      doc
-        .fontSize(20)
-        .text('MC-Xchange Terms of Service Acceptance', { align: 'center' })
-        .moveDown();
+      const effectiveDate = acceptance.acceptedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-      doc
-        .fontSize(12)
-        .text(`Document ID: ${acceptance.id}`)
-        .text(`Terms Version: ${acceptance.termsVersion}`)
-        .moveDown();
-
+      // Title
       doc
         .fontSize(14)
-        .text('User Information', { underline: true })
-        .fontSize(12)
+        .font('Helvetica-Bold')
+        .text('CONFIDENTIALITY, NON-DISCLOSURE, AND NON-CIRCUMVENTION AGREEMENT', { align: 'center' })
+        .moveDown(0.5);
+
+      doc
+        .fontSize(10)
+        .font('Helvetica')
+        .text('THIS AMENDED AND RESTATED CONFIDENTIALITY, NON-DISCLOSURE, AND NON-CIRCUMVENTION AGREEMENT', { align: 'center' })
+        .moveDown();
+
+      // Parties
+      doc
+        .fontSize(10)
+        .text(`This Agreement is made and entered into as of ${effectiveDate} (the "Effective Date"), by and between:`)
+        .moveDown(0.5);
+
+      doc
+        .font('Helvetica-Bold')
+        .text('DISCLOSING PARTY: ', { continued: true })
+        .font('Helvetica')
+        .text('The Domilea Group, a Pennsylvania limited liability company ("Provider"), acting in its capacity as the exclusive marketing consultant and intermediary for the owner(s) of the business opportunities presented hereunder ("Seller"); and')
+        .moveDown(0.5);
+
+      doc
+        .font('Helvetica-Bold')
+        .text('RECIPIENT: ', { continued: true })
+        .font('Helvetica')
+        .text(`${user.name} (${user.email}), the undersigned party ("Recipient").`)
+        .moveDown();
+
+      // Recitals
+      doc
+        .font('Helvetica-Bold')
+        .text('RECITALS')
+        .moveDown(0.3);
+
+      doc
+        .font('Helvetica')
+        .fontSize(9)
+        .text('WHEREAS, Provider serves as an intermediary for the sale of certain transportation, logistics, and trucking business assets (the "Business"); and WHEREAS, Provider possesses certain proprietary, non-public, and highly confidential information regarding the Business; and WHEREAS, Recipient has expressed an interest in evaluating a potential acquisition (the "Transaction");')
+        .moveDown(0.5);
+
+      doc.text('NOW, THEREFORE, in consideration of the mutual covenants set forth herein, the Parties agree as follows:').moveDown();
+
+      // Article 1
+      doc.font('Helvetica-Bold').fontSize(10).text('ARTICLE 1: CONFIDENTIAL INFORMATION').moveDown(0.3);
+      doc.font('Helvetica').fontSize(9)
+        .text('1.1. "Confidential Information" includes: (a) Corporate Identity; (b) Financial Data; (c) Operational Assets; (d) Commercial Relationships; (e) Human Capital; (f) Regulatory Status; and (g) The "Fact of Sale."')
+        .moveDown(0.3)
+        .text('1.4. Recipient shall use Confidential Information solely for evaluating the Transaction and shall not compete with Seller or gain unfair commercial advantage.')
+        .moveDown();
+
+      // Article 2
+      doc.font('Helvetica-Bold').fontSize(10).text('ARTICLE 2: NON-CIRCUMVENTION').moveDown(0.3);
+      doc.font('Helvetica').fontSize(9)
+        .text('2.1. Recipient shall not initiate contact with Seller, its owners, employees, or vendors without Provider\'s prior written consent. All communications must go through Provider.')
+        .moveDown(0.3)
+        .text('2.2. For 24 months following the Effective Date, Recipient shall not: (a) Bypass Provider in any Transaction; (b) Enter alternative arrangements with Seller; (c) Interfere with Provider\'s agreement with Seller.')
+        .moveDown(0.3)
+        .text('2.3. Liability for Circumvention: Recipient shall pay Provider 10% of Total Transaction Value or Provider\'s commission, whichever is greater.')
+        .moveDown();
+
+      // Article 3
+      doc.font('Helvetica-Bold').fontSize(10).text('ARTICLE 3: NON-SOLICITATION').moveDown(0.3);
+      doc.font('Helvetica').fontSize(9)
+        .text('3.1. For 24 months, Recipient shall not solicit or hire Seller\'s employees, drivers, or contractors.')
+        .moveDown();
+
+      // Article 4
+      doc.font('Helvetica-Bold').fontSize(10).text('ARTICLE 4: DISCLAIMER AND RELEASE').moveDown(0.3);
+      doc.font('Helvetica').fontSize(9)
+        .text('4.2. PROVIDER MAKES NO WARRANTIES OF ANY KIND. Recipient relies solely on its own due diligence.')
+        .moveDown(0.3)
+        .text('4.4. Recipient releases Provider from all claims arising from inaccuracies in Confidential Information.')
+        .moveDown();
+
+      // Article 6
+      doc.font('Helvetica-Bold').fontSize(10).text('ARTICLE 6: DISPUTE RESOLUTION').moveDown(0.3);
+      doc.font('Helvetica').fontSize(9)
+        .text('6.1. Governed by New York law. 6.2. Binding arbitration in New York, NY.')
+        .moveDown(0.3)
+        .text('6.4. WAIVER OF JURY TRIAL. 6.5. Provider may seek injunctive relief without bond.')
+        .moveDown();
+
+      // Signature section
+      doc.addPage();
+      doc.font('Helvetica-Bold').fontSize(12).text('SIGNATURE PAGE', { align: 'center' }).moveDown();
+
+      doc.font('Helvetica').fontSize(10)
+        .text('IN WITNESS WHEREOF, the Recipient has executed this Agreement as of the Effective Date.')
+        .moveDown(2);
+
+      doc
+        .font('Helvetica-Bold')
+        .text('RECIPIENT INFORMATION:')
+        .moveDown(0.5);
+
+      doc
+        .font('Helvetica')
         .text(`Name: ${user.name}`)
         .text(`Email: ${user.email}`)
         .text(`User ID: ${user.id}`)
         .moveDown();
 
       doc
-        .fontSize(14)
-        .text('Acceptance Details', { underline: true })
-        .fontSize(12)
-        .text(`Signature Name: ${acceptance.signatureName}`)
-        .text(`Accepted At: ${acceptance.acceptedAt.toISOString()}`)
-        .text(`IP Address: ${acceptance.ipAddress || 'Not recorded'}`)
-        .moveDown();
+        .font('Helvetica-Bold')
+        .text('ELECTRONIC SIGNATURE:')
+        .moveDown(0.5);
+
+      doc
+        .fontSize(18)
+        .font('Helvetica-Oblique')
+        .text(acceptance.signatureName, { align: 'center' })
+        .moveDown(0.5);
 
       doc
         .fontSize(10)
-        .text('This document confirms that the user has read and accepted the MC-Xchange Terms of Service.', { align: 'center' })
+        .font('Helvetica')
+        .text(`Date Signed: ${effectiveDate}`, { align: 'center' })
+        .text(`Time: ${acceptance.acceptedAt.toLocaleTimeString()}`, { align: 'center' })
+        .text(`IP Address: ${acceptance.ipAddress || 'Not recorded'}`, { align: 'center' })
         .moveDown(2);
 
       doc
-        .fontSize(14)
-        .text('Electronic Signature:', { underline: true })
-        .moveDown()
-        .fontSize(16)
-        .font('Helvetica-Oblique')
-        .text(acceptance.signatureName, { align: 'center' })
-        .font('Helvetica')
-        .fontSize(10)
-        .text(`Signed on: ${acceptance.acceptedAt.toLocaleString()}`, { align: 'center' });
+        .fontSize(8)
+        .text('This document was electronically signed through the MC-Xchange platform.', { align: 'center' })
+        .text(`Document ID: ${acceptance.id}`, { align: 'center' })
+        .text(`Terms Version: ${acceptance.termsVersion}`, { align: 'center' });
 
       doc.end();
 
@@ -704,16 +792,16 @@ class BuyerService {
       // Email to admin with PDF attachment
       await emailService.sendEmail({
         to: 'admin@domilea.com',
-        subject: `Terms Accepted: ${user.name} (${user.email})`,
+        subject: `NDA/NCA Signed: ${user.name} (${user.email})`,
         html: `
-          <h2>New Terms of Service Acceptance</h2>
+          <h2>New Confidentiality, Non-Disclosure, and Non-Circumvention Agreement Signed</h2>
           <p><strong>User:</strong> ${user.name}</p>
           <p><strong>Email:</strong> ${user.email}</p>
-          <p><strong>Signature:</strong> ${acceptance.signatureName}</p>
-          <p><strong>Accepted At:</strong> ${acceptance.acceptedAt.toLocaleString()}</p>
-          <p><strong>Terms Version:</strong> ${acceptance.termsVersion}</p>
+          <p><strong>Electronic Signature:</strong> ${acceptance.signatureName}</p>
+          <p><strong>Signed At:</strong> ${acceptance.acceptedAt.toLocaleString()}</p>
+          <p><strong>Agreement Version:</strong> ${acceptance.termsVersion}</p>
           <p><strong>IP Address:</strong> ${acceptance.ipAddress || 'Not recorded'}</p>
-          <p>The signed Terms of Service acceptance document is attached as a PDF.</p>
+          <p>The signed NDA/NCA agreement is attached as a PDF.</p>
         `,
         attachments: [
           {
