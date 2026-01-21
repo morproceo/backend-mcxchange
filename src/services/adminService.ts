@@ -2060,6 +2060,7 @@ class AdminService {
   }
 
   // Get comprehensive activity log with filters
+  // OPTIMIZED: Uses batch queries instead of N+1, limits data fetched
   async getActivityLog(filters: {
     type?: string; // 'all' | 'unlocks' | 'credits' | 'admin_actions'
     userId?: string;
@@ -2084,6 +2085,9 @@ class AdminService {
     const offset = (page - 1) * limit;
     const results: any[] = [];
 
+    // Cap the max records to fetch from each table to prevent memory issues
+    const maxRecordsPerType = 500;
+
     // Build date filter
     const dateFilter: any = {};
     if (dateFrom) {
@@ -2093,13 +2097,12 @@ class AdminService {
       dateFilter[Op.lte] = new Date(dateTo + 'T23:59:59.999Z');
     }
 
-    // Get unlocked listings
+    // Get unlocked listings - already optimized with includes
     if (type === 'all' || type === 'unlocks') {
       const unlockWhere: any = {};
       if (userId) unlockWhere.userId = userId;
       if (dateFrom || dateTo) unlockWhere.createdAt = dateFilter;
 
-      // If filtering by MC number, we need to join with listings
       const unlockInclude: any[] = [
         {
           model: Listing,
@@ -2118,13 +2121,12 @@ class AdminService {
         where: unlockWhere,
         include: unlockInclude,
         order: [['createdAt', 'DESC']],
+        limit: maxRecordsPerType,
       });
 
       for (const unlock of unlocks) {
         const listing = (unlock as any).listing;
         const user = (unlock as any).user;
-
-        // Skip if MC number filter is set but listing doesn't match (due to inner join behavior)
         if (mcNumber && !listing) continue;
 
         results.push({
@@ -2144,7 +2146,7 @@ class AdminService {
       }
     }
 
-    // Get credit transactions
+    // Get credit transactions - OPTIMIZED: batch fetch listings
     if (type === 'all' || type === 'credits') {
       const creditWhere: any = {};
       if (userId) creditWhere.userId = userId;
@@ -2163,23 +2165,28 @@ class AdminService {
           },
         ],
         order: [['createdAt', 'DESC']],
+        limit: maxRecordsPerType,
       });
+
+      // Batch fetch all referenced listings at once instead of N+1 queries
+      const listingIds = credits
+        .filter(c => c.reference)
+        .map(c => c.reference as string);
+
+      const listingsMap = new Map<string, { mcNumber: string; title: string }>();
+      if (listingIds.length > 0) {
+        const listings = await Listing.findAll({
+          where: { id: { [Op.in]: listingIds } },
+          attributes: ['id', 'mcNumber', 'title'],
+        });
+        listings.forEach(l => listingsMap.set(l.id, { mcNumber: l.mcNumber, title: l.title }));
+      }
 
       for (const credit of credits) {
         const user = (credit as any).user;
-        let mcNumberFromRef: string | null = null;
-        let listingTitle: string | null = null;
-
-        // Get MC number from reference if it's a listing ID
-        if (credit.reference) {
-          const listing = await Listing.findByPk(credit.reference, {
-            attributes: ['mcNumber', 'title'],
-          });
-          if (listing) {
-            mcNumberFromRef = listing.mcNumber;
-            listingTitle = listing.title;
-          }
-        }
+        const listingData = credit.reference ? listingsMap.get(credit.reference) : null;
+        const mcNumberFromRef = listingData?.mcNumber || null;
+        const listingTitle = listingData?.title || null;
 
         // Skip if filtering by MC number and this transaction doesn't match
         if (mcNumber && mcNumberFromRef && !mcNumberFromRef.includes(mcNumber)) continue;
@@ -2202,7 +2209,7 @@ class AdminService {
       }
     }
 
-    // Get admin actions
+    // Get admin actions - OPTIMIZED: batch fetch users and listings
     if (type === 'all' || type === 'admin_actions') {
       const actionWhere: any = {};
       if (dateFrom || dateTo) actionWhere.createdAt = dateFilter;
@@ -2220,34 +2227,40 @@ class AdminService {
           },
         ],
         order: [['createdAt', 'DESC']],
+        limit: maxRecordsPerType,
       });
+
+      // Batch fetch target users and listings
+      const targetUserIds = actions
+        .filter(a => a.targetType === 'USER')
+        .map(a => a.targetId);
+      const targetListingIds = actions
+        .filter(a => a.targetType === 'LISTING')
+        .map(a => a.targetId);
+
+      const usersMap = new Map<string, { name: string; email: string }>();
+      const listingsMap = new Map<string, string>();
+
+      if (targetUserIds.length > 0) {
+        const users = await User.findAll({
+          where: { id: { [Op.in]: targetUserIds } },
+          attributes: ['id', 'name', 'email'],
+        });
+        users.forEach(u => usersMap.set(u.id, { name: u.name, email: u.email }));
+      }
+
+      if (targetListingIds.length > 0) {
+        const listings = await Listing.findAll({
+          where: { id: { [Op.in]: targetListingIds } },
+          attributes: ['id', 'mcNumber'],
+        });
+        listings.forEach(l => listingsMap.set(l.id, l.mcNumber));
+      }
 
       for (const action of actions) {
         const admin = (action as any).admin;
-        let targetUserName: string | null = null;
-        let targetUserEmail: string | null = null;
-        let mcNumberFromAction: string | null = null;
-
-        // Get target user info if targetType is USER
-        if (action.targetType === 'USER') {
-          const targetUser = await User.findByPk(action.targetId, {
-            attributes: ['name', 'email'],
-          });
-          if (targetUser) {
-            targetUserName = targetUser.name;
-            targetUserEmail = targetUser.email;
-          }
-        }
-
-        // Get MC number if targetType is LISTING
-        if (action.targetType === 'LISTING') {
-          const listing = await Listing.findByPk(action.targetId, {
-            attributes: ['mcNumber', 'title'],
-          });
-          if (listing) {
-            mcNumberFromAction = listing.mcNumber;
-          }
-        }
+        const targetUserData = action.targetType === 'USER' ? usersMap.get(action.targetId) : null;
+        const mcNumberFromAction = action.targetType === 'LISTING' ? listingsMap.get(action.targetId) || null : null;
 
         // Skip if filtering by MC number and this action doesn't match
         if (mcNumber && mcNumberFromAction && !mcNumberFromAction.includes(mcNumber)) continue;
@@ -2266,8 +2279,8 @@ class AdminService {
           adminId: action.adminId,
           adminName: admin?.name || 'Unknown',
           adminEmail: admin?.email || '',
-          targetUserName,
-          targetUserEmail,
+          targetUserName: targetUserData?.name || null,
+          targetUserEmail: targetUserData?.email || null,
           mcNumber: mcNumberFromAction,
           reason: action.reason,
           description: `${action.action.replace(/_/g, ' ')} - ${action.targetType}`,
