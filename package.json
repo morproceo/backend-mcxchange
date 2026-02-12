@@ -15,6 +15,7 @@
     "lint": "tsc --noEmit",
     "db:migrate": "npx sequelize-cli db:migrate",
     "db:seed": "ts-node src/seeds/seed.ts",
+    "db:seed:admin-subscription": "ts-node src/seeds/seed-admin-subscription.ts",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f",

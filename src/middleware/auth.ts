@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { AuthRequest, JWTPayload } from '../types';
-import { User, UserRole, Subscription } from '../models';
+import { User, UserRole, Subscription, SubscriptionPlan } from '../models';
 
 // Verify JWT token
 export const authenticate = async (
@@ -203,6 +203,73 @@ export const requireSubscription = async (
         success: false,
         error: 'Your subscription has expired.',
         code: 'SUBSCRIPTION_EXPIRED',
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Error checking subscription status.',
+    });
+  }
+};
+
+// Require active Professional (or higher) subscription
+export const requireProfessionalSubscription = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: 'Not authenticated.',
+      });
+      return;
+    }
+
+    // Admins bypass subscription check
+    if (req.user.role === UserRole.ADMIN) {
+      next();
+      return;
+    }
+
+    // Check for active Professional or Enterprise subscription
+    const subscription = await Subscription.findOne({
+      where: {
+        userId: req.user.id,
+        status: 'ACTIVE',
+      },
+    });
+
+    if (!subscription) {
+      res.status(403).json({
+        success: false,
+        error: 'Professional subscription required.',
+        code: 'PROFESSIONAL_REQUIRED',
+      });
+      return;
+    }
+
+    // Check if subscription is expired
+    if (subscription.endDate && new Date(subscription.endDate) < new Date()) {
+      res.status(403).json({
+        success: false,
+        error: 'Your subscription has expired.',
+        code: 'SUBSCRIPTION_EXPIRED',
+      });
+      return;
+    }
+
+    // Only Professional and Enterprise have access
+    if (subscription.plan !== SubscriptionPlan.PROFESSIONAL && subscription.plan !== SubscriptionPlan.ENTERPRISE) {
+      res.status(403).json({
+        success: false,
+        error: 'Professional subscription required.',
+        code: 'PROFESSIONAL_REQUIRED',
       });
       return;
     }
