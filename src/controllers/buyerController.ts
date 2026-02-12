@@ -1,11 +1,12 @@
 import { Response } from 'express';
 import { buyerService } from '../services/buyerService';
 import { stripeService } from '../services/stripeService';
+import { creditsafeService } from '../services/creditsafeService';
 import { asyncHandler, BadRequestError } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { parseIntParam } from '../utils/helpers';
 import { config } from '../config';
-import { User } from '../models';
+import { User, UnlockedListing, Listing } from '../models';
 
 // Get buyer dashboard stats
 export const getDashboardStats = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -393,6 +394,97 @@ export const getTermsStatus = asyncHandler(async (req: AuthRequest, res: Respons
   res.json({
     success: true,
     data: status,
+  });
+});
+
+// ============ Creditsafe Credit Reports ============
+
+// Search Creditsafe for a company based on an unlocked listing
+export const getCreditsafeSearch = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { listingId } = req.params;
+
+  // Verify the buyer has unlocked this listing
+  const unlock = await UnlockedListing.findOne({
+    where: { userId: req.user.id, listingId },
+  });
+
+  if (!unlock) {
+    res.status(403).json({ success: false, error: 'You have not unlocked this listing' });
+    return;
+  }
+
+  // Get listing details
+  const listing = await Listing.findByPk(listingId);
+  if (!listing) {
+    res.status(404).json({ success: false, error: 'Listing not found' });
+    return;
+  }
+
+  const companyName = listing.legalName || listing.dbaName || listing.title;
+  const state = listing.state;
+
+  // Search Creditsafe
+  const searchResults = await creditsafeService.searchCompanies({
+    countries: 'US',
+    name: companyName,
+    state: state || undefined,
+    pageSize: 10,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      companies: searchResults.companies || [],
+      totalResults: searchResults.totalSize || 0,
+      listing: {
+        id: listing.id,
+        mcNumber: listing.mcNumber,
+        dotNumber: listing.dotNumber,
+        legalName: listing.legalName,
+        state: listing.state,
+      },
+    },
+  });
+});
+
+// Get a full Creditsafe credit report by connectId (requires unlocked listing verification)
+export const getCreditsafeReport = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { connectId } = req.params;
+  const listingId = req.query.listingId as string;
+
+  if (!listingId) {
+    res.status(400).json({ success: false, error: 'listingId query parameter is required' });
+    return;
+  }
+
+  // Verify the buyer has unlocked this listing
+  const unlock = await UnlockedListing.findOne({
+    where: { userId: req.user.id, listingId },
+  });
+
+  if (!unlock) {
+    res.status(403).json({ success: false, error: 'You have not unlocked this listing' });
+    return;
+  }
+
+  // Get full credit report
+  const report = await creditsafeService.getCreditReport(connectId, {
+    includeIndicators: true,
+  });
+
+  res.json({
+    success: true,
+    data: report,
   });
 });
 

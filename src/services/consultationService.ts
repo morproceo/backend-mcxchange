@@ -5,9 +5,9 @@ import { pricingConfigService } from './pricingConfigService';
 import { adminNotificationService } from './adminNotificationService';
 import logger from '../utils/logger';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2025-11-17.clover' as const,
-});
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2025-11-17.clover' as const })
+  : null;
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://mc-xchange.vercel.app';
 
