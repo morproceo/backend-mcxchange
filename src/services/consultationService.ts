@@ -41,6 +41,7 @@ export const consultationService = {
     });
 
     // Create Stripe checkout session
+    if (!stripe) throw new Error('Stripe is not configured');
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -91,6 +92,7 @@ export const consultationService = {
     }
 
     // Get payment intent from session
+    if (!stripe) throw new Error('Stripe is not configured');
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
     await consultation.update({
@@ -238,6 +240,7 @@ export const consultationService = {
     if (!consultation || !consultation.stripePaymentIntentId) return null;
 
     // Process refund via Stripe
+    if (!stripe) throw new Error('Stripe is not configured');
     await stripe.refunds.create({
       payment_intent: consultation.stripePaymentIntentId,
     });
