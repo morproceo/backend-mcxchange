@@ -4,6 +4,7 @@ import { listingService } from '../services/listingService';
 import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest, ListingQueryParams } from '../types';
 import { parseBooleanParam, parseIntParam } from '../utils/helpers';
+import { Subscription, SubscriptionPlan, SubscriptionStatus, UserRole } from '../models';
 
 // Validation rules
 export const createListingValidation = [
@@ -34,6 +35,7 @@ export const getListings = asyncHandler(async (req: AuthRequest, res: Response) 
     amazonStatus: req.query.amazonStatus as string,
     verified: parseBooleanParam(req.query.verified as string),
     premium: parseBooleanParam(req.query.premium as string),
+    vip: parseBooleanParam(req.query.vip as string),
     highwaySetup: parseBooleanParam(req.query.highwaySetup as string),
     hasEmail: parseBooleanParam(req.query.hasEmail as string),
     hasPhone: parseBooleanParam(req.query.hasPhone as string),
@@ -56,6 +58,22 @@ export const getListing = asyncHandler(async (req: AuthRequest, res: Response) =
   const userId = req.user?.id;
 
   const listing = await listingService.getListingById(id, userId);
+
+  // VIP listings are only accessible to Enterprise subscribers and admins
+  if (listing.isVip) {
+    if (!req.user) {
+      res.status(403).json({ success: false, error: 'Enterprise subscription required to view VIP listings.', code: 'ENTERPRISE_REQUIRED' });
+      return;
+    }
+
+    if (req.user.role !== UserRole.ADMIN) {
+      const subscription = await Subscription.findOne({ where: { userId: req.user.id } });
+      if (!subscription || subscription.status !== SubscriptionStatus.ACTIVE || (subscription.plan !== SubscriptionPlan.ENTERPRISE && subscription.plan !== SubscriptionPlan.VIP_ACCESS)) {
+        res.status(403).json({ success: false, error: 'Enterprise subscription required to view VIP listings.', code: 'ENTERPRISE_REQUIRED' });
+        return;
+      }
+    }
+  }
 
   res.json({
     success: true,

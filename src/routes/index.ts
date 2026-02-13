@@ -18,6 +18,7 @@ import consultationRoutes from './consultationRoutes';
 import telegramRoutes from './telegramRoutes';
 import facebookRoutes from './facebookRoutes';
 import disputeRoutes from './disputeRoutes';
+import aiChatRoutes from './aiChatRoutes';
 import { sequelize } from '../models';
 import { isRedisHealthy } from '../config/redis';
 import { config, getPublicConfig } from '../config';
@@ -202,5 +203,6 @@ router.use('/consultations', consultationRoutes);
 router.use('/admin/telegram', telegramRoutes);
 router.use('/admin/facebook', facebookRoutes);
 router.use('/disputes', disputeRoutes);
+router.use('/ai-chat', aiChatRoutes);
 
 export default router;

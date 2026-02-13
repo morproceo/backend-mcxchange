@@ -160,7 +160,7 @@ class CreditService {
   async getSubscriptionPlans() {
     const plans = await pricingConfigService.getSubscriptionPlans();
     return plans.map((plan, index) => {
-      const keys = ['STARTER', 'PROFESSIONAL', 'ENTERPRISE'];
+      const keys = ['STARTER', 'PROFESSIONAL', 'ENTERPRISE', 'VIP_ACCESS'];
       return {
         id: keys[index],
         name: plan.name,

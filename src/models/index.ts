@@ -113,7 +113,8 @@ export enum PaymentType {
 export enum SubscriptionPlan {
   STARTER = 'STARTER',
   PROFESSIONAL = 'PROFESSIONAL',
-  ENTERPRISE = 'ENTERPRISE'
+  ENTERPRISE = 'ENTERPRISE',
+  VIP_ACCESS = 'VIP_ACCESS'
 }
 
 export enum SubscriptionStatus {
@@ -537,6 +538,7 @@ export class Listing extends Model {
   declare askingPrice: number;
   declare listingPrice?: number;
   declare isPremium: boolean;
+  declare isVip: boolean;
   declare status: ListingStatus;
   declare visibility: ListingVisibility;
   declare city: string;
@@ -623,6 +625,10 @@ Listing.init(
       comment: 'Published price set by admin (shown to buyers)',
     },
     isPremium: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    isVip: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
@@ -782,9 +788,10 @@ Listing.init(
       { fields: ['askingPrice'] },
       { fields: ['listingPrice'] },
       { fields: ['isPremium'] },
+      { fields: ['isVip'] },
       // Composite indexes for common search patterns (reduces query cost)
       { fields: ['status', 'visibility'], name: 'idx_listings_status_visibility' },
-      { fields: ['status', 'state', 'isPremium'], name: 'idx_listings_search_filters' },
+      { fields: ['status', 'state', 'isPremium', 'isVip'], name: 'idx_listings_search_filters' },
       { fields: ['sellerId', 'status'], name: 'idx_listings_seller_status' },
       { fields: ['status', 'createdAt'], name: 'idx_listings_status_created' },
     ],

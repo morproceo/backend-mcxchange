@@ -49,6 +49,7 @@ export interface ListingQueryParams {
   trustLevel?: string;
   verified?: boolean;
   premium?: boolean;
+  vip?: boolean;
   highwaySetup?: boolean;
   hasEmail?: boolean;
   hasPhone?: boolean;
@@ -190,6 +191,7 @@ export interface CreateListingData {
   cargoTypes?: string[];
   visibility?: string;
   isPremium?: boolean;
+  isVip?: boolean;
 }
 
 // Subscription Plans

@@ -658,8 +658,9 @@ class AdminService {
     search?: string;
     status?: string;
     isPremium?: boolean;
+    isVip?: boolean;
   }) {
-    const { page = 1, limit = 20, search, status, isPremium } = params;
+    const { page = 1, limit = 20, search, status, isPremium, isVip } = params;
     const offset = (page - 1) * limit;
 
     const where: any = {};
@@ -679,6 +680,10 @@ class AdminService {
 
     if (isPremium !== undefined) {
       where.isPremium = isPremium;
+    }
+
+    if (isVip !== undefined) {
+      where.isVip = isVip;
     }
 
     const { count: total, rows: listings } = await Listing.findAndCountAll({
@@ -754,6 +759,7 @@ class AdminService {
     status?: string;
     visibility?: string;
     isPremium?: boolean;
+    isVip?: boolean;
   }) {
     const listing = await Listing.findByPk(listingId);
 
@@ -796,6 +802,7 @@ class AdminService {
     if (data.status !== undefined) updateData.status = data.status.toUpperCase();
     if (data.visibility !== undefined) updateData.visibility = data.visibility.toUpperCase();
     if (data.isPremium !== undefined) updateData.isPremium = data.isPremium;
+    if (data.isVip !== undefined) updateData.isVip = data.isVip;
 
     await listing.update(updateData);
 
@@ -1555,6 +1562,7 @@ class AdminService {
     sellingWithPhone?: boolean;
     cargoTypes?: string[];
     isPremium?: boolean;
+    isVip?: boolean;
     status?: string;
     createdByAdminId: string;
     adminNotes?: string;
@@ -1599,6 +1607,7 @@ class AdminService {
       sellingWithPhone: data.sellingWithPhone || false,
       cargoTypes: data.cargoTypes ? JSON.stringify(data.cargoTypes) : '[]',
       isPremium: data.isPremium || false,
+      isVip: data.isVip || false,
       status: (data.status as ListingStatus) || ListingStatus.ACTIVE,
       adminNotes: data.adminNotes || '',
     });

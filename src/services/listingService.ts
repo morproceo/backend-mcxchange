@@ -67,6 +67,7 @@ class ListingService {
       amazonStatus,
       verified,
       premium,
+      vip,
       highwaySetup,
       hasEmail,
       hasPhone,
@@ -126,6 +127,13 @@ class ListingService {
       (where as Record<string, unknown>).isPremium = premium;
     }
 
+    // VIP filter — when vip=true show only VIP; otherwise hide VIP from regular marketplace
+    if (vip) {
+      (where as Record<string, unknown>).isVip = true;
+    } else {
+      (where as Record<string, unknown>).isVip = false;
+    }
+
     // Highway setup filter
     if (highwaySetup !== undefined) {
       (where as Record<string, unknown>).highwaySetup = highwaySetup;
@@ -174,7 +182,7 @@ class ListingService {
     // Build cache key from query params (for search results caching)
     const cacheKey = `${CacheKeys.LISTINGS}${JSON.stringify({
       status, state, search, minPrice, maxPrice, safetyRating, amazonStatus,
-      verified, premium, highwaySetup, hasEmail, hasPhone, minYears,
+      verified, premium, vip, highwaySetup, hasEmail, hasPhone, minYears,
       sortBy, sellerId, page, limit,
     })}`;
 
@@ -306,6 +314,7 @@ class ListingService {
       cargoTypes: data.cargoTypes ? JSON.stringify(data.cargoTypes) : null,
       visibility: (data.visibility?.toUpperCase() as ListingVisibility) || ListingVisibility.PUBLIC,
       isPremium: data.isPremium || false,
+      isVip: data.isVip || false,
       status: initialStatus,
     });
 
@@ -362,6 +371,7 @@ class ListingService {
       ...(data.cargoTypes && { cargoTypes: JSON.stringify(data.cargoTypes) }),
       ...(data.visibility && { visibility: data.visibility.toUpperCase() }),
       ...(data.isPremium !== undefined && { isPremium: data.isPremium }),
+      ...(data.isVip !== undefined && { isVip: data.isVip }),
     });
 
     const updated = await Listing.findByPk(id, {

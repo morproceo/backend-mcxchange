@@ -33,6 +33,7 @@ export interface PricingConfig {
     starter: SubscriptionPlanConfig;
     professional: SubscriptionPlanConfig;
     enterprise: SubscriptionPlanConfig;
+    vip_access: SubscriptionPlanConfig;
   };
   platformFees: PlatformFeesConfig;
   creditPacks: CreditPack[];
@@ -87,6 +88,25 @@ const DEFAULT_PRICING: PricingConfig = {
         'Dedicated support',
         'Advanced analytics',
         'Early access to new listings',
+      ],
+    },
+    vip_access: {
+      name: 'VIP Access',
+      credits: 999,
+      priceMonthly: 399.99,
+      priceYearly: 3839.99,
+      stripePriceIdMonthly: process.env.STRIPE_PRICE_VIP_ACCESS_MONTHLY || '',
+      stripePriceIdYearly: process.env.STRIPE_PRICE_VIP_ACCESS_YEARLY || '',
+      features: [
+        'Unlimited MC unlock credits',
+        'VIP marketplace access',
+        'Access to exclusive companies',
+        'Unlimited credit reports',
+        'AI-powered tools & analytics',
+        'Priority dedicated support',
+        'Early access to new listings',
+        'All notification channels',
+        'Unlimited favorites',
       ],
     },
   },
@@ -169,15 +189,16 @@ class PricingConfigService {
       config.subscriptionPlans.starter,
       config.subscriptionPlans.professional,
       config.subscriptionPlans.enterprise,
+      config.subscriptionPlans.vip_access,
     ];
   }
 
   /**
    * Get a specific subscription plan by key
    */
-  async getSubscriptionPlan(planKey: 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE'): Promise<SubscriptionPlanConfig> {
+  async getSubscriptionPlan(planKey: 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE' | 'VIP_ACCESS'): Promise<SubscriptionPlanConfig> {
     const config = await this.getPricingConfig();
-    const key = planKey.toLowerCase() as 'starter' | 'professional' | 'enterprise';
+    const key = planKey.toLowerCase() as 'starter' | 'professional' | 'enterprise' | 'vip_access';
     return config.subscriptionPlans[key];
   }
 
@@ -216,7 +237,7 @@ class PricingConfigService {
   /**
    * Get Stripe price ID for a subscription plan
    */
-  async getStripePriceId(planKey: 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE', isYearly: boolean): Promise<string> {
+  async getStripePriceId(planKey: 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE' | 'VIP_ACCESS', isYearly: boolean): Promise<string> {
     const plan = await this.getSubscriptionPlan(planKey);
     return isYearly ? plan.stripePriceIdYearly : plan.stripePriceIdMonthly;
   }
@@ -270,6 +291,15 @@ class PricingConfigService {
           stripePriceIdYearly: settingsMap['enterprise_stripe_yearly'] || DEFAULT_PRICING.subscriptionPlans.enterprise.stripePriceIdYearly,
           features: this.parseJson(settingsMap['enterprise_features'], DEFAULT_PRICING.subscriptionPlans.enterprise.features),
         },
+        vip_access: {
+          name: 'VIP Access',
+          credits: this.parseNumber(settingsMap['vip_access_credits'], DEFAULT_PRICING.subscriptionPlans.vip_access.credits),
+          priceMonthly: this.parseNumber(settingsMap['vip_access_price_monthly'], DEFAULT_PRICING.subscriptionPlans.vip_access.priceMonthly),
+          priceYearly: this.parseNumber(settingsMap['vip_access_price_yearly'], DEFAULT_PRICING.subscriptionPlans.vip_access.priceYearly),
+          stripePriceIdMonthly: settingsMap['vip_access_stripe_monthly'] || DEFAULT_PRICING.subscriptionPlans.vip_access.stripePriceIdMonthly,
+          stripePriceIdYearly: settingsMap['vip_access_stripe_yearly'] || DEFAULT_PRICING.subscriptionPlans.vip_access.stripePriceIdYearly,
+          features: this.parseJson(settingsMap['vip_access_features'], DEFAULT_PRICING.subscriptionPlans.vip_access.features),
+        },
       },
       platformFees: {
         listingFee: this.parseNumber(settingsMap['listing_fee'], DEFAULT_PRICING.platformFees.listingFee),
@@ -312,6 +342,14 @@ class PricingConfigService {
       { key: 'enterprise_stripe_monthly', value: config.subscriptionPlans.enterprise.stripePriceIdMonthly, type: 'string' },
       { key: 'enterprise_stripe_yearly', value: config.subscriptionPlans.enterprise.stripePriceIdYearly, type: 'string' },
       { key: 'enterprise_features', value: JSON.stringify(config.subscriptionPlans.enterprise.features), type: 'json' },
+
+      // VIP Access plan
+      { key: 'vip_access_credits', value: String(config.subscriptionPlans.vip_access.credits), type: 'number' },
+      { key: 'vip_access_price_monthly', value: String(config.subscriptionPlans.vip_access.priceMonthly), type: 'number' },
+      { key: 'vip_access_price_yearly', value: String(config.subscriptionPlans.vip_access.priceYearly), type: 'number' },
+      { key: 'vip_access_stripe_monthly', value: config.subscriptionPlans.vip_access.stripePriceIdMonthly, type: 'string' },
+      { key: 'vip_access_stripe_yearly', value: config.subscriptionPlans.vip_access.stripePriceIdYearly, type: 'string' },
+      { key: 'vip_access_features', value: JSON.stringify(config.subscriptionPlans.vip_access.features), type: 'json' },
 
       // Platform fees
       { key: 'listing_fee', value: String(config.platformFees.listingFee), type: 'number' },

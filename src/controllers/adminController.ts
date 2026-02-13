@@ -222,6 +222,7 @@ export const getAllListings = asyncHandler(async (req: AuthRequest, res: Respons
     search: req.query.search as string,
     status: req.query.status as string,
     isPremium: parseBooleanParam(req.query.isPremium as string),
+    isVip: parseBooleanParam(req.query.isVip as string),
   });
 
   res.json({

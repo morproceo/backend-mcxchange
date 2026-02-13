@@ -264,12 +264,79 @@ export const requireProfessionalSubscription = async (
       return;
     }
 
-    // Only Professional and Enterprise have access
-    if (subscription.plan !== SubscriptionPlan.PROFESSIONAL && subscription.plan !== SubscriptionPlan.ENTERPRISE) {
+    // Only Professional, Enterprise, and VIP Access have access
+    if (subscription.plan !== SubscriptionPlan.PROFESSIONAL && subscription.plan !== SubscriptionPlan.ENTERPRISE && subscription.plan !== SubscriptionPlan.VIP_ACCESS) {
       res.status(403).json({
         success: false,
         error: 'Professional subscription required.',
         code: 'PROFESSIONAL_REQUIRED',
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Error checking subscription status.',
+    });
+  }
+};
+
+// Require active Enterprise subscription
+export const requireEnterpriseSubscription = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: 'Not authenticated.',
+      });
+      return;
+    }
+
+    // Admins bypass subscription check
+    if (req.user.role === UserRole.ADMIN) {
+      next();
+      return;
+    }
+
+    // Check for active Enterprise subscription
+    const subscription = await Subscription.findOne({
+      where: {
+        userId: req.user.id,
+        status: 'ACTIVE',
+      },
+    });
+
+    if (!subscription) {
+      res.status(403).json({
+        success: false,
+        error: 'Enterprise subscription required.',
+        code: 'ENTERPRISE_REQUIRED',
+      });
+      return;
+    }
+
+    // Check if subscription is expired
+    if (subscription.endDate && new Date(subscription.endDate) < new Date()) {
+      res.status(403).json({
+        success: false,
+        error: 'Your subscription has expired.',
+        code: 'SUBSCRIPTION_EXPIRED',
+      });
+      return;
+    }
+
+    // Only Enterprise or VIP Access has access
+    if (subscription.plan !== SubscriptionPlan.ENTERPRISE && subscription.plan !== SubscriptionPlan.VIP_ACCESS) {
+      res.status(403).json({
+        success: false,
+        error: 'Enterprise subscription required.',
+        code: 'ENTERPRISE_REQUIRED',
       });
       return;
     }

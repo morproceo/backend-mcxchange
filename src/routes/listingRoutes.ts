@@ -14,7 +14,7 @@ import {
   getUnlockedListings,
   createListingValidation,
 } from '../controllers/listingController';
-import { authenticate, optionalAuth, sellerOnly, buyerOnly } from '../middleware/auth';
+import { authenticate, optionalAuth, sellerOnly, buyerOnly, requireEnterpriseSubscription } from '../middleware/auth';
 import validate from '../middleware/validate';
 
 const router = Router();
@@ -24,6 +24,7 @@ router.get('/', optionalAuth, getListings);
 router.get('/search', optionalAuth, getListings); // Alias
 
 // Protected routes - must come before :id routes
+router.get('/vip', authenticate, requireEnterpriseSubscription, getListings);
 router.get('/saved', authenticate, getSavedListings);
 router.get('/my-listings', authenticate, sellerOnly, getMyListings);
 router.get('/unlocked', authenticate, buyerOnly, getUnlockedListings);
