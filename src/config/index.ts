@@ -29,12 +29,12 @@ export const config = {
     name: process.env.DB_NAME || 'mc_exchange',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
-    // Connection pool settings - keep low for JawsDB free tier (10 max connections)
+    // Connection pool settings - JawsDB Leopard allows ~15 max connections
     pool: {
-      max: parseInt(process.env.DB_POOL_MAX || '5', 10),      // Default 5 to leave headroom
-      min: parseInt(process.env.DB_POOL_MIN || '1', 10),      // Keep 1 warm connection
-      acquire: parseInt(process.env.DB_POOL_ACQUIRE || '30000', 10),
-      idle: parseInt(process.env.DB_POOL_IDLE || '10000', 10),
+      max: parseInt(process.env.DB_POOL_MAX || '10', 10),     // Use 10, leave 5 for admin/migrations
+      min: parseInt(process.env.DB_POOL_MIN || '2', 10),      // Keep 2 warm connections
+      acquire: parseInt(process.env.DB_POOL_ACQUIRE || '10000', 10), // 10s acquire timeout
+      idle: parseInt(process.env.DB_POOL_IDLE || '30000', 10),  // 30s idle before recycling
     },
     // Logging
     logging: process.env.DB_LOGGING === 'true' || isDevelopment,

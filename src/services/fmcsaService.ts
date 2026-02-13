@@ -1,5 +1,12 @@
 import { config } from '../config';
 import { FMCSACarrierData, FMCSAAuthorityHistory, FMCSAInsuranceHistory } from '../types';
+import logger from '../utils/logger';
+
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 
 // SMS (Safety Measurement System) data types
 export interface FMCSASMSBasic {
@@ -117,8 +124,8 @@ class FMCSAService {
   async lookupByDOT(dotNumber: string): Promise<FMCSACarrierData | null> {
     try {
       const url = `${this.baseUrl}/carriers/${dotNumber}?webKey=${this.apiKey}`;
-      console.log('FMCSA DOT lookup URL:', url);
-      const response = await fetch(url);
+      logger.debug('FMCSA DOT lookup URL:', url);
+      const response = await fetchWithTimeout(url);
 
       if (!response.ok) {
         console.error(`FMCSA API error: ${response.status}`);
@@ -126,7 +133,7 @@ class FMCSAService {
       }
 
       const data = await response.json() as FMCSASingleResponse;
-      console.log('FMCSA DOT response:', JSON.stringify(data).substring(0, 500));
+      logger.debug('FMCSA DOT response:', JSON.stringify(data).substring(0, 500));
 
       if (!data.content?.carrier) {
         return null;
@@ -134,7 +141,7 @@ class FMCSAService {
 
       return this.mapCarrierData(data.content.carrier);
     } catch (error) {
-      console.error('FMCSA lookup error:', error);
+      logger.warn('FMCSA lookup error:', error);
       return null;
     }
   }
@@ -144,8 +151,8 @@ class FMCSAService {
     try {
       // MC lookup requires a different endpoint - returns array
       const url = `${this.baseUrl}/carriers/docket-number/${mcNumber}?webKey=${this.apiKey}`;
-      console.log('FMCSA MC lookup URL:', url);
-      const response = await fetch(url);
+      logger.debug('FMCSA MC lookup URL:', url);
+      const response = await fetchWithTimeout(url);
 
       if (!response.ok) {
         console.error(`FMCSA API error: ${response.status}`);
@@ -153,24 +160,24 @@ class FMCSAService {
       }
 
       const data = await response.json() as FMCSAArrayResponse;
-      console.log('FMCSA MC response:', JSON.stringify(data).substring(0, 500));
+      logger.debug('FMCSA MC response:', JSON.stringify(data).substring(0, 500));
 
       // MC lookup returns an array in content
       if (!data.content || !Array.isArray(data.content) || data.content.length === 0) {
-        console.log('FMCSA: No carriers found for MC number');
+        logger.debug('FMCSA: No carriers found for MC number');
         return null;
       }
 
       // Get the first carrier from the array
       const carrierData = data.content[0]?.carrier;
       if (!carrierData) {
-        console.log('FMCSA: Carrier data missing from response');
+        logger.debug('FMCSA: Carrier data missing from response');
         return null;
       }
 
       return this.mapCarrierData(carrierData);
     } catch (error) {
-      console.error('FMCSA lookup error:', error);
+      logger.warn('FMCSA lookup error:', error);
       return null;
     }
   }
@@ -179,7 +186,7 @@ class FMCSAService {
   async getAuthorityHistory(dotNumber: string): Promise<FMCSAAuthorityHistory | null> {
     try {
       const url = `${this.baseUrl}/carriers/${dotNumber}/authority?webKey=${this.apiKey}`;
-      const response = await fetch(url);
+      const response = await fetchWithTimeout(url);
 
       if (!response.ok) {
         return null;
@@ -202,7 +209,7 @@ class FMCSAService {
         brokerAuthorityGrantDate: data.content.brokerAuthorityGrantDate,
       };
     } catch (error) {
-      console.error('FMCSA authority history error:', error);
+      logger.warn('FMCSA authority history error:', error);
       return null;
     }
   }
@@ -211,7 +218,7 @@ class FMCSAService {
   async getInsuranceHistory(dotNumber: string): Promise<FMCSAInsuranceHistory[] | null> {
     try {
       const url = `${this.baseUrl}/carriers/${dotNumber}/insurance?webKey=${this.apiKey}`;
-      const response = await fetch(url);
+      const response = await fetchWithTimeout(url);
 
       if (!response.ok) {
         return null;
@@ -251,7 +258,7 @@ class FMCSAService {
         status: insurance.status,
       }));
     } catch (error) {
-      console.error('FMCSA insurance history error:', error);
+      logger.warn('FMCSA insurance history error:', error);
       return null;
     }
   }
@@ -263,11 +270,11 @@ class FMCSAService {
       const basicsUrl = `${this.baseUrl}/carriers/${dotNumber}/basics?webKey=${this.apiKey}`;
       const oosUrl = `${this.baseUrl}/carriers/${dotNumber}/oos?webKey=${this.apiKey}`;
 
-      console.log('FMCSA SMS lookup URLs:', basicsUrl, oosUrl);
+      logger.debug('FMCSA SMS lookup URLs:', basicsUrl, oosUrl);
 
       const [basicsResponse, oosResponse] = await Promise.all([
-        fetch(basicsUrl).catch(() => null),
-        fetch(oosUrl).catch(() => null),
+        fetchWithTimeout(basicsUrl).catch(() => null),
+        fetchWithTimeout(oosUrl).catch(() => null),
       ]);
 
       // Parse BASIC scores
@@ -352,7 +359,7 @@ class FMCSAService {
         snapshotDate: new Date().toISOString().split('T')[0],
       };
     } catch (error) {
-      console.error('FMCSA SMS data error:', error);
+      logger.warn('FMCSA SMS data error:', error);
       return null;
     }
   }

@@ -1,4 +1,4 @@
-import { Op } from 'sequelize';
+import { Op, fn, col } from 'sequelize';
 import {
   Message,
   User,
@@ -47,6 +47,19 @@ class MessageService {
       ],
     });
 
+    // Batch query: get all unread counts grouped by sender in one query
+    const unreadCounts = await Message.findAll({
+      where: { receiverId: userId, read: false },
+      attributes: ['senderId', [fn('COUNT', col('id')), 'count']],
+      group: ['senderId'],
+      raw: true,
+    }) as unknown as Array<{ senderId: string; count: string }>;
+
+    const unreadMap = new Map<string, number>();
+    for (const row of unreadCounts) {
+      unreadMap.set(row.senderId, parseInt(row.count, 10));
+    }
+
     // Group messages by conversation partner
     const conversationsMap = new Map<string, Conversation>();
 
@@ -60,15 +73,6 @@ class MessageService {
         : message.sender;
 
       if (!conversationsMap.has(partnerId) && partner) {
-        // Count unread messages from this partner
-        const unreadCount = await Message.count({
-          where: {
-            senderId: partnerId,
-            receiverId: userId,
-            read: false,
-          },
-        });
-
         conversationsMap.set(partnerId, {
           id: partnerId,
           participantId: partner.id,
@@ -76,7 +80,7 @@ class MessageService {
           participantAvatar: partner.avatar || null,
           lastMessage: message.content.substring(0, 100),
           lastMessageAt: message.createdAt,
-          unreadCount,
+          unreadCount: unreadMap.get(partnerId) || 0,
           listingId: message.listingId || undefined,
         });
       }

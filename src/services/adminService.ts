@@ -2026,35 +2026,35 @@ class AdminService {
       order: [['createdAt', 'DESC']],
     });
 
-    // Format credit transactions with MC info where applicable
-    const formattedTransactions = await Promise.all(
-      creditTransactions.map(async (tx) => {
-        let mcNumber: string | null = null;
-        let listingTitle: string | null = null;
+    // Batch query: get all referenced listings in one query instead of N+1
+    const listingRefs = creditTransactions
+      .map(tx => tx.reference)
+      .filter((ref): ref is string => !!ref);
 
-        // If transaction has a reference (listingId), get the MC info
-        if (tx.reference) {
-          const listing = await Listing.findByPk(tx.reference, {
-            attributes: ['mcNumber', 'title'],
-          });
-          if (listing) {
-            mcNumber = listing.mcNumber;
-            listingTitle = listing.title;
-          }
-        }
+    const referencedListings = listingRefs.length > 0 ? await Listing.findAll({
+      where: { id: { [Op.in]: listingRefs } },
+      attributes: ['id', 'mcNumber', 'title'],
+      raw: true,
+    }) : [];
 
-        return {
-          id: tx.id,
-          type: tx.type,
-          amount: tx.amount,
-          balance: tx.balance,
-          description: tx.description || '',
-          mcNumber,
-          listingTitle,
-          createdAt: tx.createdAt,
-        };
-      })
-    );
+    const listingMap = new Map<string, { mcNumber: string; title: string }>();
+    for (const listing of referencedListings) {
+      listingMap.set(listing.id, { mcNumber: listing.mcNumber, title: listing.title });
+    }
+
+    const formattedTransactions = creditTransactions.map((tx) => {
+      const listing = tx.reference ? listingMap.get(tx.reference) : null;
+      return {
+        id: tx.id,
+        type: tx.type,
+        amount: tx.amount,
+        balance: tx.balance,
+        description: tx.description || '',
+        mcNumber: listing?.mcNumber || null,
+        listingTitle: listing?.title || null,
+        createdAt: tx.createdAt,
+      };
+    });
 
     return {
       userId: user.id,

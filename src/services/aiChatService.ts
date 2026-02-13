@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import logger from '../utils/logger';
 
 let openaiClient: OpenAI | null = null;
 
@@ -6,6 +7,7 @@ function getClient(): OpenAI {
   if (!openaiClient) {
     openaiClient = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
+      timeout: 60000, // 60 second timeout for API calls
     });
   }
   return openaiClient;
@@ -30,10 +32,12 @@ class AIChatService {
     });
 
     const assistantId = getAssistantId();
-    console.log('[AI Chat] Using assistant_id:', assistantId);
+    logger.debug('[AI Chat] Using assistant_id:', { assistantId });
 
     const run = await client.beta.threads.runs.createAndPoll(threadId, {
       assistant_id: assistantId,
+    }, {
+      pollIntervalMs: 1000,
     });
 
     if (run.status !== 'completed') {

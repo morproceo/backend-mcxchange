@@ -7,6 +7,13 @@
  */
 
 import { config } from '../config';
+import logger from '../utils/logger';
+
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 20000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
 
 // Creditsafe API response types
 interface CreditsafeAuthResponse {
@@ -277,13 +284,13 @@ class CreditsafeService {
    * Authenticate with Creditsafe and cache the token
    */
   private async authenticate(): Promise<string> {
-    console.log('[Creditsafe] Authenticating...');
+    logger.debug('[Creditsafe] Authenticating...');
 
     if (!this.username || !this.password) {
       throw new Error('Creditsafe credentials not configured');
     }
 
-    const response = await fetch(`${this.baseUrl}/authenticate`, {
+    const response = await fetchWithTimeout(`${this.baseUrl}/authenticate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -296,7 +303,7 @@ class CreditsafeService {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[Creditsafe] Authentication failed:', response.status, errorText);
+      logger.warn('[Creditsafe] Authentication failed:', response.status, errorText);
       throw new Error(`Creditsafe authentication failed: ${response.status}`);
     }
 
@@ -314,7 +321,7 @@ class CreditsafeService {
       expiresAt: now + this.DEFAULT_TOKEN_TTL_MS,
     };
 
-    console.log('[Creditsafe] Authentication successful, token cached');
+    logger.debug('[Creditsafe] Authentication successful, token cached');
     return data.token;
   }
 
@@ -347,14 +354,14 @@ class CreditsafeService {
       ...(options.headers as Record<string, string>),
     };
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       ...options,
       headers,
     });
 
     // Handle 401 Unauthorized - token expired
     if (response.status === 401 && !isRetry) {
-      console.log('[Creditsafe] Token expired, re-authenticating...');
+      logger.debug('[Creditsafe] Token expired, re-authenticating...');
       // Invalidate cached token
       this.tokenCache = null;
       // Retry the request once with a fresh token
@@ -421,13 +428,13 @@ class CreditsafeService {
     const response = await this.makeRequest<any>(endpoint);
 
     // Log the raw response structure for debugging
-    console.log('[Creditsafe] Raw credit report response keys:', Object.keys(response));
+    logger.debug('[Creditsafe] Raw credit report response keys:', Object.keys(response));
 
     // Creditsafe API wraps the report in a "report" object
     // Handle both wrapped and unwrapped responses
     const report = response.report || response;
 
-    console.log('[Creditsafe] Extracted report keys:', Object.keys(report));
+    logger.debug('[Creditsafe] Extracted report keys:', Object.keys(report));
 
     return report as CreditsafeCreditReport;
   }

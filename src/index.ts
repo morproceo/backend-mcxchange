@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import helmet from 'helmet';
 import path from 'path';
 import http from 'http';
@@ -80,6 +81,11 @@ app.use(
     maxAge: 86400, // 24 hours
   })
 );
+
+// ============================================
+// Response Compression (gzip/deflate)
+// ============================================
+app.use(compression());
 
 // ============================================
 // Request Logging

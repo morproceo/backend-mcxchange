@@ -1,3 +1,4 @@
+import { fn, col } from 'sequelize';
 import {
   Notification,
   NotificationType,
@@ -145,19 +146,21 @@ class NotificationService {
     });
   }
 
-  // Get notification counts by type
+  // Get notification counts by type (using SQL GROUP BY instead of loading all rows)
   async getCountsByType(userId: string) {
-    const notifications = await Notification.findAll({
+    const counts = await Notification.findAll({
       where: {
         userId,
         read: false,
       },
-      attributes: ['type'],
-    });
+      attributes: ['type', [fn('COUNT', col('id')), 'count']],
+      group: ['type'],
+      raw: true,
+    }) as unknown as Array<{ type: string; count: string }>;
 
     const result: Record<string, number> = {};
-    for (const notification of notifications) {
-      result[notification.type] = (result[notification.type] || 0) + 1;
+    for (const row of counts) {
+      result[row.type] = parseInt(row.count, 10);
     }
 
     return result;

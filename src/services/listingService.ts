@@ -243,8 +243,8 @@ class ListingService {
       throw new NotFoundError('Listing');
     }
 
-    // Increment views
-    await listing.update({ views: listing.views + 1 });
+    // Atomic increment views
+    await listing.increment('views');
 
     // Check if user has unlocked this listing
     let isUnlocked = false;
@@ -457,8 +457,8 @@ class ListingService {
       defaults: { userId, listingId },
     });
 
-    // Update saves count
-    await listing.update({ saves: listing.saves + 1 });
+    // Atomic increment saves count
+    await listing.increment('saves');
 
     return { success: true };
   }
@@ -473,8 +473,10 @@ class ListingService {
 
     await SavedListing.destroy({ where: { userId, listingId } });
 
-    // Update saves count
-    await listing.update({ saves: Math.max(0, listing.saves - 1) });
+    // Atomic decrement saves count (floor at 0)
+    if (listing.saves > 0) {
+      await listing.decrement('saves');
+    }
 
     return { success: true };
   }

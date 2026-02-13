@@ -115,22 +115,27 @@ class SellerService {
       limit,
     });
 
-    // Get offer counts for each listing
-    const listingsWithCounts = await Promise.all(
-      listings.map(async (listing) => {
-        const [offersCount, savedByCount] = await Promise.all([
-          Offer.count({ where: { listingId: listing.id } }),
-          listing.saves,
-        ]);
-        return {
-          ...listing.toJSON(),
-          _count: {
-            offers: offersCount,
-            savedBy: savedByCount,
-          },
-        };
-      })
-    );
+    // Batch query: get offer counts for all listings in one query
+    const listingIds = listings.map(l => l.id);
+    const offerCounts = listingIds.length > 0 ? await Offer.findAll({
+      where: { listingId: { [Op.in]: listingIds } },
+      attributes: ['listingId', [fn('COUNT', col('id')), 'count']],
+      group: ['listingId'],
+      raw: true,
+    }) as unknown as Array<{ listingId: string; count: string }> : [];
+
+    const offerCountMap = new Map<string, number>();
+    for (const row of offerCounts) {
+      offerCountMap.set(row.listingId, parseInt(row.count, 10));
+    }
+
+    const listingsWithCounts = listings.map((listing) => ({
+      ...listing.toJSON(),
+      _count: {
+        offers: offerCountMap.get(listing.id) || 0,
+        savedBy: listing.saves,
+      },
+    }));
 
     return {
       listings: listingsWithCounts,
@@ -306,19 +311,30 @@ class SellerService {
       attributes: ['id', 'mcNumber', 'title', 'views', 'saves', 'createdAt'],
     });
 
-    // Get offer counts for each listing
-    const listingsWithOffers = await Promise.all(
-      listings.map(async (listing) => {
-        const offersCount = await Offer.count({ where: { listingId: listing.id } });
-        return {
-          ...listing.toJSON(),
-          offerCount: offersCount,
-          conversionRate: listing.views > 0
-            ? ((offersCount / listing.views) * 100).toFixed(2)
-            : 0,
-        };
-      })
-    );
+    // Batch query: get offer counts for all listings in one query
+    const analyticsListingIds = listings.map(l => l.id);
+    const analyticsOfferCounts = analyticsListingIds.length > 0 ? await Offer.findAll({
+      where: { listingId: { [Op.in]: analyticsListingIds } },
+      attributes: ['listingId', [fn('COUNT', col('id')), 'count']],
+      group: ['listingId'],
+      raw: true,
+    }) as unknown as Array<{ listingId: string; count: string }> : [];
+
+    const analyticsOfferMap = new Map<string, number>();
+    for (const row of analyticsOfferCounts) {
+      analyticsOfferMap.set(row.listingId, parseInt(row.count, 10));
+    }
+
+    const listingsWithOffers = listings.map((listing) => {
+      const offersCount = analyticsOfferMap.get(listing.id) || 0;
+      return {
+        ...listing.toJSON(),
+        offerCount: offersCount,
+        conversionRate: listing.views > 0
+          ? ((offersCount / listing.views) * 100).toFixed(2)
+          : 0,
+      };
+    });
 
     // Get offer trends
     const offers = await Offer.findAll({
