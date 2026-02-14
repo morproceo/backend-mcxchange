@@ -20,6 +20,7 @@ import facebookRoutes from './facebookRoutes';
 import disputeRoutes from './disputeRoutes';
 import aiChatRoutes from './aiChatRoutes';
 import dispatchRoutes from './dispatchRoutes';
+import adminServicesRoutes from './adminServicesRoutes';
 import { sequelize } from '../models';
 import { isRedisHealthy } from '../config/redis';
 import { config, getPublicConfig } from '../config';
@@ -206,5 +207,6 @@ router.use('/admin/facebook', facebookRoutes);
 router.use('/disputes', disputeRoutes);
 router.use('/ai-chat', aiChatRoutes);
 router.use('/dispatch', dispatchRoutes);
+router.use('/admin-services', adminServicesRoutes);
 
 export default router;

@@ -8,7 +8,9 @@ interface GHLContactData {
   phone: string;
   fleetSize?: string;
   equipmentType?: string;
+  serviceType?: string;
   message?: string;
+  tag?: string;
 }
 
 interface GHLContactResponse {
@@ -40,7 +42,7 @@ class GHLService {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    const tags = ['Dispatch lead'];
+    const tags = [data.tag || 'Dispatch lead'];
 
     const body: Record<string, any> = {
       firstName,
@@ -56,6 +58,7 @@ class GHLService {
     const notes: string[] = [];
     if (data.fleetSize) notes.push(`Fleet Size: ${data.fleetSize}`);
     if (data.equipmentType) notes.push(`Equipment Type: ${data.equipmentType}`);
+    if (data.serviceType) notes.push(`Service Type: ${data.serviceType}`);
     if (data.message) notes.push(`Message: ${data.message}`);
 
     if (notes.length > 0) {
