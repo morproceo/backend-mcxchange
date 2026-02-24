@@ -353,10 +353,14 @@ export const createPremiumRequest = asyncHandler(async (req: AuthRequest, res: R
 
   const request = await buyerService.createPremiumRequest(req.user.id, listingId, message);
 
+  const isAutoApproved = request.status === 'COMPLETED';
+
   res.status(201).json({
     success: true,
     data: request,
-    message: 'Premium request submitted successfully. Admin will review your request.',
+    message: isAutoApproved
+      ? 'Premium listing unlocked instantly with your Enterprise subscription.'
+      : 'Premium request submitted successfully. Admin will review your request.',
   });
 });
 

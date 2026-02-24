@@ -9,8 +9,11 @@ import {
   UnlockedListing,
   Subscription,
   CreditTransaction,
+  CreditTransactionType,
   Document,
   Payment,
+  Notification,
+  NotificationType,
   SubscriptionStatus,
   SubscriptionPlan,
   PremiumRequest,
@@ -517,7 +520,90 @@ class BuyerService {
       throw new BadRequestError('Insufficient credits. Please purchase more credits to request premium access.');
     }
 
-    // Create the premium request
+    // Check if buyer has an active Enterprise subscription (auto-approve)
+    const activeSubscription = await Subscription.findOne({
+      where: {
+        userId: buyerId,
+        status: SubscriptionStatus.ACTIVE,
+        plan: SubscriptionPlan.ENTERPRISE,
+      },
+    });
+
+    if (activeSubscription) {
+      // Enterprise users get auto-approved — still create the request for admin visibility
+      const t = await sequelize.transaction();
+
+      try {
+        // 1. Create premium request as COMPLETED
+        const request = await PremiumRequest.create(
+          {
+            buyerId,
+            listingId,
+            message,
+            status: PremiumRequestStatus.COMPLETED,
+          },
+          { transaction: t }
+        );
+
+        // 2. Create UnlockedListing record
+        await UnlockedListing.create(
+          {
+            userId: buyerId,
+            listingId,
+            creditsUsed: 1,
+          },
+          { transaction: t }
+        );
+
+        // 3. Deduct credit from buyer
+        await user.update(
+          { usedCredits: user.usedCredits + 1 },
+          { transaction: t }
+        );
+
+        // 4. Record credit transaction for audit trail
+        await CreditTransaction.create(
+          {
+            userId: buyerId,
+            type: CreditTransactionType.USAGE,
+            amount: -1,
+            balance: availableCredits - 1,
+            description: `Premium listing auto-unlocked (Enterprise): MC-${listing.mcNumber}`,
+            reference: listingId,
+          },
+          { transaction: t }
+        );
+
+        // 5. Notify buyer
+        await Notification.create(
+          {
+            type: NotificationType.SYSTEM,
+            title: 'Premium Access Granted',
+            message: `Your Enterprise subscription grants you instant access to premium listing MC-${listing.mcNumber}.`,
+            userId: buyerId,
+          },
+          { transaction: t }
+        );
+
+        await t.commit();
+
+        logger.info('Premium request auto-approved for Enterprise subscriber', {
+          buyerId,
+          listingId,
+          requestId: request.id,
+          creditsDeducted: 1,
+          newBalance: availableCredits - 1,
+        });
+
+        return request;
+      } catch (error) {
+        await t.rollback();
+        logger.error('Failed to auto-approve premium request', { buyerId, listingId, error });
+        throw error;
+      }
+    }
+
+    // Non-enterprise: create as PENDING, requires admin approval
     const request = await PremiumRequest.create({
       buyerId,
       listingId,
