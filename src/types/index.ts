@@ -9,6 +9,7 @@ export interface AuthRequest extends Request {
     role: UserRole;
     name: string;
     stripeCustomerId?: string | null;
+    identityVerified?: boolean;
   };
 }
 

@@ -38,6 +38,7 @@ class UserService {
         'verified', 'verifiedAt', 'trustScore', 'memberSince', 'lastLoginAt',
         'companyName', 'companyAddress', 'city', 'state', 'zipCode', 'ein',
         'sellerVerified', 'sellerVerifiedAt', 'totalCredits', 'usedCredits',
+        'identityVerified', 'identityVerifiedAt', 'identityVerificationStatus',
       ],
     });
 

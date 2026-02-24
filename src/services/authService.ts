@@ -56,6 +56,8 @@ interface UserResponse {
   avatar?: string | null;
   totalCredits?: number;
   usedCredits?: number;
+  identityVerified: boolean;
+  identityVerificationStatus?: string | null;
 }
 
 class AuthService {
@@ -125,6 +127,8 @@ class AuthService {
       avatar: user.avatar,
       totalCredits: user.totalCredits,
       usedCredits: user.usedCredits,
+      identityVerified: user.identityVerified || false,
+      identityVerificationStatus: user.identityVerificationStatus || null,
     };
 
     return { user: userResponse, tokens };
@@ -255,6 +259,8 @@ class AuthService {
       avatar: user.avatar,
       totalCredits: user.totalCredits,
       usedCredits: user.usedCredits,
+      identityVerified: user.identityVerified || false,
+      identityVerificationStatus: user.identityVerificationStatus || null,
     };
 
     return { user: userResponse, tokens };
@@ -588,6 +594,8 @@ class AuthService {
       avatar: user.avatar,
       totalCredits: user.totalCredits,
       usedCredits: user.usedCredits,
+      identityVerified: user.identityVerified || false,
+      identityVerificationStatus: user.identityVerificationStatus || null,
     };
   }
 

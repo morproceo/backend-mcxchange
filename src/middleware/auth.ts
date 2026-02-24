@@ -35,7 +35,7 @@ export const authenticate = async (
 
     // Verify user still exists and is active
     const user = await User.findByPk(decoded.id, {
-      attributes: ['id', 'email', 'role', 'name', 'status', 'stripeCustomerId'],
+      attributes: ['id', 'email', 'role', 'name', 'status', 'stripeCustomerId', 'identityVerified'],
     });
 
     if (!user) {
@@ -60,6 +60,7 @@ export const authenticate = async (
       role: user.role,
       name: user.name,
       stripeCustomerId: user.stripeCustomerId,
+      identityVerified: user.identityVerified,
     };
 
     next();
@@ -346,6 +347,45 @@ export const requireEnterpriseSubscription = async (
     res.status(500).json({
       success: false,
       error: 'Error checking subscription status.',
+    });
+  }
+};
+
+// Require identity verification
+export const requireIdentityVerification = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: 'Not authenticated.',
+      });
+      return;
+    }
+
+    // Admins bypass identity verification
+    if (req.user.role === UserRole.ADMIN) {
+      next();
+      return;
+    }
+
+    if (!req.user.identityVerified) {
+      res.status(403).json({
+        success: false,
+        error: 'Identity verification required to access this feature.',
+        code: 'IDENTITY_VERIFICATION_REQUIRED',
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Error checking identity verification status.',
     });
   }
 };

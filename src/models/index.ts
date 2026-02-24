@@ -196,11 +196,15 @@ interface UserAttributes {
   stripeCustomerId?: string;
   stripeAccountId?: string;
   emailVerified: boolean;
+  identityVerified: boolean;
+  identityVerifiedAt?: Date;
+  stripeVerificationSessionId?: string;
+  identityVerificationStatus?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'phone' | 'avatar' | 'status' | 'verified' | 'verifiedAt' | 'trustScore' | 'memberSince' | 'lastLoginAt' | 'companyName' | 'companyAddress' | 'city' | 'state' | 'zipCode' | 'ein' | 'sellerVerified' | 'sellerVerifiedAt' | 'totalCredits' | 'usedCredits' | 'stripeCustomerId' | 'stripeAccountId' | 'emailVerified' | 'createdAt' | 'updatedAt'> {}
+interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'phone' | 'avatar' | 'status' | 'verified' | 'verifiedAt' | 'trustScore' | 'memberSince' | 'lastLoginAt' | 'companyName' | 'companyAddress' | 'city' | 'state' | 'zipCode' | 'ein' | 'sellerVerified' | 'sellerVerifiedAt' | 'totalCredits' | 'usedCredits' | 'stripeCustomerId' | 'stripeAccountId' | 'emailVerified' | 'identityVerified' | 'identityVerifiedAt' | 'stripeVerificationSessionId' | 'identityVerificationStatus' | 'createdAt' | 'updatedAt'> {}
 
 // ==================== USER MODEL ====================
 
@@ -231,6 +235,10 @@ export class User extends Model<UserAttributes, UserCreationAttributes> implemen
   declare stripeCustomerId: string | undefined;
   declare stripeAccountId: string | undefined;
   declare emailVerified: boolean;
+  declare identityVerified: boolean;
+  declare identityVerifiedAt: Date | undefined;
+  declare stripeVerificationSessionId: string | undefined;
+  declare identityVerificationStatus: string | undefined;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 
@@ -349,6 +357,22 @@ User.init(
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
+    identityVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    identityVerifiedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    stripeVerificationSessionId: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    identityVerificationStatus: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
   },
   {
     sequelize,
@@ -358,6 +382,7 @@ User.init(
       { fields: ['role'] },
       { fields: ['status'] },
       { fields: ['stripeCustomerId'] },
+      { fields: ['stripeVerificationSessionId'] },
     ],
   }
 );

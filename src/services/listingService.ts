@@ -127,11 +127,9 @@ class ListingService {
       (where as Record<string, unknown>).isPremium = premium;
     }
 
-    // VIP filter — when vip=true show only VIP; otherwise hide VIP from regular marketplace
-    if (vip) {
-      (where as Record<string, unknown>).isVip = true;
-    } else {
-      (where as Record<string, unknown>).isVip = false;
+    // VIP filter — only apply when explicitly set
+    if (vip !== undefined) {
+      (where as Record<string, unknown>).isVip = vip;
     }
 
     // Highway setup filter
