@@ -589,6 +589,8 @@ export class Listing extends Model {
   declare fmcsaData?: string;
   declare authorityHistory?: string;
   declare insuranceHistory?: string;
+  declare insuranceCompany?: string;
+  declare monthlyInsurancePremium?: number;
   declare views: number;
   declare saves: number;
   declare reviewNotes?: string;
@@ -755,6 +757,14 @@ Listing.init(
     },
     insuranceHistory: {
       type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    insuranceCompany: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    monthlyInsurancePremium: {
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
     },
     views: {

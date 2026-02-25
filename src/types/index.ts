@@ -129,6 +129,10 @@ export interface FMCSAAuthorityHistory {
   contractAuthorityGrantDate?: string;
   brokerAuthorityStatus: string;
   brokerAuthorityGrantDate?: string;
+  applicationDate?: string;
+  grantDate?: string;
+  effectiveDate?: string;
+  revocationDate?: string;
 }
 
 export interface FMCSAInsuranceHistory {
@@ -193,6 +197,11 @@ export interface CreateListingData {
   visibility?: string;
   isPremium?: boolean;
   isVip?: boolean;
+  fmcsaData?: string;
+  authorityHistory?: string;
+  insuranceHistory?: string;
+  insuranceCompany?: string;
+  monthlyInsurancePremium?: number;
 }
 
 // Subscription Plans

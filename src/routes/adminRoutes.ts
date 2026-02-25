@@ -32,6 +32,8 @@ import {
   createListing,
   createListingValidation,
   createUserWithListing,
+  updateUserRole,
+  updateUserRoleValidation,
   getPricingConfig,
   updatePricingConfig,
   getStripeTransactions,
@@ -77,6 +79,7 @@ router.post('/users', validate(createUserValidation), createUser);
 router.post('/users/with-listing', createUserWithListing);
 router.get('/users/:id', getUserDetails);
 router.get('/users/:id/activity-log', getUserActivityLog);
+router.put('/users/:id/role', validate(updateUserRoleValidation), updateUserRole);
 router.post('/users/:id/block', validate(blockUserValidation), blockUser);
 router.post('/users/:id/unblock', unblockUser);
 router.post('/users/:id/verify-seller', verifySeller);

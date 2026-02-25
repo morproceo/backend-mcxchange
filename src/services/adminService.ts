@@ -24,6 +24,7 @@ import {
   OfferStatus,
   AccountDisputeStatus,
   CreditTransactionType,
+  Subscription,
 } from '../models';
 import { NotFoundError, BadRequestError } from '../middleware/errorHandler';
 import { getPaginationInfo, calculateDeposit, calculatePlatformFee } from '../utils/helpers';
@@ -260,7 +261,16 @@ class AdminService {
         'lastLoginAt',
         'companyName',
         'createdAt',
+        'identityVerified',
+        'identityVerificationStatus',
+        'identityVerifiedAt',
       ],
+      include: [{
+        model: Subscription,
+        as: 'subscription',
+        attributes: ['plan', 'status'],
+        required: false,
+      }],
     });
 
     // OPTIMIZED: Get counts for all users in a SINGLE query instead of N+1
@@ -422,6 +432,33 @@ class AdminService {
       action: 'UNBLOCK_USER',
       targetType: 'USER',
       targetId: userId,
+    });
+
+    return user;
+  }
+
+  // Update user role
+  async updateUserRole(userId: string, adminId: string, newRole: string) {
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    if (userId === adminId) {
+      throw new BadRequestError('Cannot change your own role');
+    }
+
+    const oldRole = user.role;
+    await user.update({ role: newRole as UserRole });
+
+    // Record admin action
+    await AdminAction.create({
+      adminId,
+      action: 'UPDATE_USER_ROLE',
+      targetType: 'USER',
+      targetId: userId,
+      reason: `Role changed from ${oldRole} to ${newRole}`,
     });
 
     return user;
@@ -1566,6 +1603,9 @@ class AdminService {
     status?: string;
     createdByAdminId: string;
     adminNotes?: string;
+    fmcsaData?: string;
+    authorityHistory?: string;
+    insuranceHistory?: string;
   }) {
     // Verify seller exists
     const seller = await User.findByPk(data.sellerId);
@@ -1610,6 +1650,9 @@ class AdminService {
       isVip: data.isVip || false,
       status: (data.status as ListingStatus) || ListingStatus.ACTIVE,
       adminNotes: data.adminNotes || '',
+      fmcsaData: data.fmcsaData || null,
+      authorityHistory: data.authorityHistory || null,
+      insuranceHistory: data.insuranceHistory || null,
     });
 
     // Record admin action

@@ -24,6 +24,10 @@ export const createUserValidation = [
   body('role').isIn(['BUYER', 'SELLER', 'ADMIN']).withMessage('Valid role is required'),
 ];
 
+export const updateUserRoleValidation = [
+  body('role').isIn(['BUYER', 'SELLER', 'ADMIN']).withMessage('Valid role is required (BUYER, SELLER, ADMIN)'),
+];
+
 export const createListingValidation = [
   body('mcNumber').trim().notEmpty().withMessage('MC Number is required'),
   body('sellerId').trim().notEmpty().withMessage('Seller ID is required'),
@@ -172,6 +176,25 @@ export const verifySeller = asyncHandler(async (req: AuthRequest, res: Response)
     success: true,
     data: user,
     message: 'Seller verified',
+  });
+});
+
+// Update user role
+export const updateUserRole = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+  const { role } = req.body;
+
+  const user = await adminService.updateUserRole(id, req.user.id, role);
+
+  res.json({
+    success: true,
+    data: user,
+    message: 'User role updated',
   });
 });
 
@@ -535,6 +558,9 @@ export const createListing = asyncHandler(async (req: AuthRequest, res: Response
     isPremium,
     status,
     adminNotes,
+    fmcsaData,
+    authorityHistory,
+    insuranceHistory,
   } = req.body;
 
   const listing = await adminService.createListing({
@@ -565,6 +591,9 @@ export const createListing = asyncHandler(async (req: AuthRequest, res: Response
     status: status || 'ACTIVE', // Admin can create active listings directly
     createdByAdminId: req.user.id,
     adminNotes,
+    fmcsaData,
+    authorityHistory,
+    insuranceHistory,
   });
 
   res.status(201).json({

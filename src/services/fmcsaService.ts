@@ -207,6 +207,10 @@ class FMCSAService {
         contractAuthorityGrantDate: data.content.contractAuthorityGrantDate,
         brokerAuthorityStatus: data.content.brokerAuthorityStatus || 'N/A',
         brokerAuthorityGrantDate: data.content.brokerAuthorityGrantDate,
+        applicationDate: data.content.applicationDt || undefined,
+        grantDate: data.content.grantDt || undefined,
+        effectiveDate: data.content.effectiveDt || undefined,
+        revocationDate: data.content.revssnDt || undefined,
       };
     } catch (error) {
       logger.warn('FMCSA authority history error:', error);

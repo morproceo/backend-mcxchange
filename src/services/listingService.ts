@@ -313,6 +313,11 @@ class ListingService {
       visibility: (data.visibility?.toUpperCase() as ListingVisibility) || ListingVisibility.PUBLIC,
       isPremium: data.isPremium || false,
       isVip: data.isVip || false,
+      fmcsaData: data.fmcsaData || null,
+      authorityHistory: data.authorityHistory || null,
+      insuranceHistory: data.insuranceHistory || null,
+      insuranceCompany: data.insuranceCompany || null,
+      monthlyInsurancePremium: data.monthlyInsurancePremium || null,
       status: initialStatus,
     });
 
