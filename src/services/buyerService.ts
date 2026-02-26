@@ -520,17 +520,17 @@ class BuyerService {
       throw new BadRequestError('Insufficient credits. Please purchase more credits to request premium access.');
     }
 
-    // Check if buyer has an active Enterprise subscription (auto-approve)
+    // Check if buyer has an active paid subscription (auto-approve)
     const activeSubscription = await Subscription.findOne({
       where: {
         userId: buyerId,
         status: SubscriptionStatus.ACTIVE,
-        plan: SubscriptionPlan.ENTERPRISE,
+        plan: { [Op.in]: [SubscriptionPlan.PROFESSIONAL, SubscriptionPlan.ENTERPRISE, SubscriptionPlan.VIP_ACCESS] },
       },
     });
 
     if (activeSubscription) {
-      // Enterprise users get auto-approved — still create the request for admin visibility
+      // Paid subscribers get auto-approved — still create the request for admin visibility
       const t = await sequelize.transaction();
 
       try {
@@ -568,7 +568,7 @@ class BuyerService {
             type: CreditTransactionType.USAGE,
             amount: -1,
             balance: availableCredits - 1,
-            description: `Premium listing auto-unlocked (Enterprise): MC-${listing.mcNumber}`,
+            description: `Premium listing auto-unlocked (${activeSubscription.plan}): MC-${listing.mcNumber}`,
             reference: listingId,
           },
           { transaction: t }
@@ -579,7 +579,7 @@ class BuyerService {
           {
             type: NotificationType.SYSTEM,
             title: 'Premium Access Granted',
-            message: `Your Enterprise subscription grants you instant access to premium listing MC-${listing.mcNumber}.`,
+            message: `Your ${activeSubscription.plan} subscription grants you instant access to premium listing MC-${listing.mcNumber}.`,
             userId: buyerId,
           },
           { transaction: t }
@@ -587,7 +587,7 @@ class BuyerService {
 
         await t.commit();
 
-        logger.info('Premium request auto-approved for Enterprise subscriber', {
+        logger.info(`Premium request auto-approved for ${activeSubscription.plan} subscriber`, {
           buyerId,
           listingId,
           requestId: request.id,

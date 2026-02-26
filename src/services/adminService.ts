@@ -784,6 +784,8 @@ class AdminService {
     bipdCoverage?: number;
     cargoCoverage?: number;
     bondAmount?: number;
+    insuranceCompany?: string;
+    monthlyInsurancePremium?: number;
     amazonStatus?: string;
     amazonRelayScore?: string;
     highwaySetup?: boolean;
@@ -792,6 +794,9 @@ class AdminService {
     contactEmail?: string;
     contactPhone?: string;
     cargoTypes?: string[];
+    fmcsaData?: string;
+    authorityHistory?: string;
+    insuranceHistory?: string;
     reviewNotes?: string;
     status?: string;
     visibility?: string;
@@ -827,6 +832,8 @@ class AdminService {
     if (data.bipdCoverage !== undefined) updateData.bipdCoverage = data.bipdCoverage;
     if (data.cargoCoverage !== undefined) updateData.cargoCoverage = data.cargoCoverage;
     if (data.bondAmount !== undefined) updateData.bondAmount = data.bondAmount;
+    if (data.insuranceCompany !== undefined) updateData.insuranceCompany = data.insuranceCompany;
+    if (data.monthlyInsurancePremium !== undefined) updateData.monthlyInsurancePremium = data.monthlyInsurancePremium;
     if (data.amazonStatus !== undefined) updateData.amazonStatus = data.amazonStatus.toUpperCase();
     if (data.amazonRelayScore !== undefined) updateData.amazonRelayScore = data.amazonRelayScore;
     if (data.highwaySetup !== undefined) updateData.highwaySetup = data.highwaySetup;
@@ -835,6 +842,9 @@ class AdminService {
     if (data.contactEmail !== undefined) updateData.contactEmail = data.contactEmail;
     if (data.contactPhone !== undefined) updateData.contactPhone = data.contactPhone;
     if (data.cargoTypes !== undefined) updateData.cargoTypes = JSON.stringify(data.cargoTypes);
+    if (data.fmcsaData !== undefined) updateData.fmcsaData = data.fmcsaData;
+    if (data.authorityHistory !== undefined) updateData.authorityHistory = data.authorityHistory;
+    if (data.insuranceHistory !== undefined) updateData.insuranceHistory = data.insuranceHistory;
     if (data.reviewNotes !== undefined) updateData.reviewNotes = data.reviewNotes;
     if (data.status !== undefined) updateData.status = data.status.toUpperCase();
     if (data.visibility !== undefined) updateData.visibility = data.visibility.toUpperCase();
@@ -1585,6 +1595,9 @@ class AdminService {
     askingPrice: number;
     city?: string;
     state?: string;
+    address?: string;
+    contactEmail?: string;
+    contactPhone?: string;
     yearsActive?: number;
     fleetSize?: number;
     totalDrivers?: number;
@@ -1592,6 +1605,9 @@ class AdminService {
     insuranceOnFile?: boolean;
     bipdCoverage?: number;
     cargoCoverage?: number;
+    bondAmount?: number;
+    insuranceCompany?: string;
+    monthlyInsurancePremium?: number;
     amazonStatus?: string;
     amazonRelayScore?: string;
     highwaySetup?: boolean;
@@ -1600,6 +1616,10 @@ class AdminService {
     cargoTypes?: string[];
     isPremium?: boolean;
     isVip?: boolean;
+    visibility?: string;
+    hasFactoring?: string;
+    factoringCompany?: string;
+    entryAuditCompleted?: string;
     status?: string;
     createdByAdminId: string;
     adminNotes?: string;
@@ -1633,6 +1653,9 @@ class AdminService {
       askingPrice: data.askingPrice,
       city: data.city || 'Unknown',
       state: data.state || '',
+      address: data.address || '',
+      contactEmail: data.contactEmail || '',
+      contactPhone: data.contactPhone || '',
       yearsActive: data.yearsActive || 0,
       fleetSize: data.fleetSize || 0,
       totalDrivers: data.totalDrivers || 0,
@@ -1640,6 +1663,9 @@ class AdminService {
       insuranceOnFile: data.insuranceOnFile || false,
       bipdCoverage: data.bipdCoverage || 0,
       cargoCoverage: data.cargoCoverage || 0,
+      bondAmount: data.bondAmount || 0,
+      insuranceCompany: data.insuranceCompany || '',
+      monthlyInsurancePremium: data.monthlyInsurancePremium || 0,
       amazonStatus: data.amazonStatus || 'NONE',
       amazonRelayScore: data.amazonRelayScore || '',
       highwaySetup: data.highwaySetup || false,
@@ -1648,6 +1674,7 @@ class AdminService {
       cargoTypes: data.cargoTypes ? JSON.stringify(data.cargoTypes) : '[]',
       isPremium: data.isPremium || false,
       isVip: data.isVip || false,
+      visibility: data.visibility || 'public',
       status: (data.status as ListingStatus) || ListingStatus.ACTIVE,
       adminNotes: data.adminNotes || '',
       fmcsaData: data.fmcsaData || null,
