@@ -21,10 +21,10 @@ async function seedSubscriptions() {
       priceMonthly: number;
       credits: number;
     }> = [
-      // Admin → Professional (active)
+      // Admin → Premium (active)
       {
         email: 'admin@admin.com',
-        plan: SubscriptionPlan.PROFESSIONAL,
+        plan: SubscriptionPlan.PREMIUM,
         status: SubscriptionStatus.ACTIVE,
         priceMonthly: 19.99,
         credits: 15,
@@ -45,10 +45,10 @@ async function seedSubscriptions() {
         priceMonthly: 39.99,
         credits: 25,
       },
-      // Seller 3 → Professional (past due)
+      // Seller 3 → Premium (past due)
       {
         email: 'seller3@test.com',
-        plan: SubscriptionPlan.PROFESSIONAL,
+        plan: SubscriptionPlan.PREMIUM,
         status: SubscriptionStatus.PAST_DUE,
         priceMonthly: 19.99,
         credits: 15,
@@ -114,10 +114,10 @@ async function seedSubscriptions() {
     console.log('  SUBSCRIPTION SEED COMPLETE!');
     console.log('========================================');
     console.log('');
-    console.log('  admin@admin.com     → PROFESSIONAL (Active)');
+    console.log('  admin@admin.com     → PREMIUM (Active)');
     console.log('  seller@test.com     → STARTER (Active)');
     console.log('  seller2@test.com    → ENTERPRISE (Active)');
-    console.log('  seller3@test.com    → PROFESSIONAL (Past Due)');
+    console.log('  seller3@test.com    → PREMIUM (Past Due)');
     console.log('  seller4@test.com    → STARTER (Cancelled)');
     console.log('  buyer@test.com      → ENTERPRISE (Active)');
     console.log('  buyer2@test.com     → VIP_ACCESS (Active)');

@@ -18,7 +18,7 @@ async function seedAdminSubscription() {
       process.exit(1);
     }
 
-    const planKey = SubscriptionPlan.PROFESSIONAL;
+    const planKey = SubscriptionPlan.PREMIUM;
     const planDetails = await pricingConfigService.getSubscriptionPlan(planKey);
 
     const renewalDate = addMonths(new Date(), 1);

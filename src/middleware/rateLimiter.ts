@@ -55,14 +55,15 @@ const createStore = async () => {
 
 /**
  * Global rate limiter - applies to all routes
- * Production: 1000 requests per 15 minutes per IP (allows normal browsing)
+ * Production: 3000 requests per 15 minutes per IP
+ *   (frontend pages fire many parallel API calls per page load — 1000 was too low)
  * Development: 5000 requests per 15 minutes per IP (more lenient for testing)
  */
 export const globalLimiter = rateLimit({
   windowMs: parseInt(config.rateLimit?.windowMs || '900000'), // 15 minutes
   max: config.isDevelopment
     ? 5000  // Much higher limit for development
-    : parseInt(config.rateLimit?.maxRequests || '1000'),
+    : parseInt(config.rateLimit?.maxRequests || '3000'),
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,

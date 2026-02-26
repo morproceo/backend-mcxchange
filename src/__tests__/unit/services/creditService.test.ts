@@ -22,7 +22,7 @@ jest.mock('../../../models', () => ({
   },
   SubscriptionPlan: {
     STARTER: 'STARTER',
-    PROFESSIONAL: 'PROFESSIONAL',
+    PREMIUM: 'PREMIUM',
     ENTERPRISE: 'ENTERPRISE',
   },
   SubscriptionStatus: {
@@ -78,8 +78,8 @@ jest.mock('../../../types', () => ({
       stripePriceIdMonthly: 'price_starter_monthly',
       stripePriceIdYearly: 'price_starter_yearly',
     },
-    PROFESSIONAL: {
-      name: 'Professional',
+    PREMIUM: {
+      name: 'Premium',
       credits: 15,
       priceMonthly: 79,
       priceYearly: 790,
@@ -297,7 +297,7 @@ describe('CreditService', () => {
     it('should return current subscription', async () => {
       const mockSubscription = {
         id: 'sub-123',
-        plan: 'PROFESSIONAL',
+        plan: 'PREMIUM',
         status: 'active',
       };
 

@@ -9,7 +9,7 @@ async function fixVipEnum() {
   console.log('Current plan column:', cols[0].Type);
 
   // Alter the ENUM to include VIP_ACCESS
-  await conn.query("ALTER TABLE subscriptions MODIFY COLUMN plan ENUM('STARTER','PROFESSIONAL','ENTERPRISE','VIP_ACCESS') NOT NULL");
+  await conn.query("ALTER TABLE subscriptions MODIFY COLUMN plan ENUM('STARTER','PREMIUM','ENTERPRISE','VIP_ACCESS') NOT NULL");
   console.log('Updated ENUM to include VIP_ACCESS');
 
   // Now set the user's plan to VIP_ACCESS

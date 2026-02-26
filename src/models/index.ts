@@ -112,7 +112,7 @@ export enum PaymentType {
 
 export enum SubscriptionPlan {
   STARTER = 'STARTER',
-  PROFESSIONAL = 'PROFESSIONAL',
+  PREMIUM = 'PREMIUM',
   ENTERPRISE = 'ENTERPRISE',
   VIP_ACCESS = 'VIP_ACCESS'
 }

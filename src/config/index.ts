@@ -115,7 +115,7 @@ export const config = {
   // Rate Limiting
   rateLimit: {
     windowMs: process.env.RATE_LIMIT_WINDOW_MS || '900000', // 15 minutes
-    maxRequests: process.env.RATE_LIMIT_MAX_REQUESTS || '100',
+    maxRequests: process.env.RATE_LIMIT_MAX_REQUESTS || '3000',
   },
 
   // Security
@@ -153,7 +153,7 @@ export const config = {
       monthlyPrice: 99,
       yearlyPrice: 950,
     },
-    professional: {
+    premium: {
       credits: 10,
       monthlyPrice: 199,
       yearlyPrice: 1910,

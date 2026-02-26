@@ -249,8 +249,8 @@ export const requireProfessionalSubscription = async (
     if (!subscription) {
       res.status(403).json({
         success: false,
-        error: 'Professional subscription required.',
-        code: 'PROFESSIONAL_REQUIRED',
+        error: 'Premium subscription required.',
+        code: 'PREMIUM_REQUIRED',
       });
       return;
     }
@@ -265,12 +265,12 @@ export const requireProfessionalSubscription = async (
       return;
     }
 
-    // Only Professional, Enterprise, and VIP Access have access
-    if (subscription.plan !== SubscriptionPlan.PROFESSIONAL && subscription.plan !== SubscriptionPlan.ENTERPRISE && subscription.plan !== SubscriptionPlan.VIP_ACCESS) {
+    // Only Premium, Enterprise, and VIP Access have access
+    if (subscription.plan !== SubscriptionPlan.PREMIUM && subscription.plan !== SubscriptionPlan.ENTERPRISE && subscription.plan !== SubscriptionPlan.VIP_ACCESS) {
       res.status(403).json({
         success: false,
-        error: 'Professional subscription required.',
-        code: 'PROFESSIONAL_REQUIRED',
+        error: 'Premium subscription required.',
+        code: 'PREMIUM_REQUIRED',
       });
       return;
     }

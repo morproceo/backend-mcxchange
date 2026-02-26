@@ -125,7 +125,7 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
   const { plan, isYearly } = req.body;
 
   // Validate plan
-  const validPlans = ['starter', 'professional', 'enterprise'];
+  const validPlans = ['starter', 'premium', 'enterprise'];
   if (!plan || !validPlans.includes(plan)) {
     throw new BadRequestError('Invalid subscription plan');
   }
@@ -145,7 +145,7 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
 
   // Get the price ID for the selected plan
   const priceId = stripeService.getPriceId(
-    plan as 'starter' | 'professional' | 'enterprise',
+    plan as 'starter' | 'premium' | 'enterprise',
     isYearly ? 'yearly' : 'monthly'
   );
 

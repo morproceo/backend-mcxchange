@@ -380,8 +380,10 @@ class BuyerService {
 
     const stripeSubscription = stripeSubscriptions.data[0];
     const metadata = stripeSubscription.metadata;
-    // Plan in metadata is lowercase (starter, professional, enterprise) but SUBSCRIPTION_PLANS keys are uppercase
-    const planFromMetadata = (metadata?.plan || 'starter').toUpperCase();
+    // Plan in metadata is lowercase (starter, premium, enterprise) but SUBSCRIPTION_PLANS keys are uppercase
+    // Handle legacy 'PROFESSIONAL' metadata from existing Stripe subscriptions
+    let planFromMetadata = (metadata?.plan || 'starter').toUpperCase();
+    if (planFromMetadata === 'PROFESSIONAL') planFromMetadata = 'PREMIUM';
     const plan = planFromMetadata as SubscriptionPlan;
     const isYearly = metadata?.isYearly === 'true';
 
@@ -525,7 +527,7 @@ class BuyerService {
       where: {
         userId: buyerId,
         status: SubscriptionStatus.ACTIVE,
-        plan: { [Op.in]: [SubscriptionPlan.PROFESSIONAL, SubscriptionPlan.ENTERPRISE, SubscriptionPlan.VIP_ACCESS] },
+        plan: { [Op.in]: [SubscriptionPlan.PREMIUM, SubscriptionPlan.ENTERPRISE, SubscriptionPlan.VIP_ACCESS] },
       },
     });
 

@@ -701,7 +701,7 @@ paths:
               properties:
                 plan:
                   type: string
-                  enum: [STARTER, PROFESSIONAL, ENTERPRISE]
+                  enum: [STARTER, PREMIUM, ENTERPRISE]
                 isYearly:
                   type: boolean
                   default: false
