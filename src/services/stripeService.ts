@@ -1307,7 +1307,7 @@ class StripeService {
         },
         options: {
           document: {
-            require_matching_selfie: false,
+            require_matching_selfie: true,
           },
         },
         return_url: params.returnUrl,
