@@ -522,6 +522,18 @@ class BuyerService {
       throw new BadRequestError('Insufficient credits. Please purchase more credits to request premium access.');
     }
 
+    // Block Starter plan users from requesting premium listings
+    const starterSubscription = await Subscription.findOne({
+      where: {
+        userId: buyerId,
+        status: SubscriptionStatus.ACTIVE,
+        plan: SubscriptionPlan.STARTER,
+      },
+    });
+    if (starterSubscription) {
+      throw new BadRequestError('Starter plan members cannot request premium MC listings. Please upgrade to Premium or Enterprise to access premium listings.');
+    }
+
     // Check if buyer has an active paid subscription (auto-approve)
     const activeSubscription = await Subscription.findOne({
       where: {
