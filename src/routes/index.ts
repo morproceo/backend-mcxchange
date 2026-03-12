@@ -22,6 +22,7 @@ import identityRoutes from './identityRoutes';
 import aiChatRoutes from './aiChatRoutes';
 import dispatchRoutes from './dispatchRoutes';
 import adminServicesRoutes from './adminServicesRoutes';
+import carrierDataRoutes from './carrierDataRoutes';
 import { sequelize } from '../models';
 import { isRedisHealthy } from '../config/redis';
 import { config, getPublicConfig } from '../config';
@@ -210,5 +211,6 @@ router.use('/identity', identityRoutes);
 router.use('/ai-chat', aiChatRoutes);
 router.use('/dispatch', dispatchRoutes);
 router.use('/admin-services', adminServicesRoutes);
+router.use('/carrier-data', carrierDataRoutes);
 
 export default router;

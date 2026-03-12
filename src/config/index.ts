@@ -84,6 +84,11 @@ export const config = {
     db: parseInt(process.env.REDIS_DB || '0', 10),
   },
 
+  // MorPro Carrier API
+  morproCarrier: {
+    baseUrl: process.env.MORPRO_CARRIER_API_URL || 'http://194.195.92.25:3001',
+  },
+
   // FMCSA
   fmcsa: {
     apiKey: process.env.FMCSA_API_KEY || '',
@@ -226,6 +231,10 @@ export function validateConfig(): void {
   // ============================================
   // Warnings for missing optional config
   // ============================================
+  if (!process.env.MORPRO_CARRIER_API_URL) {
+    warnings.push('MORPRO_CARRIER_API_URL not set - using default http://194.195.92.25:3001');
+  }
+
   if (!process.env.FMCSA_API_KEY) {
     warnings.push('FMCSA_API_KEY not set - FMCSA lookups will not work');
   }

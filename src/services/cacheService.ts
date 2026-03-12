@@ -11,6 +11,7 @@ export const CacheKeys = {
   RATE_LIMIT: 'ratelimit:',
   PLATFORM_SETTINGS: 'settings:',
   STATS: 'stats:',
+  CARRIER_REPORT: 'carrier_report:',
 } as const;
 
 // Default TTL values in seconds
@@ -23,6 +24,7 @@ export const CacheTTL = {
   LISTING: 300,           // 5 minutes for listing details
   USER: 600,              // 10 minutes for user profiles
   SETTINGS: 3600,         // 1 hour for platform settings
+  CARRIER_REPORT: 86400,  // 24 hours for MorPro carrier reports
 } as const;
 
 class CacheService {
@@ -366,6 +368,27 @@ class CacheService {
    */
   async invalidateSettings(): Promise<void> {
     await this.del(`${CacheKeys.PLATFORM_SETTINGS}all`);
+  }
+
+  /**
+   * Cache MorPro carrier report
+   */
+  async cacheCarrierReport(dotNumber: string, data: any): Promise<void> {
+    await this.set(`${CacheKeys.CARRIER_REPORT}${dotNumber}`, data, CacheTTL.CARRIER_REPORT);
+  }
+
+  /**
+   * Get cached MorPro carrier report
+   */
+  async getCachedCarrierReport<T>(dotNumber: string): Promise<T | null> {
+    return this.get<T>(`${CacheKeys.CARRIER_REPORT}${dotNumber}`);
+  }
+
+  /**
+   * Invalidate carrier report cache
+   */
+  async invalidateCarrierReport(dotNumber: string): Promise<void> {
+    await this.del(`${CacheKeys.CARRIER_REPORT}${dotNumber}`);
   }
 }
 
