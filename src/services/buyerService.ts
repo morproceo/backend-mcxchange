@@ -517,33 +517,33 @@ class BuyerService {
       throw new NotFoundError('User not found');
     }
 
-    const availableCredits = user.totalCredits - user.usedCredits;
-    if (availableCredits < 1) {
-      throw new BadRequestError('Insufficient credits. Please purchase more credits to request premium access.');
-    }
-
-    // Block Starter plan users from requesting premium listings
-    const starterSubscription = await Subscription.findOne({
-      where: {
-        userId: buyerId,
-        status: SubscriptionStatus.ACTIVE,
-        plan: SubscriptionPlan.STARTER,
-      },
-    });
-    if (starterSubscription) {
-      throw new BadRequestError('Starter plan members cannot request premium MC listings. Please upgrade to Premium or Enterprise to access premium listings.');
-    }
-
-    // Check if buyer has an active paid subscription (auto-approve)
+    // Check subscription plan
     const activeSubscription = await Subscription.findOne({
       where: {
         userId: buyerId,
         status: SubscriptionStatus.ACTIVE,
-        plan: { [Op.in]: [SubscriptionPlan.PREMIUM, SubscriptionPlan.ENTERPRISE, SubscriptionPlan.VIP_ACCESS] },
       },
     });
 
-    if (activeSubscription) {
+    const isVip = activeSubscription?.plan === SubscriptionPlan.VIP_ACCESS;
+
+    // Block Starter plan users from requesting premium listings
+    if (activeSubscription?.plan === SubscriptionPlan.STARTER) {
+      throw new BadRequestError('Starter plan members cannot request premium MC listings. Please upgrade to Premium or Enterprise to access premium listings.');
+    }
+
+    // VIP users bypass credit checks; others need at least 1 credit
+    if (!isVip) {
+      const availableCredits = user.totalCredits - user.usedCredits;
+      if (availableCredits < 1) {
+        throw new BadRequestError('Insufficient credits. Please purchase more credits to request premium access.');
+      }
+    }
+
+    // Auto-approve for paid subscribers (Premium, Enterprise, VIP)
+    const isPaidPlan = activeSubscription && [SubscriptionPlan.PREMIUM, SubscriptionPlan.ENTERPRISE, SubscriptionPlan.VIP_ACCESS].includes(activeSubscription.plan);
+
+    if (isPaidPlan) {
       // Paid subscribers get auto-approved — still create the request for admin visibility
       const t = await sequelize.transaction();
 
@@ -564,29 +564,32 @@ class BuyerService {
           {
             userId: buyerId,
             listingId,
-            creditsUsed: 1,
+            creditsUsed: isVip ? 0 : 1,
           },
           { transaction: t }
         );
 
-        // 3. Deduct credit from buyer
-        await user.update(
-          { usedCredits: user.usedCredits + 1 },
-          { transaction: t }
-        );
+        // 3. Deduct credit from buyer (VIP users don't use credits)
+        if (!isVip) {
+          await user.update(
+            { usedCredits: user.usedCredits + 1 },
+            { transaction: t }
+          );
 
-        // 4. Record credit transaction for audit trail
-        await CreditTransaction.create(
-          {
-            userId: buyerId,
-            type: CreditTransactionType.USAGE,
-            amount: -1,
-            balance: availableCredits - 1,
-            description: `Premium listing auto-unlocked (${activeSubscription.plan}): MC-${listing.mcNumber}`,
-            reference: listingId,
-          },
-          { transaction: t }
-        );
+          // 4. Record credit transaction for audit trail
+          const availableCredits = user.totalCredits - user.usedCredits;
+          await CreditTransaction.create(
+            {
+              userId: buyerId,
+              type: CreditTransactionType.USAGE,
+              amount: -1,
+              balance: availableCredits - 1,
+              description: `Premium listing auto-unlocked (${activeSubscription.plan}): MC-${listing.mcNumber}`,
+              reference: listingId,
+            },
+            { transaction: t }
+          );
+        }
 
         // 5. Notify buyer
         await Notification.create(
@@ -605,8 +608,7 @@ class BuyerService {
           buyerId,
           listingId,
           requestId: request.id,
-          creditsDeducted: 1,
-          newBalance: availableCredits - 1,
+          creditsDeducted: isVip ? 0 : 1,
         });
 
         return request;
