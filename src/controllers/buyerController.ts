@@ -6,7 +6,7 @@ import { asyncHandler, BadRequestError } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { parseIntParam } from '../utils/helpers';
 import { config } from '../config';
-import { User, UnlockedListing, Listing, Subscription, SubscriptionPlan, SubscriptionStatus } from '../models';
+import { User, UnlockedListing, Listing, Subscription, SubscriptionPlan, SubscriptionStatus, UserRole } from '../models';
 
 // Get buyer dashboard stats
 export const getDashboardStats = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -160,6 +160,105 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
       userId: req.user.id,
       plan,
       isYearly: isYearly ? 'true' : 'false',
+    },
+  });
+
+  if (!result.success) {
+    throw new BadRequestError(result.error || 'Failed to create checkout session');
+  }
+
+  res.json({
+    success: true,
+    data: {
+      sessionId: result.sessionId,
+      url: result.url,
+    },
+  });
+});
+
+// Check CarrierPulse access for the current user
+export const getCarrierPulseAccess = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const user = await User.findByPk(req.user.id);
+  const subscription = await Subscription.findOne({ where: { userId: req.user.id } });
+
+  const plan = subscription?.plan?.toUpperCase();
+  const isActive = subscription?.status === SubscriptionStatus.ACTIVE;
+
+  // Professional, Enterprise, VIP get CarrierPulse included
+  const includedInPlan = isActive && (
+    plan === SubscriptionPlan.PREMIUM ||
+    plan === SubscriptionPlan.ENTERPRISE ||
+    plan === SubscriptionPlan.VIP_ACCESS
+  );
+
+  // Standalone CarrierPulse access (purchased separately or added to Starter)
+  const hasStandaloneAccess = user?.carrierPulseAccess || false;
+
+  // Admin always has access
+  const isAdmin = req.user.role === UserRole.ADMIN;
+
+  res.json({
+    success: true,
+    data: {
+      hasAccess: includedInPlan || hasStandaloneAccess || isAdmin,
+      reason: isAdmin ? 'admin' : includedInPlan ? 'included_in_plan' : hasStandaloneAccess ? 'standalone' : 'none',
+      currentPlan: plan || null,
+      isActive,
+    },
+  });
+});
+
+// Create CarrierPulse checkout session ($12.99/mo standalone or add-on for Starter)
+export const createCarrierPulseCheckout = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  // Check if user already has CarrierPulse access
+  const user = await User.findByPk(req.user.id);
+  const subscription = await Subscription.findOne({ where: { userId: req.user.id } });
+  const plan = subscription?.plan?.toUpperCase();
+  const isActive = subscription?.status === SubscriptionStatus.ACTIVE;
+
+  if (user?.carrierPulseAccess) {
+    res.json({ success: false, error: 'You already have CarrierPulse access' });
+    return;
+  }
+
+  if (isActive && (plan === SubscriptionPlan.PREMIUM || plan === SubscriptionPlan.ENTERPRISE || plan === SubscriptionPlan.VIP_ACCESS)) {
+    res.json({ success: false, error: 'CarrierPulse is already included in your subscription' });
+    return;
+  }
+
+  // Get or create Stripe customer
+  const customer = await stripeService.getOrCreateCustomer(
+    req.user.id,
+    req.user.email,
+    req.user.name || req.user.email,
+    req.user.stripeCustomerId || undefined
+  );
+
+  if (customer.id !== req.user.stripeCustomerId) {
+    await User.update({ stripeCustomerId: customer.id }, { where: { id: req.user.id } });
+  }
+
+  const frontendUrl = config.frontendUrl || 'http://localhost:5173';
+  const carrierPulsePriceId = process.env.STRIPE_PRICE_CARRIER_PULSE || 'price_1TC6kqFnDj2YhGIWZjMc7hWD';
+
+  const result = await stripeService.createCheckoutSession({
+    customerId: customer.id,
+    priceId: carrierPulsePriceId,
+    successUrl: `${frontendUrl}/buyer/carrier-pulse?purchase=success`,
+    cancelUrl: `${frontendUrl}/buyer/carrier-pulse?purchase=canceled`,
+    metadata: {
+      userId: req.user.id,
+      type: 'carrier_pulse',
     },
   });
 

@@ -18,6 +18,8 @@ import {
   getCreditsafeSearch,
   getCreditsafeReport,
   getCreditsafeFreeSearch,
+  getCarrierPulseAccess,
+  createCarrierPulseCheckout,
 } from '../controllers/buyerController';
 import { authenticate, buyerOnly, requireSubscription, requireProfessionalSubscription, requireEnterpriseSubscription } from '../middleware/auth';
 
@@ -55,6 +57,10 @@ router.get('/stripe-history', getStripePaymentHistory);
 router.get('/creditsafe/search', requireEnterpriseSubscription, getCreditsafeFreeSearch);
 router.get('/creditsafe/search/:listingId', requireProfessionalSubscription, getCreditsafeSearch);
 router.get('/creditsafe/companies/:connectId', requireProfessionalSubscription, getCreditsafeReport);
+
+// CarrierPulse - no subscription required (gating handled in endpoint)
+router.get('/carrier-pulse/access', getCarrierPulseAccess);
+router.post('/carrier-pulse/checkout', createCarrierPulseCheckout);
 
 // Terms of Service - no subscription required
 router.get('/terms-status', getTermsStatus);

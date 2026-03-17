@@ -296,6 +296,16 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription): Pro
     return;
   }
 
+  // CarrierPulse standalone subscription — mark access on user
+  if (subscription.metadata?.type === 'carrier_pulse') {
+    await User.update(
+      { carrierPulseAccess: true, carrierPulseStripeSubId: subscription.id },
+      { where: { id: userId } }
+    );
+    logger.info('CarrierPulse access granted', { userId, subscriptionId: subscription.id });
+    return;
+  }
+
   // Update or create subscription record in our database
   const plan = subscription.metadata?.plan as SubscriptionPlan || SubscriptionPlan.STARTER;
 

@@ -200,11 +200,13 @@ interface UserAttributes {
   identityVerifiedAt?: Date;
   stripeVerificationSessionId?: string;
   identityVerificationStatus?: string;
+  carrierPulseAccess: boolean;
+  carrierPulseStripeSubId?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'phone' | 'avatar' | 'status' | 'verified' | 'verifiedAt' | 'trustScore' | 'memberSince' | 'lastLoginAt' | 'companyName' | 'companyAddress' | 'city' | 'state' | 'zipCode' | 'ein' | 'sellerVerified' | 'sellerVerifiedAt' | 'totalCredits' | 'usedCredits' | 'stripeCustomerId' | 'stripeAccountId' | 'emailVerified' | 'identityVerified' | 'identityVerifiedAt' | 'stripeVerificationSessionId' | 'identityVerificationStatus' | 'createdAt' | 'updatedAt'> {}
+interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'phone' | 'avatar' | 'status' | 'verified' | 'verifiedAt' | 'trustScore' | 'memberSince' | 'lastLoginAt' | 'companyName' | 'companyAddress' | 'city' | 'state' | 'zipCode' | 'ein' | 'sellerVerified' | 'sellerVerifiedAt' | 'totalCredits' | 'usedCredits' | 'stripeCustomerId' | 'stripeAccountId' | 'emailVerified' | 'identityVerified' | 'identityVerifiedAt' | 'stripeVerificationSessionId' | 'identityVerificationStatus' | 'carrierPulseAccess' | 'carrierPulseStripeSubId' | 'createdAt' | 'updatedAt'> {}
 
 // ==================== USER MODEL ====================
 
@@ -239,6 +241,8 @@ export class User extends Model<UserAttributes, UserCreationAttributes> implemen
   declare identityVerifiedAt: Date | undefined;
   declare stripeVerificationSessionId: string | undefined;
   declare identityVerificationStatus: string | undefined;
+  declare carrierPulseAccess: boolean;
+  declare carrierPulseStripeSubId: string | undefined;
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 
@@ -371,6 +375,14 @@ User.init(
     },
     identityVerificationStatus: {
       type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+    carrierPulseAccess: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    carrierPulseStripeSubId: {
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
   },
