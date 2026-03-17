@@ -6,7 +6,7 @@ import { asyncHandler, BadRequestError } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { parseIntParam } from '../utils/helpers';
 import { config } from '../config';
-import { User, UnlockedListing, Listing } from '../models';
+import { User, UnlockedListing, Listing, Subscription, SubscriptionPlan, SubscriptionStatus } from '../models';
 
 // Get buyer dashboard stats
 export const getDashboardStats = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -404,6 +404,12 @@ export const getTermsStatus = asyncHandler(async (req: AuthRequest, res: Respons
 // ============ Creditsafe Credit Reports ============
 
 // Search Creditsafe for a company based on an unlocked listing
+// Helper: check if user has VIP subscription
+async function isVipUser(userId: string): Promise<boolean> {
+  const subscription = await Subscription.findOne({ where: { userId } });
+  return !!subscription && subscription.plan === SubscriptionPlan.VIP_ACCESS && subscription.status === SubscriptionStatus.ACTIVE;
+}
+
 export const getCreditsafeSearch = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.user) {
     res.status(401).json({ success: false, error: 'Not authenticated' });
@@ -412,14 +418,17 @@ export const getCreditsafeSearch = asyncHandler(async (req: AuthRequest, res: Re
 
   const { listingId } = req.params;
 
-  // Verify the buyer has unlocked this listing
-  const unlock = await UnlockedListing.findOne({
-    where: { userId: req.user.id, listingId },
-  });
+  // VIP users bypass unlock check
+  const vip = await isVipUser(req.user.id);
+  if (!vip) {
+    const unlock = await UnlockedListing.findOne({
+      where: { userId: req.user.id, listingId },
+    });
 
-  if (!unlock) {
-    res.status(403).json({ success: false, error: 'You have not unlocked this listing' });
-    return;
+    if (!unlock) {
+      res.status(403).json({ success: false, error: 'You have not unlocked this listing' });
+      return;
+    }
   }
 
   // Get listing details
@@ -466,19 +475,22 @@ export const getCreditsafeReport = asyncHandler(async (req: AuthRequest, res: Re
   const { connectId } = req.params;
   const listingId = req.query.listingId as string;
 
-  if (!listingId) {
-    res.status(400).json({ success: false, error: 'listingId query parameter is required' });
-    return;
-  }
+  // VIP users can pull reports freely without a listingId or unlock
+  const vip = await isVipUser(req.user.id);
+  if (!vip) {
+    if (!listingId) {
+      res.status(400).json({ success: false, error: 'listingId query parameter is required' });
+      return;
+    }
 
-  // Verify the buyer has unlocked this listing
-  const unlock = await UnlockedListing.findOne({
-    where: { userId: req.user.id, listingId },
-  });
+    const unlock = await UnlockedListing.findOne({
+      where: { userId: req.user.id, listingId },
+    });
 
-  if (!unlock) {
-    res.status(403).json({ success: false, error: 'You have not unlocked this listing' });
-    return;
+    if (!unlock) {
+      res.status(403).json({ success: false, error: 'You have not unlocked this listing' });
+      return;
+    }
   }
 
   // Get full credit report
@@ -489,6 +501,38 @@ export const getCreditsafeReport = asyncHandler(async (req: AuthRequest, res: Re
   res.json({
     success: true,
     data: report,
+  });
+});
+
+// VIP-only: Free-form Creditsafe search by company name (no listing required)
+export const getCreditsafeFreeSearch = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { name, state, city, regNo } = req.query;
+
+  if (!name && !regNo) {
+    res.status(400).json({ success: false, error: 'Either name or regNo query parameter is required' });
+    return;
+  }
+
+  const searchResults = await creditsafeService.searchCompanies({
+    countries: 'US',
+    name: name as string | undefined,
+    regNo: regNo as string | undefined,
+    state: state as string | undefined,
+    city: city as string | undefined,
+    pageSize: 20,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      companies: searchResults.companies || [],
+      totalResults: searchResults.totalSize || 0,
+    },
   });
 });
 

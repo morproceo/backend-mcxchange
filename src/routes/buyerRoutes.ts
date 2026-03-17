@@ -17,8 +17,9 @@ import {
   acceptTerms,
   getCreditsafeSearch,
   getCreditsafeReport,
+  getCreditsafeFreeSearch,
 } from '../controllers/buyerController';
-import { authenticate, buyerOnly, requireSubscription, requireProfessionalSubscription } from '../middleware/auth';
+import { authenticate, buyerOnly, requireSubscription, requireProfessionalSubscription, requireEnterpriseSubscription } from '../middleware/auth';
 
 const router = Router();
 
@@ -49,7 +50,9 @@ router.get('/premium-requests', requireSubscription, getPremiumRequests);
 // Stripe payment history - no subscription required (to see payment history)
 router.get('/stripe-history', getStripePaymentHistory);
 
-// Creditsafe credit reports - require Professional subscription
+// Creditsafe credit reports
+// VIP-only: free-form Creditsafe search (no listing required) — must be before :listingId route
+router.get('/creditsafe/search', requireEnterpriseSubscription, getCreditsafeFreeSearch);
 router.get('/creditsafe/search/:listingId', requireProfessionalSubscription, getCreditsafeSearch);
 router.get('/creditsafe/companies/:connectId', requireProfessionalSubscription, getCreditsafeReport);
 
