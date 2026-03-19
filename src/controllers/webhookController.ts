@@ -311,7 +311,7 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription): Pro
 
   await Subscription.upsert({
     userId,
-    stripeSubscriptionId: subscription.id,
+    stripeSubId: subscription.id,
     stripeCustomerId: subscription.customer as string,
     plan,
     status: subscription.status,
@@ -332,7 +332,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Pro
 
   // Find subscription in our database
   const dbSubscription = await Subscription.findOne({
-    where: { stripeSubscriptionId: subscription.id },
+    where: { stripeSubId: subscription.id },
   });
 
   if (!dbSubscription) {
@@ -367,7 +367,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Pro
 
   // Find and update subscription in our database
   const dbSubscription = await Subscription.findOne({
-    where: { stripeSubscriptionId: subscription.id },
+    where: { stripeSubId: subscription.id },
   });
 
   if (dbSubscription) {
@@ -403,7 +403,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
   // Find subscription in our database
   const dbSubscription = await Subscription.findOne({
     where: {
-      stripeSubscriptionId: typeof subscription === 'string' ? subscription : subscription.id,
+      stripeSubId: typeof subscription === 'string' ? subscription : subscription.id,
     },
   });
 
@@ -435,7 +435,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
   // Find subscription in our database
   const dbSubscription = await Subscription.findOne({
     where: {
-      stripeSubscriptionId: typeof subscription === 'string' ? subscription : subscription.id,
+      stripeSubId: typeof subscription === 'string' ? subscription : subscription.id,
     },
   });
 
