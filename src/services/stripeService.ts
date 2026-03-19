@@ -84,6 +84,10 @@ export const SUBSCRIPTION_PRICE_IDS = {
     monthly: process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY || 'price_enterprise_monthly',
     yearly: process.env.STRIPE_PRICE_ENTERPRISE_YEARLY || 'price_enterprise_yearly',
   },
+  vip_access: {
+    monthly: process.env.STRIPE_PRICE_VIP_ACCESS_MONTHLY || 'price_vip_access_monthly',
+    yearly: process.env.STRIPE_PRICE_VIP_ACCESS_YEARLY || 'price_vip_access_yearly',
+  },
 };
 
 class StripeService {
@@ -1386,7 +1390,7 @@ class StripeService {
    * Get price ID for a subscription plan
    */
   getPriceId(
-    plan: 'starter' | 'premium' | 'enterprise',
+    plan: 'starter' | 'premium' | 'enterprise' | 'vip_access',
     interval: 'monthly' | 'yearly'
   ): string {
     return SUBSCRIPTION_PRICE_IDS[plan][interval];
