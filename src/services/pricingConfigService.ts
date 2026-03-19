@@ -50,7 +50,7 @@ const DEFAULT_PRICING: PricingConfig = {
       stripePriceIdMonthly: process.env.STRIPE_PRICE_STARTER_MONTHLY || '',
       stripePriceIdYearly: process.env.STRIPE_PRICE_STARTER_YEARLY || '',
       features: [
-        '4 MC unlock credits per month',
+        '4 listing unlock credits per month',
         'Basic marketplace access',
         'Save favorites',
         'Standard support',
@@ -81,7 +81,7 @@ const DEFAULT_PRICING: PricingConfig = {
       stripePriceIdMonthly: process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY || '',
       stripePriceIdYearly: process.env.STRIPE_PRICE_ENTERPRISE_YEARLY || '',
       features: [
-        '15 MC unlock credits per month',
+        '15 listing unlock credits per month',
         'CarrierPulse included',
         'Free credit reports (UCC, liens, judgments)',
         'AI-powered due diligence reports',
@@ -99,7 +99,7 @@ const DEFAULT_PRICING: PricingConfig = {
       stripePriceIdMonthly: process.env.STRIPE_PRICE_VIP_ACCESS_MONTHLY || '',
       stripePriceIdYearly: process.env.STRIPE_PRICE_VIP_ACCESS_YEARLY || '',
       features: [
-        'Unlimited MC unlocks until you purchase',
+        'Unlimited listing unlocks until you purchase',
         '$399 goes toward your final MC purchase',
         'Free consultation call with Maria',
         'CarrierPulse included',
