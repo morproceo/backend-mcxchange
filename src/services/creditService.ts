@@ -996,9 +996,36 @@ class CreditService {
     }
 
     const credits = planDetails.credits;
-    await this.addCredits(userId, credits, CreditTransactionType.SUBSCRIPTION, `Monthly credits for ${plan} plan`);
 
-    logger.info('Subscription credits granted', { userId, plan, credits });
+    // Credits reset each month — don't roll over unused credits
+    // Set totalCredits to the plan amount and reset usedCredits to 0
+    const user = await User.findByPk(userId);
+    if (!user) {
+      logger.error('User not found for credit grant', { userId });
+      return;
+    }
+
+    const t = await sequelize.transaction();
+    try {
+      await user.update({ totalCredits: credits, usedCredits: 0 }, { transaction: t });
+
+      await CreditTransaction.create(
+        {
+          userId,
+          type: CreditTransactionType.SUBSCRIPTION,
+          amount: credits,
+          balance: credits,
+          description: `Monthly credits reset for ${plan} plan (${credits} credits)`,
+        },
+        { transaction: t }
+      );
+
+      await t.commit();
+      logger.info('Subscription credits reset', { userId, plan, credits });
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   /**

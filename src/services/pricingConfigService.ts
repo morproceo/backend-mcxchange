@@ -75,13 +75,13 @@ const DEFAULT_PRICING: PricingConfig = {
     },
     enterprise: {
       name: 'Enterprise',
-      credits: 10,
+      credits: 15,
       priceMonthly: 39.99,
       priceYearly: 383.99,
       stripePriceIdMonthly: process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY || '',
       stripePriceIdYearly: process.env.STRIPE_PRICE_ENTERPRISE_YEARLY || '',
       features: [
-        '10 MC unlock credits per month',
+        '15 MC unlock credits per month',
         'CarrierPulse included',
         'Free credit reports (UCC, liens, judgments)',
         'AI-powered due diligence reports',
