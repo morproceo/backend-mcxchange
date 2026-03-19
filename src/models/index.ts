@@ -593,6 +593,9 @@ export class Listing extends Model {
   declare amazonStatus: AmazonRelayStatus;
   declare amazonRelayScore?: string;
   declare highwaySetup: boolean;
+  declare hasFactoring: boolean;
+  declare factoringCompany?: string;
+  declare factoringRate?: number;
   declare sellingWithEmail: boolean;
   declare sellingWithPhone: boolean;
   declare contactEmail?: string;
@@ -738,6 +741,18 @@ Listing.init(
     highwaySetup: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
+    },
+    hasFactoring: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    factoringCompany: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    factoringRate: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: true,
     },
     sellingWithEmail: {
       type: DataTypes.BOOLEAN,
