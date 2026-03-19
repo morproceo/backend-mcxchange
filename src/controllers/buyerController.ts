@@ -687,3 +687,73 @@ export const acceptTerms = asyncHandler(async (req: AuthRequest, res: Response) 
     message: 'Terms of Service accepted successfully',
   });
 });
+
+// CarrierPulse Creditsafe: Search by company name (requires CarrierPulse access)
+export const getCarrierPulseCreditsafeSearch = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  // Check CarrierPulse access
+  const user = await User.findByPk(req.user.id);
+  const subscription = await Subscription.findOne({ where: { userId: req.user.id } });
+  const plan = subscription?.plan?.toUpperCase();
+  const isActive = subscription?.status === SubscriptionStatus.ACTIVE;
+  const hasAccess = req.user.role === UserRole.ADMIN ||
+    user?.carrierPulseAccess ||
+    (isActive && (plan === SubscriptionPlan.PREMIUM || plan === SubscriptionPlan.ENTERPRISE || plan === SubscriptionPlan.VIP_ACCESS));
+
+  if (!hasAccess) {
+    res.status(403).json({ success: false, error: 'CarrierPulse access required' });
+    return;
+  }
+
+  const { name, state } = req.query;
+  if (!name) {
+    res.status(400).json({ success: false, error: 'Company name is required' });
+    return;
+  }
+
+  const searchResults = await creditsafeService.searchCompanies({
+    countries: 'US',
+    name: name as string,
+    state: state as string | undefined,
+    pageSize: 10,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      companies: searchResults.companies || [],
+      totalResults: searchResults.totalSize || 0,
+    },
+  });
+});
+
+// CarrierPulse Creditsafe: Get full credit report (requires CarrierPulse access)
+export const getCarrierPulseCreditsafeReport = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  // Check CarrierPulse access
+  const user = await User.findByPk(req.user.id);
+  const subscription = await Subscription.findOne({ where: { userId: req.user.id } });
+  const plan = subscription?.plan?.toUpperCase();
+  const isActive = subscription?.status === SubscriptionStatus.ACTIVE;
+  const hasAccess = req.user.role === UserRole.ADMIN ||
+    user?.carrierPulseAccess ||
+    (isActive && (plan === SubscriptionPlan.PREMIUM || plan === SubscriptionPlan.ENTERPRISE || plan === SubscriptionPlan.VIP_ACCESS));
+
+  if (!hasAccess) {
+    res.status(403).json({ success: false, error: 'CarrierPulse access required' });
+    return;
+  }
+
+  const { connectId } = req.params;
+  const report = await creditsafeService.getCreditReport(connectId, { includeIndicators: true });
+
+  res.json({ success: true, data: report });
+});
