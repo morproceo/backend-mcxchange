@@ -22,6 +22,7 @@ import {
   createCarrierPulseCheckout,
   getCarrierPulseCreditsafeSearch,
   getCarrierPulseCreditsafeReport,
+  checkOrUnlockCreditReport,
 } from '../controllers/buyerController';
 import { authenticate, buyerOnly, requireSubscription, requireProfessionalSubscription, requireEnterpriseSubscription } from '../middleware/auth';
 
@@ -65,6 +66,7 @@ router.get('/carrier-pulse/access', getCarrierPulseAccess);
 router.post('/carrier-pulse/checkout', createCarrierPulseCheckout);
 router.get('/carrier-pulse/creditsafe/search', getCarrierPulseCreditsafeSearch);
 router.get('/carrier-pulse/creditsafe/report/:connectId', getCarrierPulseCreditsafeReport);
+router.get('/carrier-pulse/credit-report/:dotNumber', requireSubscription, checkOrUnlockCreditReport);
 
 // Terms of Service - no subscription required
 router.get('/terms-status', getTermsStatus);

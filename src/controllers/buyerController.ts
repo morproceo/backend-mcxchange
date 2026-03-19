@@ -6,7 +6,8 @@ import { asyncHandler, BadRequestError } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { parseIntParam } from '../utils/helpers';
 import { config } from '../config';
-import { User, UnlockedListing, Listing, Subscription, SubscriptionPlan, SubscriptionStatus, UserRole } from '../models';
+import { User, UnlockedListing, Listing, Subscription, SubscriptionPlan, SubscriptionStatus, UserRole, CreditTransaction, CreditTransactionType } from '../models';
+import { creditService } from '../services/creditService';
 
 // Get buyer dashboard stats
 export const getDashboardStats = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -756,4 +757,56 @@ export const getCarrierPulseCreditsafeReport = asyncHandler(async (req: AuthRequ
   const report = await creditsafeService.getCreditReport(connectId, { includeIndicators: true });
 
   res.json({ success: true, data: report });
+});
+
+// Check if a credit report is unlocked for a given DOT number, and unlock it (costs 2 credits for Starter/Premium)
+export const checkOrUnlockCreditReport = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { dotNumber } = req.params;
+  const { action } = req.query; // 'check' or 'unlock'
+
+  const subscription = await Subscription.findOne({ where: { userId: req.user.id } });
+  const plan = subscription?.plan?.toUpperCase();
+  const isActive = subscription?.status === SubscriptionStatus.ACTIVE;
+  const isAdmin = req.user.role === UserRole.ADMIN;
+
+  // Enterprise and VIP get it free, admin always free
+  const isFree = isAdmin ||
+    (isActive && (plan === SubscriptionPlan.ENTERPRISE || plan === SubscriptionPlan.VIP_ACCESS));
+
+  if (isFree) {
+    res.json({ success: true, data: { unlocked: true, free: true } });
+    return;
+  }
+
+  // Check if already unlocked via credit transaction reference
+  const reference = `credit_report:${dotNumber}`;
+  const existing = await CreditTransaction.findOne({
+    where: { userId: req.user.id, reference, type: CreditTransactionType.USAGE },
+  });
+
+  if (existing) {
+    res.json({ success: true, data: { unlocked: true, free: false } });
+    return;
+  }
+
+  // Just checking — not unlocking yet
+  if (action !== 'unlock') {
+    res.json({ success: true, data: { unlocked: false, free: false, cost: 2 } });
+    return;
+  }
+
+  // Unlock: deduct 2 credits
+  const result = await creditService.useCredits(
+    req.user.id,
+    2,
+    `Credit report unlock for DOT ${dotNumber}`,
+    reference
+  );
+
+  res.json({ success: true, data: { unlocked: true, free: false, newBalance: result.newBalance } });
 });
