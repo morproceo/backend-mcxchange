@@ -643,6 +643,11 @@ class StripeService {
         subscription_data: {
           metadata: params.metadata,
         },
+        custom_text: {
+          submit: {
+            message: 'After subscribing, you\'ll be asked to verify your identity to activate your account. This is a quick, secure process powered by Stripe and helps us maintain a safe marketplace for all users.',
+          },
+        },
       });
 
       logger.info('Checkout session created', {
