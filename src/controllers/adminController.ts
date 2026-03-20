@@ -867,6 +867,27 @@ export const adjustUserCredits = asyncHandler(async (req: AuthRequest, res: Resp
 });
 
 // ============================================
+// Cancel User Subscription
+// ============================================
+
+export const cancelUserSubscription = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id: userId } = req.params;
+
+  const result = await adminService.cancelUserSubscription(userId, req.user.id);
+
+  res.json({
+    success: true,
+    data: result,
+    message: 'Subscription cancelled successfully',
+  });
+});
+
+// ============================================
 // Account Dispute Management
 // ============================================
 

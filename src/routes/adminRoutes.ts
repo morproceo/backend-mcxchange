@@ -41,6 +41,7 @@ import {
   getStripeBalanceTransactions,
   adjustUserCredits,
   adjustCreditsValidation,
+  cancelUserSubscription,
   blockUserForMismatch,
   blockUserMismatchValidation,
   getAllDisputes,
@@ -84,6 +85,7 @@ router.post('/users/:id/block', validate(blockUserValidation), blockUser);
 router.post('/users/:id/unblock', unblockUser);
 router.post('/users/:id/verify-seller', verifySeller);
 router.post('/users/:id/credits', validate(adjustCreditsValidation), adjustUserCredits);
+router.post('/users/:id/cancel-subscription', cancelUserSubscription);
 
 // Premium requests
 router.get('/premium-requests', getPremiumRequests);

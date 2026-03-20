@@ -32,6 +32,7 @@ import { emailService } from './emailService';
 import { adminNotificationService } from './adminNotificationService';
 import { config } from '../config';
 import logger from '../utils/logger';
+import { stripeService } from './stripeService';
 
 class AdminService {
   // Get dashboard stats (cached for 5 minutes to reduce query load)
@@ -2386,6 +2387,48 @@ class AdminService {
       activities: paginatedResults,
       stats,
       pagination: getPaginationInfo(page, limit, total),
+    };
+  }
+  // Cancel a user's subscription (admin action)
+  async cancelUserSubscription(userId: string, adminId: string) {
+    const subscription = await Subscription.findOne({
+      where: { userId },
+    });
+
+    if (!subscription) {
+      throw new NotFoundError('No subscription found for this user');
+    }
+
+    if (subscription.status !== 'ACTIVE') {
+      throw new BadRequestError('Subscription is not active');
+    }
+
+    // Cancel in Stripe (at period end)
+    if (subscription.stripeSubId) {
+      const cancelled = await stripeService.cancelSubscription(subscription.stripeSubId, false);
+      if (!cancelled) {
+        throw new BadRequestError('Failed to cancel subscription in Stripe');
+      }
+    }
+
+    // Update subscription status in DB
+    await subscription.update({
+      status: 'CANCELLED',
+      cancelledAt: new Date(),
+    });
+
+    // Record admin action
+    await AdminAction.create({
+      adminId,
+      action: 'CANCEL_SUBSCRIPTION',
+      targetType: 'USER',
+      targetId: userId,
+      reason: 'Subscription cancelled by admin',
+    });
+
+    return {
+      message: 'Subscription cancelled successfully (will end at period end)',
+      subscription,
     };
   }
 }
