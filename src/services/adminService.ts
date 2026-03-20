@@ -2403,10 +2403,10 @@ class AdminService {
       throw new BadRequestError('Subscription is not active');
     }
 
-    // Cancel in Stripe (at period end)
+    // Cancel in Stripe immediately (admin cancellation = immediate, not at period end)
     let stripeCancelled = false;
     if (subscription.stripeSubId) {
-      stripeCancelled = await stripeService.cancelSubscription(subscription.stripeSubId, false);
+      stripeCancelled = await stripeService.cancelSubscription(subscription.stripeSubId, true);
       if (!stripeCancelled) {
         // Stripe cancel failed (sub may already be cancelled or not exist in Stripe)
         // Log warning but proceed — admin explicitly wants this cancelled in our DB
@@ -2415,6 +2415,11 @@ class AdminService {
           stripeSubId: subscription.stripeSubId,
         });
       }
+    } else {
+      logger.warn('No stripeSubId on subscription record, skipping Stripe cancellation', {
+        userId,
+        subscriptionId: subscription.id,
+      });
     }
 
     // Update subscription status in DB
@@ -2434,8 +2439,9 @@ class AdminService {
 
     return {
       message: stripeCancelled
-        ? 'Subscription cancelled successfully (will end at period end)'
-        : 'Subscription marked as cancelled in database (Stripe cancellation failed — may already be cancelled)',
+        ? 'Subscription cancelled immediately in Stripe and database'
+        : 'Subscription marked as cancelled in database (Stripe cancellation failed — subscription may not exist in Stripe or was already cancelled)',
+      stripeCancelled,
       subscription,
     };
   }
