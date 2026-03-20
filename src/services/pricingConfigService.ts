@@ -82,6 +82,7 @@ const DEFAULT_PRICING: PricingConfig = {
       stripePriceIdYearly: process.env.STRIPE_PRICE_ENTERPRISE_YEARLY || '',
       features: [
         '15 listing unlock credits per month',
+        'VIP Marketplace access',
         'CarrierPulse included',
         'Free credit reports (UCC, liens, judgments)',
         'AI-powered due diligence reports',
