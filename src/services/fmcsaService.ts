@@ -456,6 +456,25 @@ class FMCSAService {
     };
   }
 
+  // Get cargo carried by a carrier from FMCSA
+  async getCargoCarried(dotNumber: string): Promise<string[]> {
+    try {
+      const url = `${this.baseUrl}/carriers/${dotNumber}/cargo-carried?webKey=${this.apiKey}`;
+      const response = await fetchWithTimeout(url);
+      if (!response.ok) return [];
+
+      const data = await response.json() as { content?: Array<{ cargoClassDesc?: string; cargoClassId?: number }> };
+      if (!data.content || !Array.isArray(data.content)) return [];
+
+      return data.content
+        .map(c => c.cargoClassDesc || '')
+        .filter(Boolean);
+    } catch (error) {
+      logger.warn('FMCSA cargo-carried error:', error);
+      return [];
+    }
+  }
+
   // Verify MC number is valid and active
   async verifyMC(mcNumber: string): Promise<{
     valid: boolean;

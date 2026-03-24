@@ -190,3 +190,20 @@ export const getSMSData = asyncHandler(async (req: Request, res: Response) => {
     data: smsData,
   });
 });
+
+// Get cargo carried by a carrier
+export const getCargoCarried = asyncHandler(async (req: Request, res: Response) => {
+  const { dotNumber } = req.params;
+
+  if (!dotNumber) {
+    res.status(400).json({ success: false, error: 'DOT number is required' });
+    return;
+  }
+
+  const cargoTypes = await fmcsaService.getCargoCarried(dotNumber);
+
+  res.json({
+    success: true,
+    data: cargoTypes,
+  });
+});
