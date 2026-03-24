@@ -270,15 +270,17 @@ class FMCSAService {
   // Get SMS (Safety Measurement System) data - includes inspections, crashes, and BASIC scores
   async getSMSData(dotNumber: string): Promise<FMCSASMSData | null> {
     try {
-      // The FMCSA API provides basics endpoint for BASIC scores
+      // The FMCSA API provides basics, OOS, and carrier endpoints
       const basicsUrl = `${this.baseUrl}/carriers/${dotNumber}/basics?webKey=${this.apiKey}`;
       const oosUrl = `${this.baseUrl}/carriers/${dotNumber}/oos?webKey=${this.apiKey}`;
+      const carrierUrl = `${this.baseUrl}/carriers/${dotNumber}?webKey=${this.apiKey}`;
 
       logger.debug('FMCSA SMS lookup URLs:', basicsUrl, oosUrl);
 
-      const [basicsResponse, oosResponse] = await Promise.all([
+      const [basicsResponse, oosResponse, carrierResponse] = await Promise.all([
         fetchWithTimeout(basicsUrl).catch(() => null),
         fetchWithTimeout(oosUrl).catch(() => null),
+        fetchWithTimeout(carrierUrl).catch(() => null),
       ]);
 
       // Parse BASIC scores
@@ -333,33 +335,43 @@ class FMCSAService {
 
       let oosData: OOSRaw = {};
       if (oosResponse?.ok) {
-        const oosResult = await oosResponse.json() as { content?: OOSRaw };
+        const oosResult = await oosResponse.json() as { content?: OOSRaw | { carrier?: OOSRaw } };
         if (oosResult.content) {
-          oosData = oosResult.content;
+          // FMCSA may nest under content.carrier or return flat under content
+          const raw = oosResult.content;
+          oosData = (raw as any).carrier || raw;
         }
       }
 
-      // Calculate totals
+      // Parse carrier data for crash counts and safety rating fallback
+      let carrierData: FMCSACarrierRaw | null = null;
+      if (carrierResponse?.ok) {
+        const carrierResult = await carrierResponse.json() as { content?: { carrier?: FMCSACarrierRaw } };
+        carrierData = carrierResult?.content?.carrier || null;
+      }
+
+      // Calculate totals — prefer OOS data, fall back to carrier data
       const totalInspections = oosData.oosTotInsp ||
-        (oosData.oosDriverInsp || 0) + (oosData.oosVehicleInsp || 0);
+        (oosData.oosDriverInsp || 0) + (oosData.oosVehicleInsp || 0) ||
+        ((carrierData?.driverInsp || 0) + (carrierData?.vehicleInsp || 0));
 
       return {
         dotNumber,
         totalInspections,
-        totalDriverInspections: oosData.oosDriverInsp || 0,
-        totalVehicleInspections: oosData.oosVehicleInsp || 0,
-        totalHazmatInspections: oosData.oosHazmatInsp || 0,
+        totalDriverInspections: oosData.oosDriverInsp || carrierData?.driverInsp || 0,
+        totalVehicleInspections: oosData.oosVehicleInsp || carrierData?.vehicleInsp || 0,
+        totalHazmatInspections: oosData.oosHazmatInsp || carrierData?.hazmatInsp || 0,
         totalIepInspections: oosData.oosIepInsp || 0,
-        driverOosRate: oosData.oosDriverOosRate || 0,
-        vehicleOosRate: oosData.oosVehicleOosRate || 0,
-        driverOosInspections: oosData.oosDriverOos || 0,
-        vehicleOosInspections: oosData.oosVehicleOos || 0,
-        totalCrashes: oosData.oosTotCrashes || 0,
-        fatalCrashes: oosData.oosFatalCrashes || 0,
-        injuryCrashes: oosData.oosInjCrashes || 0,
-        towCrashes: oosData.oosTowCrashes || 0,
+        driverOosRate: oosData.oosDriverOosRate || carrierData?.driverOosRate || 0,
+        vehicleOosRate: oosData.oosVehicleOosRate || carrierData?.vehicleOosRate || 0,
+        driverOosInspections: oosData.oosDriverOos || carrierData?.driverOosInsp || 0,
+        vehicleOosInspections: oosData.oosVehicleOos || carrierData?.vehicleOosInsp || 0,
+        totalCrashes: oosData.oosTotCrashes || carrierData?.crashTotal || 0,
+        fatalCrashes: oosData.oosFatalCrashes || carrierData?.fatalCrash || 0,
+        injuryCrashes: oosData.oosInjCrashes || carrierData?.injuryCrash || 0,
+        towCrashes: oosData.oosTowCrashes || carrierData?.towCrash || 0,
         basics,
-        safetyRating: 'N/A', // Will be filled from carrier data
+        safetyRating: carrierData?.safetyRating || 'N/A',
         snapshotDate: new Date().toISOString().split('T')[0],
       };
     } catch (error) {
