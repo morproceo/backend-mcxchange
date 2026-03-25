@@ -192,12 +192,56 @@ class FMCSAService {
         return null;
       }
 
-      const data = await response.json() as { content?: Record<string, string> };
+      const data = await response.json() as { content?: any };
 
       if (!data.content) {
         return null;
       }
 
+      // FMCSA returns content as an array (one entry per authority type)
+      // or as a single object. Normalize to work with both.
+      if (Array.isArray(data.content)) {
+        // Array format: each element has authTypeCd (C=Common, E=Contract, B=Broker),
+        // authActCd (status), authGrantDt, etc.
+        const result: FMCSAAuthorityHistory = {
+          commonAuthorityStatus: 'N/A',
+          contractAuthorityStatus: 'N/A',
+          brokerAuthorityStatus: 'N/A',
+        };
+
+        for (const item of data.content) {
+          const type = String(item.authTypeCd || item.authorityType || '').toUpperCase();
+          const status = item.authActCd || item.authStatus || item.status || 'N/A';
+          const grantDate = item.authGrantDt || item.grantDate || item.grantDt;
+          const revokedDate = item.authRevokedDt || item.revokedDate;
+          const reinstatedDate = item.authReinstatedDt || item.reinstatedDate;
+          const appDate = item.applicationDt || item.applDt;
+          const effDate = item.effectiveDt || item.effDt;
+
+          if (type === 'C' || type === 'COMMON') {
+            result.commonAuthorityStatus = status;
+            result.commonAuthorityGrantDate = grantDate;
+            result.commonAuthorityRevokedDate = revokedDate;
+            result.commonAuthorityReinstatedDate = reinstatedDate;
+            result.applicationDate = result.applicationDate || appDate;
+            result.effectiveDate = result.effectiveDate || effDate;
+          } else if (type === 'E' || type === 'CONTRACT') {
+            result.contractAuthorityStatus = status;
+            result.contractAuthorityGrantDate = grantDate;
+          } else if (type === 'B' || type === 'BROKER') {
+            result.brokerAuthorityStatus = status;
+            result.brokerAuthorityGrantDate = grantDate;
+          }
+
+          // Capture grant/effective dates from any entry as fallback
+          if (!result.grantDate && grantDate) result.grantDate = grantDate;
+          if (!result.effectiveDate && effDate) result.effectiveDate = effDate;
+        }
+
+        return result;
+      }
+
+      // Single object format (legacy)
       return {
         commonAuthorityStatus: data.content.commonAuthorityStatus || 'N/A',
         commonAuthorityGrantDate: data.content.commonAuthorityGrantDate,
