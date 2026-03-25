@@ -214,6 +214,14 @@ export const SUBSCRIPTION_PLANS = {
     stripePriceIdMonthly: process.env.STRIPE_PRICE_STARTER_MONTHLY || '',
     stripePriceIdYearly: process.env.STRIPE_PRICE_STARTER_YEARLY || '',
   },
+  PROFESSIONAL: {
+    name: 'Professional',
+    credits: 4,
+    priceMonthly: 2599,
+    priceYearly: 24949,
+    stripePriceIdMonthly: process.env.STRIPE_PRICE_PROFESSIONAL_MONTHLY || '',
+    stripePriceIdYearly: process.env.STRIPE_PRICE_PROFESSIONAL_YEARLY || '',
+  },
   PREMIUM: {
     name: 'Premium',
     credits: 10,
