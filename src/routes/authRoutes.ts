@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   changePassword,
   requestPasswordReset,
+  resetPassword,
   verifyEmail,
   resendVerificationEmail,
   registerValidation,
@@ -25,6 +26,7 @@ router.post('/login', authLimiter, validate(loginValidation), login);
 router.post('/refresh-token', authLimiter, refreshToken);
 router.post('/logout', logout);
 router.post('/forgot-password', passwordResetLimiter, requestPasswordReset);
+router.post('/reset-password', passwordResetLimiter, resetPassword);
 router.post('/verify-email', authLimiter, verifyEmail);
 
 // Protected routes

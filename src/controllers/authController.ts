@@ -173,6 +173,34 @@ export const requestPasswordReset = asyncHandler(async (req: Request, res: Respo
   });
 });
 
+// Reset password with token
+export const resetPassword = asyncHandler(async (req: Request, res: Response) => {
+  const { token, newPassword } = req.body;
+
+  if (!token || !newPassword) {
+    res.status(400).json({
+      success: false,
+      error: 'Token and new password are required',
+    });
+    return;
+  }
+
+  if (newPassword.length < 8) {
+    res.status(400).json({
+      success: false,
+      error: 'New password must be at least 8 characters',
+    });
+    return;
+  }
+
+  const result = await authService.resetPassword(token, newPassword);
+
+  res.json({
+    success: true,
+    message: result.message,
+  });
+});
+
 // Verify email
 export const verifyEmail = asyncHandler(async (req: Request, res: Response) => {
   const { token } = req.body;
