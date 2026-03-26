@@ -72,6 +72,10 @@ export interface CheckoutSessionResult {
 
 // Stripe price IDs for subscription plans (configure in Stripe dashboard)
 export const SUBSCRIPTION_PRICE_IDS = {
+  package_tool: {
+    monthly: process.env.STRIPE_PRICE_PACKAGE_TOOL_MONTHLY || 'price_1TFIVRFnDj2YhGIWVhMNe62E',
+    yearly: process.env.STRIPE_PRICE_PACKAGE_TOOL_YEARLY || 'price_1TFIWTFnDj2YhGIWwiibmRJ1',
+  },
   starter: {
     monthly: process.env.STRIPE_PRICE_STARTER_MONTHLY || 'price_starter_monthly',
     yearly: process.env.STRIPE_PRICE_STARTER_YEARLY || 'price_starter_yearly',
@@ -1399,7 +1403,7 @@ class StripeService {
    * Get price ID for a subscription plan
    */
   getPriceId(
-    plan: 'starter' | 'professional' | 'premium' | 'enterprise' | 'vip_access',
+    plan: 'package_tool' | 'starter' | 'professional' | 'premium' | 'enterprise' | 'vip_access',
     interval: 'monthly' | 'yearly'
   ): string {
     return SUBSCRIPTION_PRICE_IDS[plan][interval];

@@ -30,6 +30,7 @@ export interface PlatformFeesConfig {
 
 export interface PricingConfig {
   subscriptionPlans: {
+    package_tool: SubscriptionPlanConfig;
     starter: SubscriptionPlanConfig;
     professional: SubscriptionPlanConfig;
     premium: SubscriptionPlanConfig;
@@ -43,11 +44,26 @@ export interface PricingConfig {
 // Default pricing values
 const DEFAULT_PRICING: PricingConfig = {
   subscriptionPlans: {
+    package_tool: {
+      name: 'Package Tool',
+      credits: 0,
+      priceMonthly: 16.99,
+      priceYearly: 163.09,
+      stripePriceIdMonthly: process.env.STRIPE_PRICE_PACKAGE_TOOL_MONTHLY || 'price_1TFIVRFnDj2YhGIWVhMNe62E',
+      stripePriceIdYearly: process.env.STRIPE_PRICE_PACKAGE_TOOL_YEARLY || 'price_1TFIWTFnDj2YhGIWwiibmRJ1',
+      features: [
+        'CarrierPulse included',
+        'Chameleon Check included',
+        'Safety Improvement Report included',
+        'Carrier intelligence tools',
+        'No listing credits — tools only',
+      ],
+    },
     starter: {
       name: 'Starter',
       credits: 4,
-      priceMonthly: 9.99,
-      priceYearly: 95.99,
+      priceMonthly: 19.99,
+      priceYearly: 192.00,
       stripePriceIdMonthly: process.env.STRIPE_PRICE_STARTER_MONTHLY || '',
       stripePriceIdYearly: process.env.STRIPE_PRICE_STARTER_YEARLY || '',
       features: [
@@ -77,8 +93,8 @@ const DEFAULT_PRICING: PricingConfig = {
     premium: {
       name: 'Premium',
       credits: 10,
-      priceMonthly: 19.99,
-      priceYearly: 191.99,
+      priceMonthly: 39.99,
+      priceYearly: 383.99,
       stripePriceIdMonthly: process.env.STRIPE_PRICE_PREMIUM_MONTHLY || '',
       stripePriceIdYearly: process.env.STRIPE_PRICE_PREMIUM_YEARLY || '',
       features: [
@@ -94,8 +110,8 @@ const DEFAULT_PRICING: PricingConfig = {
     enterprise: {
       name: 'Enterprise',
       credits: 15,
-      priceMonthly: 39.99,
-      priceYearly: 383.99,
+      priceMonthly: 79.99,
+      priceYearly: 767.99,
       stripePriceIdMonthly: process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY || '',
       stripePriceIdYearly: process.env.STRIPE_PRICE_ENTERPRISE_YEARLY || '',
       features: [
@@ -205,6 +221,7 @@ class PricingConfigService {
   async getSubscriptionPlans(): Promise<SubscriptionPlanConfig[]> {
     const config = await this.getPricingConfig();
     return [
+      config.subscriptionPlans.package_tool,
       config.subscriptionPlans.starter,
       config.subscriptionPlans.professional,
       config.subscriptionPlans.premium,
@@ -216,9 +233,9 @@ class PricingConfigService {
   /**
    * Get a specific subscription plan by key
    */
-  async getSubscriptionPlan(planKey: 'STARTER' | 'PROFESSIONAL' | 'PREMIUM' | 'ENTERPRISE' | 'VIP_ACCESS'): Promise<SubscriptionPlanConfig> {
+  async getSubscriptionPlan(planKey: 'PACKAGE_TOOL' | 'STARTER' | 'PROFESSIONAL' | 'PREMIUM' | 'ENTERPRISE' | 'VIP_ACCESS'): Promise<SubscriptionPlanConfig> {
     const config = await this.getPricingConfig();
-    const key = planKey.toLowerCase() as 'starter' | 'professional' | 'premium' | 'enterprise' | 'vip_access';
+    const key = planKey.toLowerCase() as 'package_tool' | 'starter' | 'professional' | 'premium' | 'enterprise' | 'vip_access';
     return config.subscriptionPlans[key];
   }
 
@@ -257,7 +274,7 @@ class PricingConfigService {
   /**
    * Get Stripe price ID for a subscription plan
    */
-  async getStripePriceId(planKey: 'STARTER' | 'PROFESSIONAL' | 'PREMIUM' | 'ENTERPRISE' | 'VIP_ACCESS', isYearly: boolean): Promise<string> {
+  async getStripePriceId(planKey: 'PACKAGE_TOOL' | 'STARTER' | 'PROFESSIONAL' | 'PREMIUM' | 'ENTERPRISE' | 'VIP_ACCESS', isYearly: boolean): Promise<string> {
     const plan = await this.getSubscriptionPlan(planKey);
     return isYearly ? plan.stripePriceIdYearly : plan.stripePriceIdMonthly;
   }
@@ -284,6 +301,15 @@ class PricingConfigService {
     // Build config from settings, falling back to defaults
     return {
       subscriptionPlans: {
+        package_tool: {
+          name: 'Package Tool',
+          credits: this.parseNumber(settingsMap['package_tool_credits'], DEFAULT_PRICING.subscriptionPlans.package_tool.credits),
+          priceMonthly: this.parseNumber(settingsMap['package_tool_price_monthly'], DEFAULT_PRICING.subscriptionPlans.package_tool.priceMonthly),
+          priceYearly: this.parseNumber(settingsMap['package_tool_price_yearly'], DEFAULT_PRICING.subscriptionPlans.package_tool.priceYearly),
+          stripePriceIdMonthly: settingsMap['package_tool_stripe_monthly'] || DEFAULT_PRICING.subscriptionPlans.package_tool.stripePriceIdMonthly,
+          stripePriceIdYearly: settingsMap['package_tool_stripe_yearly'] || DEFAULT_PRICING.subscriptionPlans.package_tool.stripePriceIdYearly,
+          features: this.parseJson(settingsMap['package_tool_features'], DEFAULT_PRICING.subscriptionPlans.package_tool.features),
+        },
         starter: {
           name: 'Starter',
           credits: this.parseNumber(settingsMap['starter_credits'], DEFAULT_PRICING.subscriptionPlans.starter.credits),
@@ -348,6 +374,14 @@ class PricingConfigService {
    */
   private async saveToDatabase(config: PricingConfig): Promise<void> {
     const settings: Array<{ key: string; value: string; type: string }> = [
+      // Package Tool plan
+      { key: 'package_tool_credits', value: String(config.subscriptionPlans.package_tool.credits), type: 'number' },
+      { key: 'package_tool_price_monthly', value: String(config.subscriptionPlans.package_tool.priceMonthly), type: 'number' },
+      { key: 'package_tool_price_yearly', value: String(config.subscriptionPlans.package_tool.priceYearly), type: 'number' },
+      { key: 'package_tool_stripe_monthly', value: config.subscriptionPlans.package_tool.stripePriceIdMonthly, type: 'string' },
+      { key: 'package_tool_stripe_yearly', value: config.subscriptionPlans.package_tool.stripePriceIdYearly, type: 'string' },
+      { key: 'package_tool_features', value: JSON.stringify(config.subscriptionPlans.package_tool.features), type: 'json' },
+
       // Starter plan
       { key: 'starter_credits', value: String(config.subscriptionPlans.starter.credits), type: 'number' },
       { key: 'starter_price_monthly', value: String(config.subscriptionPlans.starter.priceMonthly), type: 'number' },

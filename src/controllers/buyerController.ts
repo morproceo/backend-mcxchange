@@ -126,7 +126,7 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
   const { plan, isYearly } = req.body;
 
   // Validate plan
-  const validPlans = ['starter', 'professional', 'premium', 'enterprise', 'vip_access'];
+  const validPlans = ['package_tool', 'starter', 'professional', 'premium', 'enterprise', 'vip_access'];
   if (!plan || !validPlans.includes(plan)) {
     throw new BadRequestError('Invalid subscription plan');
   }
@@ -146,7 +146,7 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
 
   // Get the price ID for the selected plan
   const priceId = stripeService.getPriceId(
-    plan as 'starter' | 'premium' | 'enterprise' | 'vip_access',
+    plan as 'package_tool' | 'starter' | 'professional' | 'premium' | 'enterprise' | 'vip_access',
     isYearly ? 'yearly' : 'monthly'
   );
 
@@ -192,6 +192,7 @@ export const getCarrierPulseAccess = asyncHandler(async (req: AuthRequest, res: 
 
   // Professional, Premium, Enterprise, VIP get CarrierPulse included
   const includedInPlan = isActive && (
+    plan === SubscriptionPlan.PACKAGE_TOOL ||
     plan === SubscriptionPlan.PROFESSIONAL ||
     plan === SubscriptionPlan.PREMIUM ||
     plan === SubscriptionPlan.ENTERPRISE ||
@@ -233,7 +234,7 @@ export const createCarrierPulseCheckout = asyncHandler(async (req: AuthRequest, 
     return;
   }
 
-  if (isActive && (plan === SubscriptionPlan.PROFESSIONAL || plan === SubscriptionPlan.PREMIUM || plan === SubscriptionPlan.ENTERPRISE || plan === SubscriptionPlan.VIP_ACCESS)) {
+  if (isActive && (plan === SubscriptionPlan.PACKAGE_TOOL || plan === SubscriptionPlan.PROFESSIONAL || plan === SubscriptionPlan.PREMIUM || plan === SubscriptionPlan.ENTERPRISE || plan === SubscriptionPlan.VIP_ACCESS)) {
     res.json({ success: false, error: 'CarrierPulse is already included in your subscription' });
     return;
   }
@@ -704,7 +705,7 @@ export const getCarrierPulseCreditsafeSearch = asyncHandler(async (req: AuthRequ
   const isActive = subscription?.status === SubscriptionStatus.ACTIVE;
   const hasAccess = req.user.role === UserRole.ADMIN ||
     user?.carrierPulseAccess ||
-    (isActive && (plan === SubscriptionPlan.PROFESSIONAL || plan === SubscriptionPlan.PREMIUM || plan === SubscriptionPlan.ENTERPRISE || plan === SubscriptionPlan.VIP_ACCESS));
+    (isActive && (plan === SubscriptionPlan.PACKAGE_TOOL || plan === SubscriptionPlan.PROFESSIONAL || plan === SubscriptionPlan.PREMIUM || plan === SubscriptionPlan.ENTERPRISE || plan === SubscriptionPlan.VIP_ACCESS));
 
   if (!hasAccess) {
     res.status(403).json({ success: false, error: 'CarrierPulse access required' });
@@ -747,7 +748,7 @@ export const getCarrierPulseCreditsafeReport = asyncHandler(async (req: AuthRequ
   const isActive = subscription?.status === SubscriptionStatus.ACTIVE;
   const hasAccess = req.user.role === UserRole.ADMIN ||
     user?.carrierPulseAccess ||
-    (isActive && (plan === SubscriptionPlan.PROFESSIONAL || plan === SubscriptionPlan.PREMIUM || plan === SubscriptionPlan.ENTERPRISE || plan === SubscriptionPlan.VIP_ACCESS));
+    (isActive && (plan === SubscriptionPlan.PACKAGE_TOOL || plan === SubscriptionPlan.PROFESSIONAL || plan === SubscriptionPlan.PREMIUM || plan === SubscriptionPlan.ENTERPRISE || plan === SubscriptionPlan.VIP_ACCESS));
 
   if (!hasAccess) {
     res.status(403).json({ success: false, error: 'CarrierPulse access required' });

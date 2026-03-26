@@ -160,15 +160,15 @@ class CreditService {
   async getSubscriptionPlans() {
     const plans = await pricingConfigService.getSubscriptionPlans();
     return plans.map((plan, index) => {
-      const keys = ['STARTER', 'PROFESSIONAL', 'PREMIUM', 'ENTERPRISE', 'VIP_ACCESS'];
+      const keys = ['PACKAGE_TOOL', 'STARTER', 'PROFESSIONAL', 'PREMIUM', 'ENTERPRISE', 'VIP_ACCESS'];
       return {
         id: keys[index],
         name: plan.name,
         credits: plan.credits,
         priceMonthly: plan.priceMonthly,
         priceYearly: plan.priceYearly,
-        pricePerCreditMonthly: Math.round((plan.priceMonthly / plan.credits) * 100) / 100,
-        pricePerCreditYearly: Math.round((plan.priceYearly / plan.credits) * 100) / 100,
+        pricePerCreditMonthly: plan.credits > 0 ? Math.round((plan.priceMonthly / plan.credits) * 100) / 100 : 0,
+        pricePerCreditYearly: plan.credits > 0 ? Math.round((plan.priceYearly / plan.credits) * 100) / 100 : 0,
         stripePriceIdMonthly: plan.stripePriceIdMonthly,
         stripePriceIdYearly: plan.stripePriceIdYearly,
         features: plan.features,
