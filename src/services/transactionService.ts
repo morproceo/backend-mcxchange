@@ -913,6 +913,112 @@ class TransactionService {
     });
   }
 
+  // Admin: Send/resend notification emails for an existing transaction
+  async adminSendTransactionEmails(transactionId: string, adminId: string) {
+    const transaction = await Transaction.findByPk(transactionId, {
+      include: [
+        { model: Listing, as: 'listing' },
+        { model: User, as: 'buyer', attributes: ['id', 'name', 'email'] },
+        { model: User, as: 'seller', attributes: ['id', 'name', 'email'] },
+      ],
+    });
+
+    if (!transaction) {
+      throw new NotFoundError('Transaction');
+    }
+
+    const { listing, buyer, seller } = transaction as any;
+    if (!listing || !buyer || !seller) {
+      throw new BadRequestError('Transaction is missing listing, buyer, or seller data');
+    }
+
+    const transactionUrl = `${config.frontendUrl}/transaction/${transaction.id}`;
+    const mcNumber = listing.mcNumber;
+    const listingTitle = listing.title || `MC Authority #${mcNumber}`;
+
+    // Build status-specific messaging
+    const statusMessages: Record<string, { status: string; buyerAction: string; sellerAction: string; description: string }> = {
+      'AWAITING_DEPOSIT': {
+        status: 'Awaiting Deposit',
+        buyerAction: 'Please log in to review the transaction details and submit your deposit to proceed.',
+        sellerAction: 'A buyer has been matched. Please log in to review the transaction and prepare your documents.',
+        description: `The transaction for MC Authority #${mcNumber} is awaiting the buyer's deposit of $${Number(transaction.depositAmount).toLocaleString()}.`,
+      },
+      'DEPOSIT_RECEIVED': {
+        status: 'Deposit Received',
+        buyerAction: 'Your deposit has been received. Please review the listing details and approve the transaction.',
+        sellerAction: "The buyer's deposit has been received. Please review and approve the transaction.",
+        description: `The deposit for MC Authority #${mcNumber} has been received. The transaction is now in review.`,
+      },
+      'IN_REVIEW': {
+        status: 'In Review',
+        buyerAction: 'Please review the transaction details and documents, then approve to proceed.',
+        sellerAction: 'Please review the transaction details and documents, then approve to proceed.',
+        description: `The transaction for MC Authority #${mcNumber} is currently under review.`,
+      },
+      'PAYMENT_PENDING': {
+        status: 'Final Payment Pending',
+        buyerAction: 'The transaction has been approved. Please submit your final payment to complete the purchase.',
+        sellerAction: 'The transaction has been approved. Awaiting final payment from the buyer.',
+        description: `The transaction for MC Authority #${mcNumber} is approved and awaiting final payment.`,
+      },
+    };
+
+    const msgInfo = statusMessages[transaction.status] || {
+      status: transaction.status.replace(/_/g, ' '),
+      buyerAction: 'Please log in to check your transaction status.',
+      sellerAction: 'Please log in to check your transaction status.',
+      description: `There is an update on the transaction for MC Authority #${mcNumber}.`,
+    };
+
+    const results = { buyer: false, seller: false };
+
+    // Email buyer
+    results.buyer = await emailService.sendTransactionUpdate(buyer.email, {
+      userName: buyer.name,
+      mcNumber,
+      listingTitle,
+      status: msgInfo.status,
+      statusDescription: msgInfo.description,
+      transactionUrl,
+      actionRequired: msgInfo.buyerAction,
+    }).catch(err => {
+      console.error('Failed to send transaction email to buyer:', err);
+      return false;
+    });
+
+    // Email seller
+    results.seller = await emailService.sendTransactionUpdate(seller.email, {
+      userName: seller.name,
+      mcNumber,
+      listingTitle,
+      status: msgInfo.status,
+      statusDescription: msgInfo.description,
+      transactionUrl,
+      actionRequired: msgInfo.sellerAction,
+    }).catch(err => {
+      console.error('Failed to send transaction email to seller:', err);
+      return false;
+    });
+
+    // Add timeline entry
+    await this.addTimelineEntry(
+      transactionId,
+      transaction.status as TransactionStatus,
+      'Notification Emails Sent',
+      `Admin sent notification emails to buyer (${buyer.email}) and seller (${seller.email}).`,
+      adminId,
+      'ADMIN'
+    );
+
+    return {
+      buyerEmail: buyer.email,
+      buyerSent: results.buyer,
+      sellerEmail: seller.email,
+      sellerSent: results.seller,
+    };
+  }
+
   // Helper: Notify both parties
   private async notifyParties(buyerId: string, sellerId: string, title: string, message: string) {
     await Notification.bulkCreate([

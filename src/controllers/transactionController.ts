@@ -549,6 +549,24 @@ export const getAvailableListings = asyncHandler(async (req: AuthRequest, res: R
   });
 });
 
+// Admin sends notification emails for an existing transaction
+export const adminSendTransactionEmails = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+
+  const result = await transactionService.adminSendTransactionEmails(id, req.user.id);
+
+  res.json({
+    success: true,
+    data: result,
+    message: `Notification emails sent to buyer (${result.buyerEmail}) and seller (${result.sellerEmail})`,
+  });
+});
+
 // Admin deletes a transaction
 export const adminDeleteTransaction = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.user) {
