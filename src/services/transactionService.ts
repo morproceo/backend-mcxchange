@@ -20,6 +20,8 @@ import {
 } from '../models';
 import { NotFoundError, ForbiddenError, BadRequestError } from '../middleware/errorHandler';
 import { pricingConfigService } from './pricingConfigService';
+import { emailService } from './emailService';
+import config from '../config';
 
 class TransactionService {
   // Get transaction by ID
@@ -714,13 +716,41 @@ class TransactionService {
         'ADMIN'
       );
 
-      // Notify both parties
+      // Notify both parties (in-app)
       await this.notifyParties(
         buyerId,
         listing.sellerId,
         'New Transaction Created',
         `Admin has created a transaction for MC-${listing.mcNumber}. Please proceed with the deposit.`
       );
+
+      // Send email notifications to buyer and seller
+      const transactionUrl = `${config.frontendUrl}/transaction/${transaction.id}`;
+
+      // Email buyer
+      await emailService.sendTransactionUpdate(buyer.email, {
+        userName: buyer.name,
+        mcNumber: listing.mcNumber,
+        listingTitle: listing.title || `MC Authority #${listing.mcNumber}`,
+        status: 'Transaction Created',
+        statusDescription: `A new transaction has been created for MC Authority #${listing.mcNumber}. The agreed price is $${agreedPrice.toLocaleString()} with a deposit of $${calculatedDeposit.toLocaleString()}.`,
+        transactionUrl,
+        actionRequired: 'Please log in to review the transaction details and submit your deposit to proceed.',
+      }).catch(err => console.error('Failed to send transaction email to buyer:', err));
+
+      // Email seller
+      const seller = listing.seller;
+      if (seller) {
+        await emailService.sendTransactionUpdate(seller.email, {
+          userName: seller.name,
+          mcNumber: listing.mcNumber,
+          listingTitle: listing.title || `MC Authority #${listing.mcNumber}`,
+          status: 'Transaction Created',
+          statusDescription: `A new transaction has been created for your MC Authority #${listing.mcNumber}. A buyer has been matched and the transaction is now awaiting deposit.`,
+          transactionUrl,
+          actionRequired: 'Please log in to review the transaction details and prepare your documents for the transfer.',
+        }).catch(err => console.error('Failed to send transaction email to seller:', err));
+      }
 
       // Return full transaction with associations
       return Transaction.findByPk(transaction.id, {
