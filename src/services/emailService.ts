@@ -1391,6 +1391,51 @@ class EmailService {
     const template = this.compileTemplate('admin-consultation', data);
     return this.sendToMultiple(emails, template.subject, template.html, template.text);
   }
+
+  /**
+   * Send service inquiry notification email to info@domilea.com
+   */
+  async sendServiceInquiryNotification(data: {
+    serviceName: string;
+    name: string;
+    company?: string;
+    email: string;
+    phone: string;
+    fleetSize?: string;
+    equipmentType?: string;
+    serviceType?: string;
+    mcNumber?: string;
+    driversNeeded?: string;
+    driverType?: string;
+    message?: string;
+  }): Promise<boolean> {
+    const detailRows: string[] = [];
+    detailRows.push(`<tr><td style="padding:8px;font-weight:bold;">Name</td><td style="padding:8px;">${data.name}</td></tr>`);
+    if (data.company) detailRows.push(`<tr><td style="padding:8px;font-weight:bold;">Company</td><td style="padding:8px;">${data.company}</td></tr>`);
+    detailRows.push(`<tr><td style="padding:8px;font-weight:bold;">Email</td><td style="padding:8px;">${data.email}</td></tr>`);
+    detailRows.push(`<tr><td style="padding:8px;font-weight:bold;">Phone</td><td style="padding:8px;">${data.phone}</td></tr>`);
+    if (data.fleetSize) detailRows.push(`<tr><td style="padding:8px;font-weight:bold;">Fleet Size</td><td style="padding:8px;">${data.fleetSize}</td></tr>`);
+    if (data.equipmentType) detailRows.push(`<tr><td style="padding:8px;font-weight:bold;">Equipment Type</td><td style="padding:8px;">${data.equipmentType}</td></tr>`);
+    if (data.serviceType) detailRows.push(`<tr><td style="padding:8px;font-weight:bold;">Service Type</td><td style="padding:8px;">${data.serviceType}</td></tr>`);
+    if (data.mcNumber) detailRows.push(`<tr><td style="padding:8px;font-weight:bold;">MC Number</td><td style="padding:8px;">${data.mcNumber}</td></tr>`);
+    if (data.driversNeeded) detailRows.push(`<tr><td style="padding:8px;font-weight:bold;">Drivers Needed</td><td style="padding:8px;">${data.driversNeeded}</td></tr>`);
+    if (data.driverType) detailRows.push(`<tr><td style="padding:8px;font-weight:bold;">Driver Type</td><td style="padding:8px;">${data.driverType}</td></tr>`);
+    if (data.message) detailRows.push(`<tr><td style="padding:8px;font-weight:bold;">Message</td><td style="padding:8px;">${data.message}</td></tr>`);
+
+    const subject = `New ${data.serviceName} Inquiry from ${data.name}`;
+    const html = `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+        <h2 style="color:#1a56db;">New ${data.serviceName} Inquiry</h2>
+        <p>A new service inquiry has been submitted on the Domilea platform.</p>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;">
+          <tbody>${detailRows.join('')}</tbody>
+        </table>
+        <p style="margin-top:16px;color:#6b7280;font-size:14px;">This is an automated notification from Domilea.</p>
+      </div>
+    `;
+
+    return this.send('info@domilea.com', subject, html);
+  }
 }
 
 // Export singleton instance

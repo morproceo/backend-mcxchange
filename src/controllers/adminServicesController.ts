@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { ghlService } from '../services/ghlService';
+import { emailService } from '../services/emailService';
 import logger from '../utils/logger';
 
 export const submitAdminServicesForm = async (req: Request, res: Response) => {
@@ -28,6 +29,22 @@ export const submitAdminServicesForm = async (req: Request, res: Response) => {
       });
     } catch (error) {
       logger.error('Failed to create GHL contact for admin services lead:', error as Error);
+    }
+
+    // Send email notification
+    try {
+      await emailService.sendServiceInquiryNotification({
+        serviceName: 'Admin Services',
+        name,
+        company,
+        email,
+        phone,
+        fleetSize,
+        serviceType,
+        message,
+      });
+    } catch (error) {
+      logger.error('Failed to send admin services inquiry email:', error as Error);
     }
 
     res.json({

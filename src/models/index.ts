@@ -111,6 +111,7 @@ export enum PaymentType {
 }
 
 export enum SubscriptionPlan {
+  PACKAGE_TOOL = 'PACKAGE_TOOL',
   STARTER = 'STARTER',
   PROFESSIONAL = 'PROFESSIONAL',
   PREMIUM = 'PREMIUM',
