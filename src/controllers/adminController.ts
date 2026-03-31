@@ -24,6 +24,13 @@ export const createUserValidation = [
   body('role').isIn(['BUYER', 'SELLER', 'ADMIN']).withMessage('Valid role is required'),
 ];
 
+export const updateUserValidation = [
+  body('name').optional().trim().isLength({ min: 1 }).withMessage('Name cannot be empty'),
+  body('email').optional().trim().isEmail().withMessage('Valid email is required'),
+  body('phone').optional().trim(),
+  body('companyName').optional().trim(),
+];
+
 export const updateUserRoleValidation = [
   body('role').isIn(['BUYER', 'SELLER', 'ADMIN']).withMessage('Valid role is required (BUYER, SELLER, ADMIN)'),
 ];
@@ -176,6 +183,25 @@ export const verifySeller = asyncHandler(async (req: AuthRequest, res: Response)
     success: true,
     data: user,
     message: 'Seller verified',
+  });
+});
+
+// Update user profile
+export const updateUser = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+  const { name, email, phone, companyName } = req.body;
+
+  const user = await adminService.updateUser(id, req.user.id, { name, email, phone, companyName });
+
+  res.json({
+    success: true,
+    data: user,
+    message: 'User profile updated',
   });
 });
 

@@ -438,6 +438,50 @@ class AdminService {
     return user;
   }
 
+  // Update user profile
+  async updateUser(userId: string, adminId: string, updates: { name?: string; email?: string; phone?: string; companyName?: string }) {
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    // If email is being changed, check for uniqueness
+    if (updates.email && updates.email !== user.email) {
+      const existing = await User.findOne({ where: { email: updates.email } });
+      if (existing) {
+        throw new BadRequestError('Email already in use by another user');
+      }
+    }
+
+    // Filter out undefined values and unchanged fields
+    const fieldsToUpdate: Record<string, string> = {};
+    const changes: string[] = [];
+    for (const [key, value] of Object.entries(updates)) {
+      if (value !== undefined && value !== (user as any)[key]) {
+        fieldsToUpdate[key] = value;
+        changes.push(`${key}: "${(user as any)[key]}" → "${value}"`);
+      }
+    }
+
+    if (Object.keys(fieldsToUpdate).length === 0) {
+      return user;
+    }
+
+    await user.update(fieldsToUpdate);
+
+    // Record admin action
+    await AdminAction.create({
+      adminId,
+      action: 'UPDATE_USER_PROFILE',
+      targetType: 'USER',
+      targetId: userId,
+      reason: `Profile updated: ${changes.join(', ')}`,
+    });
+
+    return user;
+  }
+
   // Update user role
   async updateUserRole(userId: string, adminId: string, newRole: string) {
     const user = await User.findByPk(userId);
