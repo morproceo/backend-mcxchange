@@ -41,6 +41,7 @@ export const getListings = asyncHandler(async (req: AuthRequest, res: Response) 
     hasPhone: parseBooleanParam(req.query.hasPhone as string),
     minYears: parseIntParam(req.query.minYears as string),
     sortBy: req.query.sortBy as ListingQueryParams['sortBy'],
+    status: req.query.status as string,
   };
 
   const result = await listingService.getListings(params);
