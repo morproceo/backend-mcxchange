@@ -47,8 +47,8 @@ const DEFAULT_PRICING: PricingConfig = {
     package_tool: {
       name: 'Package Tool',
       credits: 0,
-      priceMonthly: 16.99,
-      priceYearly: 163.09,
+      priceMonthly: 14.99,
+      priceYearly: 143.90,
       stripePriceIdMonthly: process.env.STRIPE_PRICE_PACKAGE_TOOL_MONTHLY || 'price_1TFIVRFnDj2YhGIWVhMNe62E',
       stripePriceIdYearly: process.env.STRIPE_PRICE_PACKAGE_TOOL_YEARLY || 'price_1TFIWTFnDj2YhGIWwiibmRJ1',
       features: [
