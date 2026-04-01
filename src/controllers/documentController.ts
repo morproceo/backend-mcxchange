@@ -9,7 +9,7 @@ import { parseIntParam, parseBooleanParam } from '../utils/helpers';
 // Validation rules
 export const uploadDocumentValidation = [
   body('type')
-    .isIn(['INSURANCE', 'UCC_FILING', 'AUTHORITY', 'SAFETY_RECORD', 'BILL_OF_SALE', 'OTHER'])
+    .isIn(['INSURANCE', 'UCC_FILING', 'AUTHORITY', 'SAFETY_RECORD', 'BILL_OF_SALE', 'ARTICLES_OF_INCORPORATION', 'EIN_LETTER', 'LOSS_RUNS', 'LETTER_OF_RELEASE', 'OTHER'])
     .withMessage('Invalid document type'),
   body('listingId').optional().trim(),
   body('transactionId').optional().trim(),
