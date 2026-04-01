@@ -191,8 +191,6 @@ interface UserAttributes {
   state?: string;
   zipCode?: string;
   ein?: string;
-  mcNumber?: string;
-  dotNumber?: string;
   sellerVerified: boolean;
   sellerVerifiedAt?: Date;
   totalCredits: number;
@@ -210,7 +208,7 @@ interface UserAttributes {
   updatedAt?: Date;
 }
 
-interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'phone' | 'avatar' | 'status' | 'verified' | 'verifiedAt' | 'trustScore' | 'memberSince' | 'lastLoginAt' | 'companyName' | 'companyAddress' | 'city' | 'state' | 'zipCode' | 'ein' | 'mcNumber' | 'dotNumber' | 'sellerVerified' | 'sellerVerifiedAt' | 'totalCredits' | 'usedCredits' | 'stripeCustomerId' | 'stripeAccountId' | 'emailVerified' | 'identityVerified' | 'identityVerifiedAt' | 'stripeVerificationSessionId' | 'identityVerificationStatus' | 'carrierPulseAccess' | 'carrierPulseStripeSubId' | 'createdAt' | 'updatedAt'> {}
+interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'phone' | 'avatar' | 'status' | 'verified' | 'verifiedAt' | 'trustScore' | 'memberSince' | 'lastLoginAt' | 'companyName' | 'companyAddress' | 'city' | 'state' | 'zipCode' | 'ein' | 'sellerVerified' | 'sellerVerifiedAt' | 'totalCredits' | 'usedCredits' | 'stripeCustomerId' | 'stripeAccountId' | 'emailVerified' | 'identityVerified' | 'identityVerifiedAt' | 'stripeVerificationSessionId' | 'identityVerificationStatus' | 'carrierPulseAccess' | 'carrierPulseStripeSubId' | 'createdAt' | 'updatedAt'> {}
 
 // ==================== USER MODEL ====================
 
@@ -234,8 +232,6 @@ export class User extends Model<UserAttributes, UserCreationAttributes> implemen
   declare state: string | undefined;
   declare zipCode: string | undefined;
   declare ein: string | undefined;
-  declare mcNumber: string | undefined;
-  declare dotNumber: string | undefined;
   declare sellerVerified: boolean;
   declare sellerVerifiedAt: Date | undefined;
   declare totalCredits: number;
@@ -336,14 +332,6 @@ User.init(
       allowNull: true,
     },
     ein: {
-      type: DataTypes.STRING(50),
-      allowNull: true,
-    },
-    mcNumber: {
-      type: DataTypes.STRING(50),
-      allowNull: true,
-    },
-    dotNumber: {
       type: DataTypes.STRING(50),
       allowNull: true,
     },

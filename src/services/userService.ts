@@ -27,8 +27,6 @@ interface UpdateProfileData {
   state?: string;
   zipCode?: string;
   ein?: string;
-  mcNumber?: string;
-  dotNumber?: string;
 }
 
 class UserService {
@@ -129,8 +127,6 @@ class UserService {
       state: data.state,
       zipCode: data.zipCode,
       ein: data.ein,
-      mcNumber: data.mcNumber,
-      dotNumber: data.dotNumber,
     });
 
     // Invalidate user stats cache
