@@ -3,10 +3,12 @@ import {
   Message,
   User,
   Notification,
+  UserRole,
 } from '../models';
 import { NotFoundError, ForbiddenError } from '../middleware/errorHandler';
 import { getPaginationInfo } from '../utils/helpers';
 import { adminNotificationService } from './adminNotificationService';
+import { emailService } from './emailService';
 import logger from '../utils/logger';
 
 interface Conversation {
@@ -185,18 +187,38 @@ class MessageService {
       metadata: JSON.stringify({ messageId: message.id, senderId }),
     });
 
-    // Get sender info for admin notification
-    const sender = await User.findByPk(senderId, { attributes: ['name', 'email'] });
+    // Get sender info for notifications
+    const sender = await User.findByPk(senderId, { attributes: ['name', 'email', 'role'] });
 
-    // Notify admins of new inquiry/message (async, don't wait)
-    adminNotificationService.notifyNewInquiry({
-      senderName: sender?.name || 'Unknown',
-      senderEmail: sender?.email || 'Unknown',
-      messageContent: content,
-      listingInfo: listingId ? `Listing ID: ${listingId}` : undefined,
-    }).catch(err => {
-      logger.error('Failed to send admin notification for new message', err);
-    });
+    // If sender is admin, email the receiver so they know they got a message
+    if (sender?.role === UserRole.ADMIN && receiver.email) {
+      const preview = content.length > 200 ? content.substring(0, 200) + '...' : content;
+      emailService.sendCustomEmail(
+        receiver.email,
+        'New message from Domilea Support',
+        `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1a1a2e;">You have a new message from Domilea Support</h2>
+          <div style="background: #f8f9fa; border-radius: 8px; padding: 16px; margin: 16px 0;">
+            <p style="margin: 0; color: #333;">${preview}</p>
+          </div>
+          <p style="color: #666;">Log in to your seller dashboard to view and reply.</p>
+          <a href="https://www.domilea.com/seller/dashboard" style="display: inline-block; background: #1a1a2e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 8px;">View Messages</a>
+        </div>`,
+        `You have a new message from Domilea Support:\n\n${preview}\n\nLog in to view and reply: https://www.domilea.com/seller/dashboard`
+      ).catch(err => {
+        logger.error('Failed to send message notification email to user', err);
+      });
+    } else {
+      // Notify admins of new inquiry/message from user (async, don't wait)
+      adminNotificationService.notifyNewInquiry({
+        senderName: sender?.name || 'Unknown',
+        senderEmail: sender?.email || 'Unknown',
+        messageContent: content,
+        listingInfo: listingId ? `Listing ID: ${listingId}` : undefined,
+      }).catch(err => {
+        logger.error('Failed to send admin notification for new message', err);
+      });
+    }
 
     return messageWithSender;
   }
