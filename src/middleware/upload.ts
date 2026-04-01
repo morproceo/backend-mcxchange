@@ -112,9 +112,9 @@ export const uploadSingle = (req: Request, res: Response, next: NextFunction) =>
       try {
         const url = await uploadToS3(req.file);
         (req.file as any).s3Url = url;
-      } catch (s3Err) {
-        logger.error('S3 upload failed:', s3Err);
-        return next(new Error('Failed to upload file to storage'));
+      } catch (s3Err: any) {
+        logger.error('S3 upload failed:', s3Err?.message || s3Err, s3Err?.Code || '', s3Err?.$metadata || '');
+        return next(new Error(`Failed to upload file to storage: ${s3Err?.message || 'Unknown error'}`));
       }
     }
 
