@@ -34,7 +34,7 @@ export const uploadDocument = asyncHandler(async (req: AuthRequest, res: Respons
     listingId,
     transactionId,
     name: req.file.originalname,
-    url: `/uploads/${req.file.filename}`,
+    url: (req.file as any).s3Url || `/uploads/${req.file.filename}`,
     size: req.file.size,
     mimeType: req.file.mimetype,
   });

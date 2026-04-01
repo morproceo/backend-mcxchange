@@ -3,29 +3,46 @@ import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config';
-import { Request } from 'express';
+import { Request, Response, NextFunction } from 'express';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import logger from '../utils/logger';
 
-// Ensure upload directories exist
+// S3 client (initialized only if enabled)
+let s3Client: S3Client | null = null;
+if (config.upload.s3.enabled && config.upload.s3.accessKeyId && config.upload.s3.secretAccessKey) {
+  s3Client = new S3Client({
+    region: config.upload.s3.region,
+    credentials: {
+      accessKeyId: config.upload.s3.accessKeyId,
+      secretAccessKey: config.upload.s3.secretAccessKey,
+    },
+  });
+  logger.info('S3 storage enabled for file uploads');
+}
+
+// Ensure upload directories exist (for local storage fallback)
 const ensureDir = (dir: string) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 };
 
-// Configure storage for documents
-const documentStorage = multer.diskStorage({
-  destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
-    ensureDir(config.upload.uploadDir);
-    cb(null, config.upload.uploadDir);
-  },
-  filename: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
-    const uniqueId = uuidv4();
-    const ext = path.extname(file.originalname);
-    cb(null, `${uniqueId}${ext}`);
-  },
-});
+// Use memory storage when S3 is enabled, disk storage otherwise
+const documentStorage = s3Client
+  ? multer.memoryStorage()
+  : multer.diskStorage({
+      destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
+        ensureDir(config.upload.uploadDir);
+        cb(null, config.upload.uploadDir);
+      },
+      filename: (req: Request, file: Express.Multer.File, cb: (error: Error | null, filename: string) => void) => {
+        const uniqueId = uuidv4();
+        const ext = path.extname(file.originalname);
+        cb(null, `${uniqueId}${ext}`);
+      },
+    });
 
-// Configure storage for avatars
+// Configure storage for avatars (always local for now)
 const avatarStorage = multer.diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb: (error: Error | null, destination: string) => void) => {
     const avatarDir = path.join(config.upload.uploadDir, 'avatars');
@@ -65,8 +82,45 @@ export const upload = multer({
   },
 });
 
-// Single file upload
-export const uploadSingle = upload.single('file');
+// Upload file to S3
+async function uploadToS3(file: Express.Multer.File): Promise<string> {
+  if (!s3Client) throw new Error('S3 is not configured');
+
+  const uniqueId = uuidv4();
+  const ext = path.extname(file.originalname);
+  const key = `documents/${uniqueId}${ext}`;
+
+  await s3Client.send(new PutObjectCommand({
+    Bucket: config.upload.s3.bucket,
+    Key: key,
+    Body: file.buffer,
+    ContentType: file.mimetype,
+  }));
+
+  return `https://${config.upload.s3.bucket}.s3.${config.upload.s3.region}.amazonaws.com/${key}`;
+}
+
+// Single file upload middleware — handles S3 upload if enabled
+const multerSingle = upload.single('file');
+
+export const uploadSingle = (req: Request, res: Response, next: NextFunction) => {
+  multerSingle(req, res, async (err: any) => {
+    if (err) return next(err);
+
+    // If S3 is enabled and we have a file buffer, upload to S3
+    if (s3Client && req.file && req.file.buffer) {
+      try {
+        const url = await uploadToS3(req.file);
+        (req.file as any).s3Url = url;
+      } catch (s3Err) {
+        logger.error('S3 upload failed:', s3Err);
+        return next(new Error('Failed to upload file to storage'));
+      }
+    }
+
+    next();
+  });
+};
 
 // Multiple files upload (max 10)
 export const uploadMultiple = upload.array('files', 10);
