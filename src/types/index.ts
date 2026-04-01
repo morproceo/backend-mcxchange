@@ -191,6 +191,8 @@ export interface CreateListingData {
   highwaySetup?: boolean;
   sellingWithEmail?: boolean;
   sellingWithPhone?: boolean;
+  rmisSetup?: boolean;
+  setupWithBrokers?: boolean;
   contactEmail?: string;
   contactPhone?: string;
   cargoTypes?: string[];

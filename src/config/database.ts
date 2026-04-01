@@ -96,6 +96,8 @@ export const connectDatabase = async (): Promise<void> => {
     };
     await addColumnIfMissing('users', 'mcNumber', 'VARCHAR(50) NULL');
     await addColumnIfMissing('users', 'dotNumber', 'VARCHAR(50) NULL');
+    await addColumnIfMissing('listings', 'rmisSetup', 'TINYINT(1) NOT NULL DEFAULT 0');
+    await addColumnIfMissing('listings', 'setupWithBrokers', 'TINYINT(1) NOT NULL DEFAULT 0');
   } catch (error) {
     console.error('Database connection failed:', error);
     throw error;

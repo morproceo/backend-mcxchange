@@ -371,6 +371,8 @@ class ListingService {
       ...(data.highwaySetup !== undefined && { highwaySetup: data.highwaySetup }),
       ...(data.sellingWithEmail !== undefined && { sellingWithEmail: data.sellingWithEmail }),
       ...(data.sellingWithPhone !== undefined && { sellingWithPhone: data.sellingWithPhone }),
+      ...(data.rmisSetup !== undefined && { rmisSetup: data.rmisSetup }),
+      ...(data.setupWithBrokers !== undefined && { setupWithBrokers: data.setupWithBrokers }),
       ...(data.contactEmail !== undefined && { contactEmail: data.contactEmail }),
       ...(data.contactPhone !== undefined && { contactPhone: data.contactPhone }),
       ...(data.bondAmount !== undefined && { bondAmount: data.bondAmount }),
