@@ -68,7 +68,7 @@ describe('Health Check API', () => {
       expect(response.body).toMatchObject({
         success: true,
         status: 'healthy',
-        message: 'MC Exchange API is running',
+        message: 'Domilea API is running',
       });
       expect(response.body).toHaveProperty('timestamp');
       expect(response.body).toHaveProperty('version');

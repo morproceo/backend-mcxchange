@@ -46,7 +46,7 @@ router.get('/health', (_req: Request, res: Response) => {
   res.json({
     success: true,
     status: 'healthy',
-    message: 'MC Exchange API is running',
+    message: 'Domilea API is running',
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version || '1.0.0',
   });

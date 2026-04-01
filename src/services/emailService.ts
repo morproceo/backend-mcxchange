@@ -292,7 +292,7 @@ class EmailService {
 
     return {
       welcome: {
-        subject: 'Welcome to MC Exchange!',
+        subject: 'Welcome to Domilea!',
         html: `
           <!DOCTYPE html>
           <html>
@@ -300,11 +300,11 @@ class EmailService {
           <body>
             <div class="container">
               <div class="header">
-                <h1>Welcome to MC Exchange!</h1>
+                <h1>Welcome to Domilea!</h1>
               </div>
               <div class="content">
                 <h2>Hi {{name}},</h2>
-                <p>Welcome to MC Exchange - the premier marketplace for Motor Carrier authorities!</p>
+                <p>Welcome to Domilea, your one stop place for buying, selling, verifying business and much more!</p>
                 <p>Your account has been created as a <strong>{{role}}</strong>.</p>
                 <div class="highlight">
                   <p><strong>What's next?</strong></p>
@@ -318,19 +318,19 @@ class EmailService {
                 <p>If you have any questions, our support team is here to help.</p>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
-                <p>This email was sent to you because you created an account on MC Exchange.</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
+                <p>This email was sent to you because you created an account on Domilea.</p>
               </div>
             </div>
           </body>
           </html>
         `,
         text: `
-          Welcome to MC Exchange!
+          Welcome to Domilea!
 
           Hi {{name}},
 
-          Welcome to MC Exchange - the premier marketplace for Motor Carrier authorities!
+          Welcome to Domilea, your one stop place for buying, selling, verifying business and much more!
 
           Your account has been created as a {{role}}.
 
@@ -358,16 +358,16 @@ class EmailService {
               </div>
               <div class="content">
                 <h2>Hi {{name}},</h2>
-                <p>Please verify your email address to complete your MC Exchange registration.</p>
+                <p>Please verify your email address to complete your Domilea registration.</p>
                 <p>Click the button below to verify your email:</p>
                 <a href="{{verificationUrl}}" class="button">Verify Email Address</a>
                 <div class="highlight">
                   <p><strong>Note:</strong> This link will expire in {{expiresIn}}.</p>
                 </div>
-                <p>If you didn't create an account on MC Exchange, you can safely ignore this email.</p>
+                <p>If you didn't create an account on Domilea, you can safely ignore this email.</p>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
               </div>
             </div>
           </body>
@@ -378,13 +378,13 @@ class EmailService {
 
           Hi {{name}},
 
-          Please verify your email address to complete your MC Exchange registration.
+          Please verify your email address to complete your Domilea registration.
 
           Click here to verify: {{verificationUrl}}
 
           Note: This link will expire in {{expiresIn}}.
 
-          If you didn't create an account on MC Exchange, you can safely ignore this email.
+          If you didn't create an account on Domilea, you can safely ignore this email.
         `,
       },
 
@@ -401,7 +401,7 @@ class EmailService {
               </div>
               <div class="content">
                 <h2>Hi {{name}},</h2>
-                <p>We received a request to reset your password for your MC Exchange account.</p>
+                <p>We received a request to reset your password for your Domilea account.</p>
                 <p>Click the button below to reset your password:</p>
                 <a href="{{resetUrl}}" class="button">Reset Password</a>
                 <div class="highlight">
@@ -410,7 +410,7 @@ class EmailService {
                 <p>If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.</p>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
               </div>
             </div>
           </body>
@@ -421,7 +421,7 @@ class EmailService {
 
           Hi {{name}},
 
-          We received a request to reset your password for your MC Exchange account.
+          We received a request to reset your password for your Domilea account.
 
           Click here to reset your password: {{resetUrl}}
 
@@ -458,7 +458,7 @@ class EmailService {
                 <p>Log in to your dashboard to accept, reject, or counter this offer.</p>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
               </div>
             </div>
           </body>
@@ -508,7 +508,7 @@ class EmailService {
                 <a href="{{actionUrl}}" class="button">Go to Transaction</a>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
               </div>
             </div>
           </body>
@@ -557,7 +557,7 @@ class EmailService {
                 <a href="{{actionUrl}}" class="button">Browse Listings</a>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
               </div>
             </div>
           </body>
@@ -602,7 +602,7 @@ class EmailService {
                 <p>Log in to accept, reject, or make a new offer.</p>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
               </div>
             </div>
           </body>
@@ -650,7 +650,7 @@ class EmailService {
                 <a href="{{transactionUrl}}" class="button">View Transaction</a>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
               </div>
             </div>
           </body>
@@ -694,7 +694,7 @@ class EmailService {
                 <p>Potential buyers can now view and make offers on your listing.</p>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
               </div>
             </div>
           </body>
@@ -737,7 +737,7 @@ class EmailService {
                 <a href="{{dashboardUrl}}" class="button">Go to Dashboard</a>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
               </div>
             </div>
           </body>
@@ -759,7 +759,7 @@ class EmailService {
       },
 
       'payment-received': {
-        subject: 'Payment Confirmed - MC Exchange',
+        subject: 'Payment Confirmed - Domilea',
         html: `
           <!DOCTYPE html>
           <html>
@@ -780,7 +780,7 @@ class EmailService {
                 <a href="{{transactionUrl}}" class="button">View Transaction</a>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
               </div>
             </div>
           </body>
@@ -814,7 +814,7 @@ class EmailService {
               </div>
               <div class="content">
                 <h2>Hi {{userName}},</h2>
-                <p>Your MC Exchange account has been temporarily blocked due to a payment verification issue.</p>
+                <p>Your Domilea account has been temporarily blocked due to a payment verification issue.</p>
 
                 <div class="highlight" style="background: #fef2f2; border: 1px solid #fecaca;">
                   <p><strong>Reason:</strong> The cardholder name on a recent payment does not match your account name.</p>
@@ -842,7 +842,7 @@ class EmailService {
                 <p>If you did not make this payment or have any concerns, please contact our support team immediately.</p>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange. All rights reserved.</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
                 <p>Need help? Contact us at support@domilea.io</p>
               </div>
             </div>
@@ -854,7 +854,7 @@ class EmailService {
 
           Hi {{userName}},
 
-          Your MC Exchange account has been temporarily blocked due to a payment verification issue.
+          Your Domilea account has been temporarily blocked due to a payment verification issue.
 
           Reason: The cardholder name on a recent payment does not match your account name.
           Cardholder Name: {{cardholderName}}
@@ -890,7 +890,7 @@ class EmailService {
               </div>
               <div class="content">
                 <h2>Admin Alert</h2>
-                <p>A new user has registered on MC Exchange.</p>
+                <p>A new user has registered on Domilea.</p>
                 <div class="highlight">
                   <p><strong>Name:</strong> {{userName}}</p>
                   <p><strong>Email:</strong> {{userEmail}}</p>
@@ -900,7 +900,7 @@ class EmailService {
                 <a href="{{adminUrl}}" class="button">View in Admin Panel</a>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange - Admin Notification</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea - Admin Notification</p>
               </div>
             </div>
           </body>
@@ -909,7 +909,7 @@ class EmailService {
         text: `
           New User Registration
 
-          A new user has registered on MC Exchange.
+          A new user has registered on Domilea.
 
           Name: {{userName}}
           Email: {{userEmail}}
@@ -945,7 +945,7 @@ class EmailService {
                 <a href="{{adminUrl}}" class="button">View Message</a>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange - Admin Notification</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea - Admin Notification</p>
               </div>
             </div>
           </body>
@@ -990,7 +990,7 @@ class EmailService {
                 <a href="{{adminUrl}}" class="button">View Transaction</a>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange - Admin Notification</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea - Admin Notification</p>
               </div>
             </div>
           </body>
@@ -1039,7 +1039,7 @@ class EmailService {
                 <a href="{{adminUrl}}" class="button">Review Dispute</a>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange - Admin Notification</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea - Admin Notification</p>
               </div>
             </div>
           </body>
@@ -1088,7 +1088,7 @@ class EmailService {
                 <a href="{{adminUrl}}" class="button">View Request</a>
               </div>
               <div class="footer">
-                <p>&copy; ${new Date().getFullYear()} MC Exchange - Admin Notification</p>
+                <p>&copy; ${new Date().getFullYear()} Domilea - Admin Notification</p>
               </div>
             </div>
           </body>

@@ -63,7 +63,7 @@ export const config = {
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
     fromEmail: process.env.EMAIL_FROM || 'noreply@mcexchange.com',
-    fromName: process.env.EMAIL_FROM_NAME || 'MC Exchange',
+    fromName: process.env.EMAIL_FROM_NAME || 'Domilea',
     replyTo: process.env.EMAIL_REPLY_TO || '',
   },
 
@@ -71,7 +71,7 @@ export const config = {
   resend: {
     apiKey: process.env.RESEND_API_KEY || '',
     fromEmail: process.env.EMAIL_FROM || 'noreply@mcexchange.com',
-    fromName: process.env.EMAIL_FROM_NAME || 'MC Exchange',
+    fromName: process.env.EMAIL_FROM_NAME || 'Domilea',
     replyTo: process.env.EMAIL_REPLY_TO || 'support@mcexchange.com',
   },
 
@@ -142,7 +142,7 @@ export const config = {
 
   // Platform Settings
   platform: {
-    name: process.env.PLATFORM_NAME || 'MC Exchange',
+    name: process.env.PLATFORM_NAME || 'Domilea',
     listingFee: parseFloat(process.env.LISTING_FEE || '49.99'),
     premiumListingFee: parseFloat(process.env.PREMIUM_LISTING_FEE || '199.99'),
     transactionFeePercent: parseFloat(process.env.TRANSACTION_FEE_PERCENT || '3'),

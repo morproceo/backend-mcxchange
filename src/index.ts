@@ -152,7 +152,7 @@ app.use(errorHandler);
 // ============================================
 const startServer = async () => {
   try {
-    logger.info('Starting MC Exchange API Server...');
+    logger.info('Starting Domilea API Server...');
 
     // Connect to database
     logger.info('Connecting to database...');
@@ -188,7 +188,7 @@ const startServer = async () => {
       const banner = `
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
-║   🚚 MC Exchange API Server                                   ║
+║   🚚 Domilea API Server                                   ║
 ║                                                               ║
 ║   Environment: ${config.nodeEnv.padEnd(46)}║
 ║   Port: ${String(config.port).padEnd(54)}║
