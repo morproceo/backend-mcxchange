@@ -843,7 +843,7 @@ class EmailService {
               </div>
               <div class="footer">
                 <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
-                <p>Need help? Contact us at support@domilea.io</p>
+                <p>Need help? Contact us at support@domilea.com</p>
               </div>
             </div>
           </body>
@@ -869,7 +869,7 @@ class EmailService {
 
           After submission, your account will be reviewed and restored within 24 hours if no issues are found.
 
-          If you did not make this payment or have any concerns, please contact our support team at support@domilea.io.
+          If you did not make this payment or have any concerns, please contact our support team at support@domilea.com.
         `,
       },
 

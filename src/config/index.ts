@@ -62,7 +62,7 @@ export const config = {
     secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
-    fromEmail: process.env.EMAIL_FROM || 'noreply@mcexchange.com',
+    fromEmail: process.env.EMAIL_FROM || 'noreply@domilea.com',
     fromName: process.env.EMAIL_FROM_NAME || 'Domilea',
     replyTo: process.env.EMAIL_REPLY_TO || '',
   },
@@ -70,9 +70,9 @@ export const config = {
   // Resend Email (legacy/optional)
   resend: {
     apiKey: process.env.RESEND_API_KEY || '',
-    fromEmail: process.env.EMAIL_FROM || 'noreply@mcexchange.com',
+    fromEmail: process.env.EMAIL_FROM || 'noreply@domilea.com',
     fromName: process.env.EMAIL_FROM_NAME || 'Domilea',
-    replyTo: process.env.EMAIL_REPLY_TO || 'support@mcexchange.com',
+    replyTo: process.env.EMAIL_REPLY_TO || 'support@domilea.com',
   },
 
   // Redis

@@ -35,17 +35,18 @@ class AdminNotificationService {
       });
 
       if (!setting || !setting.value) {
-        return [];
+        return ['support@domilea.com'];
       }
 
       // Parse comma-separated emails
-      return setting.value
+      const emails = setting.value
         .split(',')
         .map((email: string) => email.trim())
         .filter((email: string) => email.length > 0 && email.includes('@'));
+      return emails.length > 0 ? emails : ['support@domilea.com'];
     } catch (error) {
       logger.error('Failed to get admin emails:', error);
-      return [];
+      return ['support@domilea.com'];
     }
   }
 
