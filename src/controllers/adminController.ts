@@ -484,6 +484,23 @@ export const adminRejectOffer = asyncHandler(async (req: AuthRequest, res: Respo
   });
 });
 
+// Delete offer (admin)
+export const adminDeleteOffer = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+
+  await adminService.deleteOffer(id, req.user.id);
+
+  res.json({
+    success: true,
+    message: 'Offer deleted successfully.',
+  });
+});
+
 // ============================================
 // Admin User & Listing Creation
 // ============================================

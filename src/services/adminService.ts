@@ -1563,6 +1563,29 @@ class AdminService {
     return offer;
   }
 
+  // Delete offer (admin)
+  async deleteOffer(offerId: string, adminId: string) {
+    const offer = await Offer.findByPk(offerId);
+
+    if (!offer) {
+      throw new Error('Offer not found');
+    }
+
+    const offerData = offer.toJSON();
+    await offer.destroy();
+
+    // Log the action
+    await AdminAction.create({
+      adminId,
+      action: 'DELETE_OFFER',
+      targetType: 'OFFER',
+      targetId: offerId,
+      details: `Deleted offer of $${offerData.amount} for listing ${offerData.listingId}`,
+    });
+
+    return offerData;
+  }
+
   // ============================================
   // Admin User & Listing Creation
   // ============================================

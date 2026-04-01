@@ -27,6 +27,7 @@ import {
   getAllOffers,
   adminApproveOffer,
   adminRejectOffer,
+  adminDeleteOffer,
   createUser,
   createUserValidation,
   createListing,
@@ -101,6 +102,7 @@ router.get('/transactions', getAllTransactions);
 router.get('/offers', getAllOffers);
 router.post('/offers/:id/approve', adminApproveOffer);
 router.post('/offers/:id/reject', adminRejectOffer);
+router.delete('/offers/:id', adminDeleteOffer);
 
 // Action log
 router.get('/action-log', getActionLog);
