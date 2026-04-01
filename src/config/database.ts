@@ -82,6 +82,20 @@ export const connectDatabase = async (): Promise<void> => {
     // Sync in all environments to create tables if they don't exist
     await sequelize.sync({ force: false });
     console.log('Database models synchronized');
+
+    // Safe column migrations — adds columns that sync({ force: false }) won't create
+    const addColumnIfMissing = async (table: string, column: string, type: string) => {
+      try {
+        await sequelize.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${type}`, { logging: false });
+        console.log(`Migration: added ${table}.${column}`);
+      } catch (e: any) {
+        if (e?.original?.code !== 'ER_DUP_FIELDNAME') {
+          console.warn(`Migration: could not add ${table}.${column}:`, e?.message);
+        }
+      }
+    };
+    await addColumnIfMissing('users', 'mcNumber', 'VARCHAR(50) NULL');
+    await addColumnIfMissing('users', 'dotNumber', 'VARCHAR(50) NULL');
   } catch (error) {
     console.error('Database connection failed:', error);
     throw error;
