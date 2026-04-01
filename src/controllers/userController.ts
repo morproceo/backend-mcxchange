@@ -15,6 +15,8 @@ export const updateProfileValidation = [
   body('state').optional().trim().isLength({ min: 2, max: 2 }).withMessage('State must be 2 characters'),
   body('zipCode').optional().trim(),
   body('ein').optional().trim(),
+  body('mcNumber').optional().trim(),
+  body('dotNumber').optional().trim(),
 ];
 
 // Get current user profile
