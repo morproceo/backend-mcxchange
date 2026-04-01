@@ -98,6 +98,17 @@ export const connectDatabase = async (): Promise<void> => {
     await addColumnIfMissing('users', 'dotNumber', 'VARCHAR(50) NULL');
     await addColumnIfMissing('listings', 'rmisSetup', 'TINYINT(1) NOT NULL DEFAULT 0');
     await addColumnIfMissing('listings', 'setupWithBrokers', 'TINYINT(1) NOT NULL DEFAULT 0');
+
+    // Expand document type enum to include seller document types
+    try {
+      await sequelize.query(
+        `ALTER TABLE \`documents\` MODIFY COLUMN \`type\` ENUM('INSURANCE','UCC_FILING','AUTHORITY','SAFETY_RECORD','BILL_OF_SALE','ARTICLES_OF_INCORPORATION','EIN_LETTER','LOSS_RUNS','LETTER_OF_RELEASE','OTHER') NOT NULL`,
+        { logging: false }
+      );
+      console.log('Migration: expanded documents.type enum');
+    } catch (e: any) {
+      // Ignore if already correct
+    }
   } catch (error) {
     console.error('Database connection failed:', error);
     throw error;
