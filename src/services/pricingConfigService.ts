@@ -45,7 +45,7 @@ export interface PricingConfig {
 const DEFAULT_PRICING: PricingConfig = {
   subscriptionPlans: {
     package_tool: {
-      name: 'Package Tool',
+      name: 'Pulse Bundle',
       credits: 0,
       priceMonthly: 14.99,
       priceYearly: 143.90,
@@ -302,7 +302,7 @@ class PricingConfigService {
     return {
       subscriptionPlans: {
         package_tool: {
-          name: 'Package Tool',
+          name: 'Pulse Bundle',
           credits: this.parseNumber(settingsMap['package_tool_credits'], DEFAULT_PRICING.subscriptionPlans.package_tool.credits),
           priceMonthly: this.parseNumber(settingsMap['package_tool_price_monthly'], DEFAULT_PRICING.subscriptionPlans.package_tool.priceMonthly),
           priceYearly: this.parseNumber(settingsMap['package_tool_price_yearly'], DEFAULT_PRICING.subscriptionPlans.package_tool.priceYearly),
