@@ -21,7 +21,9 @@ import {
 import { NotFoundError, ForbiddenError, BadRequestError } from '../middleware/errorHandler';
 import { pricingConfigService } from './pricingConfigService';
 import { emailService } from './emailService';
+import { stripeService } from './stripeService';
 import config from '../config';
+import logger from '../utils/logger';
 
 class TransactionService {
   // Get transaction by ID
@@ -290,6 +292,32 @@ class TransactionService {
   async buyerApprove(transactionId: string, buyerId: string) {
     const transaction = await this.getTransactionForUpdate(transactionId, buyerId, 'BUYER');
 
+    // If still awaiting deposit, check Stripe to see if payment actually went through
+    // (webhook may have been delayed or missed)
+    if (transaction.status === TransactionStatus.AWAITING_DEPOSIT) {
+      try {
+        const sessions = await stripeService.listCheckoutSessions(transactionId);
+        if (sessions.success && sessions.sessions && sessions.sessions.length > 0) {
+          const paidSession = sessions.sessions.find(
+            (s: any) => s.payment_status === 'paid' && s.metadata?.type === 'deposit'
+          );
+          if (paidSession) {
+            const amountPaid = paidSession.amount_total ? paidSession.amount_total / 100 : 1000;
+            await transaction.update({
+              status: TransactionStatus.DEPOSIT_RECEIVED,
+              depositAmount: amountPaid,
+              depositPaidAt: new Date(),
+            });
+            logger.info('Auto-verified deposit during buyer approval', { transactionId, amountPaid });
+          }
+        }
+      } catch (err) {
+        logger.warn('Failed to auto-verify deposit during buyer approval', { transactionId, error: err });
+      }
+      // Re-read status after potential update
+      await transaction.reload();
+    }
+
     // Allow approval when deposit is received, in review, or seller already approved
     if (transaction.status !== TransactionStatus.DEPOSIT_RECEIVED &&
         transaction.status !== TransactionStatus.IN_REVIEW &&
@@ -316,6 +344,30 @@ class TransactionService {
   // Seller approval
   async sellerApprove(transactionId: string, sellerId: string) {
     const transaction = await this.getTransactionForUpdate(transactionId, sellerId, 'SELLER');
+
+    // If still awaiting deposit, check Stripe to see if payment actually went through
+    if (transaction.status === TransactionStatus.AWAITING_DEPOSIT) {
+      try {
+        const sessions = await stripeService.listCheckoutSessions(transactionId);
+        if (sessions.success && sessions.sessions && sessions.sessions.length > 0) {
+          const paidSession = sessions.sessions.find(
+            (s: any) => s.payment_status === 'paid' && s.metadata?.type === 'deposit'
+          );
+          if (paidSession) {
+            const amountPaid = paidSession.amount_total ? paidSession.amount_total / 100 : 1000;
+            await transaction.update({
+              status: TransactionStatus.DEPOSIT_RECEIVED,
+              depositAmount: amountPaid,
+              depositPaidAt: new Date(),
+            });
+            logger.info('Auto-verified deposit during seller approval', { transactionId, amountPaid });
+          }
+        }
+      } catch (err) {
+        logger.warn('Failed to auto-verify deposit during seller approval', { transactionId, error: err });
+      }
+      await transaction.reload();
+    }
 
     // Allow approval when deposit is received, in review, or buyer already approved
     if (transaction.status !== TransactionStatus.DEPOSIT_RECEIVED &&
