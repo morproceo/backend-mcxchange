@@ -4,7 +4,14 @@ import { listingService } from '../services/listingService';
 import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest, ListingQueryParams } from '../types';
 import { parseBooleanParam, parseIntParam } from '../utils/helpers';
-import { Subscription, SubscriptionPlan, SubscriptionStatus, UserRole } from '../models';
+import { Subscription, SubscriptionPlan, SubscriptionStatus, UserRole, UnlockedListing } from '../models';
+
+// Mask an MC/DOT number: show first half, replace rest with bullets
+function maskNumber(num: string): string {
+  if (!num) return num;
+  const half = Math.ceil(num.length / 2);
+  return num.substring(0, half) + '•'.repeat(num.length - half);
+}
 
 // Validation rules
 export const createListingValidation = [
@@ -45,10 +52,41 @@ export const getListings = asyncHandler(async (req: AuthRequest, res: Response) 
   };
 
   const result = await listingService.getListings(params);
+  const userId = req.user?.id;
+  const isAdmin = req.user?.role === UserRole.ADMIN;
+  const isSeller = req.user?.role === UserRole.SELLER;
+
+  // Mask MC/DOT numbers for buyers who haven't unlocked
+  let listings = result.listings;
+  if (!isAdmin && !isSeller && userId) {
+    // Get all listing IDs this user has unlocked
+    const unlockedRecords = await UnlockedListing.findAll({
+      where: { userId },
+      attributes: ['listingId'],
+    });
+    const unlockedIds = new Set(unlockedRecords.map((u: any) => u.listingId));
+
+    listings = result.listings.map((l: any) => {
+      const listing = l.toJSON ? l.toJSON() : { ...l };
+      if (!unlockedIds.has(listing.id)) {
+        listing.mcNumber = maskNumber(listing.mcNumber);
+        if (listing.dotNumber) listing.dotNumber = maskNumber(listing.dotNumber);
+      }
+      return listing;
+    });
+  } else if (!isAdmin && !isSeller && !userId) {
+    // Unauthenticated — mask everything
+    listings = result.listings.map((l: any) => {
+      const listing = l.toJSON ? l.toJSON() : { ...l };
+      listing.mcNumber = maskNumber(listing.mcNumber);
+      if (listing.dotNumber) listing.dotNumber = maskNumber(listing.dotNumber);
+      return listing;
+    });
+  }
 
   res.json({
     success: true,
-    data: result.listings,
+    data: listings,
     pagination: result.pagination,
   });
 });
@@ -72,9 +110,16 @@ export const getListing = asyncHandler(async (req: AuthRequest, res: Response) =
     }
   }
 
+  // Mask MC/DOT for buyers who haven't unlocked
+  const responseData = { ...listing };
+  if (!listing.isUnlocked && !isOwner && !isAdmin) {
+    responseData.mcNumber = maskNumber(responseData.mcNumber);
+    if (responseData.dotNumber) responseData.dotNumber = maskNumber(responseData.dotNumber);
+  }
+
   res.json({
     success: true,
-    data: listing,
+    data: responseData,
   });
 });
 
