@@ -12,7 +12,7 @@ export const updateProfileValidation = [
   body('companyName').optional().trim(),
   body('companyAddress').optional().trim(),
   body('city').optional().trim(),
-  body('state').optional().trim().isLength({ min: 2, max: 2 }).withMessage('State must be 2 characters'),
+  body('state').optional({ values: 'falsy' }).trim().isLength({ min: 2, max: 2 }).withMessage('State must be 2 characters'),
   body('zipCode').optional().trim(),
   body('ein').optional().trim(),
 ];
