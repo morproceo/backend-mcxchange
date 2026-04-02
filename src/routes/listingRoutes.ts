@@ -33,9 +33,9 @@ router.get('/unlocked', authenticate, buyerOnly, getUnlockedListings);
 router.get('/:id', authenticate, getListing);
 
 // Seller routes
-router.post('/', authenticate, sellerOnly, requireIdentityVerification, validate(createListingValidation), createListing);
+router.post('/', authenticate, sellerOnly, validate(createListingValidation), createListing);
 router.put('/:id', authenticate, sellerOnly, updateListing);
-router.post('/:id/submit', authenticate, sellerOnly, requireIdentityVerification, submitForReview);
+router.post('/:id/submit', authenticate, sellerOnly, submitForReview);
 router.delete('/:id', authenticate, sellerOnly, deleteListing);
 
 // Save/unsave listing (any authenticated user)
