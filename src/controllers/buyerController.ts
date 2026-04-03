@@ -852,19 +852,8 @@ export const creditsafePurchasedReport = asyncHandler(async (req: AuthRequest, r
   const { connectId } = req.params;
   const isAdmin = req.user.role === UserRole.ADMIN;
 
-  // Check if user has access (premium subscription or one-time purchase)
-  const subscription = await Subscription.findOne({ where: { userId: req.user.id } });
-  const plan = subscription?.plan?.toUpperCase();
-  const isActive = subscription?.status === SubscriptionStatus.ACTIVE;
-  const includedInPlan = isActive && (
-    plan === SubscriptionPlan.PROFESSIONAL ||
-    plan === SubscriptionPlan.PREMIUM ||
-    plan === SubscriptionPlan.ENTERPRISE ||
-    plan === SubscriptionPlan.VIP_ACCESS
-  );
-
-  if (!isAdmin && !includedInPlan) {
-    // Check one-time purchase
+  if (!isAdmin) {
+    // Must have a one-time purchase — no subscription bypass
     const reference = `credit_report_purchase:${connectId}`;
     const existing = await CreditTransaction.findOne({
       where: { userId: req.user.id, reference, type: CreditTransactionType.USAGE },
@@ -952,23 +941,7 @@ export const checkCreditReportPurchase = asyncHandler(async (req: AuthRequest, r
     return;
   }
 
-  // Check subscription — Enterprise/VIP/Premium/Professional get it included
-  const subscription = await Subscription.findOne({ where: { userId: req.user.id } });
-  const plan = subscription?.plan?.toUpperCase();
-  const isActive = subscription?.status === SubscriptionStatus.ACTIVE;
-  const includedInPlan = isActive && (
-    plan === SubscriptionPlan.PROFESSIONAL ||
-    plan === SubscriptionPlan.PREMIUM ||
-    plan === SubscriptionPlan.ENTERPRISE ||
-    plan === SubscriptionPlan.VIP_ACCESS
-  );
-
-  if (includedInPlan) {
-    res.json({ success: true, data: { purchased: true, free: true } });
-    return;
-  }
-
-  // Check one-time purchase
+  // Check one-time purchase only — no subscription bypass
   const reference = `credit_report_purchase:${connectId}`;
   const existing = await CreditTransaction.findOne({
     where: { userId: req.user.id, reference, type: CreditTransactionType.USAGE },
