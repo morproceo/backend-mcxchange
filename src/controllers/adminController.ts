@@ -465,6 +465,30 @@ export const adminApproveOffer = asyncHandler(async (req: AuthRequest, res: Resp
   });
 });
 
+// Forward offer to seller (admin)
+export const adminForwardOffer = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+  const { sellerAmount, notes } = req.body;
+
+  if (!sellerAmount || sellerAmount <= 0) {
+    res.status(400).json({ success: false, error: 'sellerAmount is required and must be positive' });
+    return;
+  }
+
+  const offer = await adminService.forwardOfferToSeller(id, req.user.id, Number(sellerAmount), notes);
+
+  res.json({
+    success: true,
+    data: offer,
+    message: 'Offer forwarded to seller.',
+  });
+});
+
 // Reject offer (admin)
 export const adminRejectOffer = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.user) {

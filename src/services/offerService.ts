@@ -42,7 +42,7 @@ class OfferService {
       where: {
         listingId: data.listingId,
         buyerId,
-        status: { [Op.in]: [OfferStatus.PENDING, OfferStatus.COUNTERED] },
+        status: { [Op.in]: [OfferStatus.PENDING_ADMIN, OfferStatus.PENDING, OfferStatus.FORWARDED, OfferStatus.COUNTERED] },
       },
     });
 
@@ -50,7 +50,7 @@ class OfferService {
       throw new ConflictError('You already have a pending offer on this listing');
     }
 
-    // Create offer
+    // Create offer — all offers go to admin first
     const offer = await Offer.create({
       listingId: data.listingId,
       buyerId,
@@ -58,7 +58,7 @@ class OfferService {
       amount: data.amount,
       message: data.message,
       expiresAt: data.expiresAt || addDays(new Date(), 7),
-      status: OfferStatus.PENDING,
+      status: OfferStatus.PENDING_ADMIN,
       isBuyNow: data.isBuyNow || false,
     });
 
@@ -82,15 +82,18 @@ class OfferService {
       ],
     });
 
-    // Create notification for seller
-    await Notification.create({
-      userId: listing.sellerId,
-      type: 'OFFER',
-      title: 'New Offer Received',
-      message: `You received a $${data.amount.toLocaleString()} offer on MC-${listing.mcNumber}`,
-      link: `/seller/offers`,
-      metadata: JSON.stringify({ offerId: offer.id, listingId: listing.id }),
-    });
+    // Notify all admins — offers go to admin first, not seller
+    const admins = await User.findAll({ where: { role: 'ADMIN' } });
+    for (const admin of admins) {
+      await Notification.create({
+        userId: admin.id,
+        type: 'OFFER',
+        title: 'New Offer Awaiting Review',
+        message: `Buyer offered $${data.amount.toLocaleString()} on MC-${listing.mcNumber} (seller asking $${listing.askingPrice?.toLocaleString() || 'N/A'})`,
+        link: `/admin/offers`,
+        metadata: JSON.stringify({ offerId: offer.id, listingId: listing.id }),
+      });
+    }
 
     return offerWithDetails;
   }
@@ -168,11 +171,14 @@ class OfferService {
     return offers;
   }
 
-  // Get seller's offers
+  // Get seller's offers — only shows offers that admin has forwarded (or already acted on)
   async getSellerOffers(sellerId: string, status?: OfferStatus) {
     const where: Record<string, unknown> = { sellerId };
     if (status) {
       where.status = status;
+    } else {
+      // Never show PENDING_ADMIN offers to sellers — those are admin-only
+      where.status = { [Op.ne]: OfferStatus.PENDING_ADMIN };
     }
 
     const offers = await Offer.findAll({
@@ -217,14 +223,15 @@ class OfferService {
       throw new ForbiddenError('You can only accept offers on your own listings');
     }
 
-    if (offer.status !== OfferStatus.PENDING && offer.status !== OfferStatus.COUNTERED) {
+    if (offer.status !== OfferStatus.FORWARDED && offer.status !== OfferStatus.PENDING && offer.status !== OfferStatus.COUNTERED) {
       throw new ForbiddenError('This offer cannot be accepted');
     }
 
-    // Calculate amounts
-    const agreedPrice = Number(offer.counterAmount || offer.amount);
-    const depositAmount = calculateDeposit(agreedPrice);
-    const platformFee = calculatePlatformFee(agreedPrice);
+    // Calculate amounts — buyer pays their offer amount, seller gets sellerAmount
+    const buyerPrice = Number(offer.counterAmount || offer.amount);
+    const sellerPrice = Number(offer.sellerAmount || buyerPrice);
+    const depositAmount = calculateDeposit(buyerPrice);
+    const platformFee = calculatePlatformFee(buyerPrice);
 
     const t = await sequelize.transaction();
 
@@ -235,14 +242,15 @@ class OfferService {
         { transaction: t }
       );
 
-      // Create transaction
+      // Create transaction — agreedPrice is what buyer pays, sellerPayout is what seller gets
       const transaction = await Transaction.create(
         {
           offerId,
           listingId: offer.listingId,
           buyerId: offer.buyerId,
           sellerId: offer.sellerId,
-          agreedPrice,
+          agreedPrice: buyerPrice,
+          sellerPayout: sellerPrice,
           depositAmount,
           platformFee,
           status: TransactionStatus.AWAITING_DEPOSIT,
@@ -263,7 +271,7 @@ class OfferService {
           where: {
             listingId: offer.listingId,
             id: { [Op.ne]: offerId },
-            status: { [Op.in]: [OfferStatus.PENDING, OfferStatus.COUNTERED] },
+            status: { [Op.in]: [OfferStatus.PENDING_ADMIN, OfferStatus.FORWARDED, OfferStatus.PENDING, OfferStatus.COUNTERED] },
           },
           transaction: t,
         }
@@ -297,7 +305,7 @@ class OfferService {
         mcNumber: offer.listing?.mcNumber || 'Unknown',
         buyerName: offer.buyer?.name || 'Unknown',
         sellerName: offer.listing?.seller?.name || 'Unknown',
-        amount: agreedPrice,
+        amount: buyerPrice,
         status: 'created',
       }).catch(err => {
         logger.error('Failed to send admin notification for transaction', err);
@@ -324,7 +332,7 @@ class OfferService {
       throw new ForbiddenError('You can only reject offers on your own listings');
     }
 
-    if (offer.status !== OfferStatus.PENDING && offer.status !== OfferStatus.COUNTERED) {
+    if (offer.status !== OfferStatus.FORWARDED && offer.status !== OfferStatus.PENDING && offer.status !== OfferStatus.COUNTERED) {
       throw new ForbiddenError('This offer cannot be rejected');
     }
 
@@ -359,7 +367,7 @@ class OfferService {
       throw new ForbiddenError('You can only counter offers on your own listings');
     }
 
-    if (offer.status !== OfferStatus.PENDING) {
+    if (offer.status !== OfferStatus.FORWARDED && offer.status !== OfferStatus.PENDING) {
       throw new ForbiddenError('This offer cannot be countered');
     }
 

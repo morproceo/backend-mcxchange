@@ -26,7 +26,7 @@ import {
   CreditTransactionType,
   Subscription,
 } from '../models';
-import { NotFoundError, BadRequestError } from '../middleware/errorHandler';
+import { NotFoundError, BadRequestError, ForbiddenError } from '../middleware/errorHandler';
 import { getPaginationInfo, calculateDeposit, calculatePlatformFee } from '../utils/helpers';
 import { emailService } from './emailService';
 import { adminNotificationService } from './adminNotificationService';
@@ -1330,6 +1330,7 @@ class AdminService {
         );
 
         // Create the transaction - this starts the round table!
+        const sellerPayout = Number(offer.sellerAmount || listing?.askingPrice || agreedPrice);
         const transaction = await Transaction.create(
           {
             offerId,
@@ -1337,6 +1338,7 @@ class AdminService {
             buyerId: offer.buyerId,
             sellerId: offer.sellerId,
             agreedPrice,
+            sellerPayout,
             depositAmount,
             platformFee,
             status: TransactionStatus.AWAITING_DEPOSIT,
@@ -1357,7 +1359,7 @@ class AdminService {
             where: {
               listingId: offer.listingId,
               id: { [Op.ne]: offerId },
-              status: { [Op.in]: [OfferStatus.PENDING, OfferStatus.COUNTERED] },
+              status: { [Op.in]: [OfferStatus.PENDING_ADMIN, OfferStatus.FORWARDED, OfferStatus.PENDING, OfferStatus.COUNTERED] },
             },
             transaction: t,
           }
@@ -1434,6 +1436,7 @@ class AdminService {
         );
 
         // Create the transaction
+        const sellerPayout = Number(offer.sellerAmount || listing?.askingPrice || agreedPrice);
         const transaction = await Transaction.create(
           {
             offerId,
@@ -1441,6 +1444,7 @@ class AdminService {
             buyerId: offer.buyerId,
             sellerId: offer.sellerId,
             agreedPrice,
+            sellerPayout,
             depositAmount,
             platformFee,
             status: TransactionStatus.AWAITING_DEPOSIT,
@@ -1461,7 +1465,7 @@ class AdminService {
             where: {
               listingId: offer.listingId,
               id: { [Op.ne]: offerId },
-              status: { [Op.in]: [OfferStatus.PENDING, OfferStatus.COUNTERED] },
+              status: { [Op.in]: [OfferStatus.PENDING_ADMIN, OfferStatus.FORWARDED, OfferStatus.PENDING, OfferStatus.COUNTERED] },
             },
             transaction: t,
           }
@@ -1516,6 +1520,68 @@ class AdminService {
         throw error;
       }
     }
+  }
+
+  // Forward offer to seller (admin) — sets sellerAmount and notifies seller
+  async forwardOfferToSeller(offerId: string, adminId: string, sellerAmount: number, notes?: string) {
+    const offer = await Offer.findByPk(offerId, {
+      include: [
+        {
+          model: Listing,
+          as: 'listing',
+        },
+        {
+          model: User,
+          as: 'buyer',
+          attributes: ['id', 'name', 'email'],
+        },
+      ],
+    });
+
+    if (!offer) {
+      throw new NotFoundError('Offer');
+    }
+
+    if (offer.status !== OfferStatus.PENDING_ADMIN) {
+      throw new ForbiddenError('Only offers pending admin review can be forwarded');
+    }
+
+    const listing = (offer as any).listing;
+
+    // Update offer — set sellerAmount and change status to FORWARDED
+    await offer.update({
+      sellerAmount,
+      status: OfferStatus.FORWARDED,
+      adminReviewedBy: adminId,
+      adminReviewedAt: new Date(),
+      adminNotes: notes,
+    });
+
+    // Record admin action
+    await AdminAction.create({
+      adminId,
+      action: 'FORWARD_OFFER',
+      targetType: 'OFFER',
+      targetId: offerId,
+      reason: notes,
+      metadata: JSON.stringify({
+        buyerAmount: Number(offer.amount),
+        sellerAmount,
+        margin: Number(offer.amount) - sellerAmount,
+      }),
+    });
+
+    // Notify seller — show sellerAmount, NOT buyer's amount
+    await Notification.create({
+      userId: offer.sellerId,
+      type: NotificationType.OFFER,
+      title: 'New Offer Received',
+      message: `You received a $${sellerAmount.toLocaleString()} offer on MC-${listing?.mcNumber || 'N/A'}`,
+      link: `/seller/offers`,
+      metadata: JSON.stringify({ offerId: offer.id, listingId: listing?.id }),
+    });
+
+    return offer;
   }
 
   // Reject offer (admin)

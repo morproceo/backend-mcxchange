@@ -741,6 +741,7 @@ class TransactionService {
           sellerId: listing.sellerId,
           adminId,
           agreedPrice,
+          sellerPayout: Number(listing.askingPrice || agreedPrice),
           depositAmount: calculatedDeposit,
           platformFee,
           finalPaymentAmount: agreedPrice - calculatedDeposit,

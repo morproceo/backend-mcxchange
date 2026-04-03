@@ -26,6 +26,7 @@ import {
   blockUserValidation,
   getAllOffers,
   adminApproveOffer,
+  adminForwardOffer,
   adminRejectOffer,
   adminDeleteOffer,
   createUser,
@@ -101,6 +102,7 @@ router.get('/transactions', getAllTransactions);
 // Offers
 router.get('/offers', getAllOffers);
 router.post('/offers/:id/approve', adminApproveOffer);
+router.post('/offers/:id/forward', adminForwardOffer);
 router.post('/offers/:id/reject', adminRejectOffer);
 router.delete('/offers/:id', adminDeleteOffer);
 
