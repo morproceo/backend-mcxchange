@@ -4,7 +4,8 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config';
 import { Request, Response, NextFunction } from 'express';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import logger from '../utils/logger';
 
 // S3 client (initialized only if enabled)
@@ -159,5 +160,37 @@ const avatarMulter = multer({
 
 // Avatar upload middleware
 export const avatarUpload = avatarMulter.single('avatar');
+
+/**
+ * Generate a pre-signed URL for an S3 object.
+ * Extracts the S3 key from a full S3 URL or uses the string as-is if it's already a key.
+ * Returns null if S3 is not configured or the URL is not an S3 URL.
+ */
+export async function getPresignedUrl(url: string, expiresIn: number = 3600): Promise<string | null> {
+  if (!s3Client) return null;
+
+  const bucket = config.upload.s3.bucket;
+  const region = config.upload.s3.region;
+
+  // Extract key from full S3 URL
+  let key: string;
+  const s3UrlPrefix = `https://${bucket}.s3.${region}.amazonaws.com/`;
+  if (url.startsWith(s3UrlPrefix)) {
+    key = decodeURIComponent(url.slice(s3UrlPrefix.length));
+  } else if (url.startsWith('https://') || url.startsWith('http://')) {
+    // Not an S3 URL we recognize
+    return null;
+  } else {
+    // Assume it's already a key
+    key = url;
+  }
+
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+  });
+
+  return getSignedUrl(s3Client, command, { expiresIn });
+}
 
 export default upload;

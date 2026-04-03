@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   uploadDocument,
   getDocument,
+  getDocumentUrl,
   getListingDocuments,
   getTransactionDocuments,
   deleteDocument,
@@ -23,6 +24,9 @@ router.post('/', uploadSingle, validate(uploadDocumentValidation), uploadDocumen
 
 // Get document
 router.get('/:id', getDocument);
+
+// Get document download/preview URL (pre-signed for S3)
+router.get('/:id/url', getDocumentUrl);
 
 // Delete document
 router.delete('/:id', deleteDocument);

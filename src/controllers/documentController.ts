@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { DocumentType } from '../models';
 import { parseIntParam, parseBooleanParam } from '../utils/helpers';
+import { getPresignedUrl } from '../middleware/upload';
 
 // Validation rules
 export const uploadDocumentValidation = [
@@ -61,6 +62,34 @@ export const getDocument = asyncHandler(async (req: AuthRequest, res: Response) 
     success: true,
     data: document,
   });
+});
+
+// Get a download/preview URL for a document (generates pre-signed URL for S3)
+export const getDocumentUrl = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+
+  // This call checks access rights
+  const document = await documentService.getDocumentById(id, req.user.id);
+
+  const presignedUrl = await getPresignedUrl(document.url);
+
+  if (presignedUrl) {
+    res.json({
+      success: true,
+      data: { url: presignedUrl },
+    });
+  } else {
+    // Not an S3 URL — return the original URL (local storage)
+    res.json({
+      success: true,
+      data: { url: document.url },
+    });
+  }
 });
 
 // Get listing documents
