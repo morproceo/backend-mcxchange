@@ -128,6 +128,7 @@ export const config = {
     bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '12', 10),
     passwordMinLength: parseInt(process.env.PASSWORD_MIN_LENGTH || '8', 10),
     sessionTimeout: parseInt(process.env.SESSION_TIMEOUT || '3600', 10), // 1 hour
+    credentialEncryptionKey: process.env.CREDENTIAL_ENCRYPTION_KEY || '',
   },
 
   // Cors

@@ -66,6 +66,8 @@ export enum DocumentStatus {
 }
 
 export enum OfferStatus {
+  PENDING_ADMIN = 'PENDING_ADMIN',
+  FORWARDED = 'FORWARDED',
   PENDING = 'PENDING',
   ACCEPTED = 'ACCEPTED',
   APPROVED = 'APPROVED',
@@ -978,6 +980,7 @@ export class Offer extends Model {
   declare counterAt?: Date;
   declare expiresAt?: Date;
   declare respondedAt?: Date;
+  declare sellerAmount?: number;
   declare adminReviewedBy?: string;
   declare adminReviewedAt?: Date;
   declare adminNotes?: string;
@@ -1049,6 +1052,10 @@ Offer.init(
       type: DataTypes.UUID,
       allowNull: false,
     },
+    sellerAmount: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
+    },
     adminReviewedBy: {
       type: DataTypes.UUID,
       allowNull: true,
@@ -1085,6 +1092,7 @@ export class Transaction extends Model {
   declare id: string;
   declare status: TransactionStatus;
   declare agreedPrice: number;
+  declare sellerPayout?: number;
   declare depositAmount: number;
   declare platformFee?: number;
   declare finalPaymentAmount?: number;
@@ -1149,6 +1157,10 @@ Transaction.init(
     agreedPrice: {
       type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
+    },
+    sellerPayout: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
     },
     depositAmount: {
       type: DataTypes.DECIMAL(12, 2),
@@ -1497,6 +1509,99 @@ Payment.init(
       { fields: ['transactionId'] },
       { fields: ['status'] },
       { fields: ['type'] },
+    ],
+  }
+);
+
+// ==================== TRANSACTION CREDENTIAL MODEL ====================
+
+export class TransactionCredential extends Model {
+  declare id: string;
+  declare transactionId: string;
+  declare label: string;
+  declare encryptedUsername: string | null;
+  declare encryptedPassword: string;
+  declare iv: string;
+  declare authTag: string;
+  declare ivUsername: string | null;
+  declare authTagUsername: string | null;
+  declare releasedToBuyer: boolean;
+  declare releasedAt: Date | null;
+  declare releasedBy: string | null;
+  declare createdBy: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+
+  // Associations
+  declare readonly transaction?: Transaction;
+  declare readonly creator?: User;
+}
+
+TransactionCredential.init(
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    transactionId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: { model: 'transactions', key: 'id' },
+    },
+    label: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    encryptedUsername: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    encryptedPassword: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    iv: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+    },
+    authTag: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+    },
+    ivUsername: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+    },
+    authTagUsername: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+    },
+    releasedToBuyer: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    releasedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    releasedBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
+    createdBy: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: { model: 'users', key: 'id' },
+    },
+  },
+  {
+    sequelize,
+    tableName: 'transaction_credentials',
+    timestamps: true,
+    indexes: [
+      { fields: ['transactionId'] },
     ],
   }
 );
@@ -2469,6 +2574,11 @@ Transaction.hasMany(Document, { foreignKey: 'transactionId', as: 'documents' });
 Transaction.hasMany(TransactionMessage, { foreignKey: 'transactionId', as: 'messages' });
 Transaction.hasMany(TransactionTimeline, { foreignKey: 'transactionId', as: 'timeline' });
 Transaction.hasMany(Payment, { foreignKey: 'transactionId', as: 'payments' });
+Transaction.hasMany(TransactionCredential, { foreignKey: 'transactionId', as: 'credentials' });
+
+// TransactionCredential associations
+TransactionCredential.belongsTo(Transaction, { foreignKey: 'transactionId', as: 'transaction' });
+TransactionCredential.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 
 // TransactionMessage associations
 TransactionMessage.belongsTo(Transaction, { foreignKey: 'transactionId', as: 'transaction' });
