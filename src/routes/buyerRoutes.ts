@@ -23,6 +23,10 @@ import {
   getCarrierPulseCreditsafeSearch,
   getCarrierPulseCreditsafeReport,
   checkOrUnlockCreditReport,
+  createCreditReportCheckout,
+  checkCreditReportPurchase,
+  creditsafeOpenSearch,
+  creditsafePurchasedReport,
 } from '../controllers/buyerController';
 import { authenticate, buyerOnly, requireSubscription, requireProfessionalSubscription, requireEnterpriseSubscription } from '../middleware/auth';
 
@@ -67,6 +71,12 @@ router.post('/carrier-pulse/checkout', createCarrierPulseCheckout);
 router.get('/carrier-pulse/creditsafe/search', getCarrierPulseCreditsafeSearch);
 router.get('/carrier-pulse/creditsafe/report/:connectId', getCarrierPulseCreditsafeReport);
 router.get('/carrier-pulse/credit-report/:dotNumber', requireSubscription, checkOrUnlockCreditReport);
+
+// Credit report — open to all buyers (search free, report $55 or included in premium)
+router.get('/creditsafe/open-search', creditsafeOpenSearch);
+router.get('/creditsafe/purchased-report/:connectId', creditsafePurchasedReport);
+router.post('/creditsafe/checkout', createCreditReportCheckout);
+router.get('/creditsafe/purchase/:connectId', checkCreditReportPurchase);
 
 // Terms of Service - no subscription required
 router.get('/terms-status', getTermsStatus);

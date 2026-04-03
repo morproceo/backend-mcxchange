@@ -17,6 +17,8 @@ import {
   ListingStatus,
   NotificationType,
   ProcessedWebhookEvent,
+  CreditTransaction,
+  CreditTransactionType,
 } from '../models';
 import logger, { logError } from '../utils/logger';
 import { config } from '../config';
@@ -687,6 +689,56 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
       amount: session.amount_total ? session.amount_total / 100 : 0,
       paymentType: 'credit pack',
     });
+  }
+
+  // Handle one-time credit report purchases ($55)
+  if (type === 'credit_report_purchase') {
+    const userId = metadata?.userId;
+    const connectId = metadata?.connectId;
+    const companyName = metadata?.companyName;
+
+    if (!userId || !connectId) {
+      logger.warn('Credit report purchase checkout missing required metadata', {
+        sessionId: session.id,
+        metadata,
+      });
+      return;
+    }
+
+    // Record purchase as a credit transaction for tracking
+    const reference = `credit_report_purchase:${connectId}`;
+    const existing = await CreditTransaction.findOne({
+      where: { userId, reference, type: CreditTransactionType.USAGE },
+    });
+
+    if (!existing) {
+      await CreditTransaction.create({
+        userId,
+        amount: 0, // No credits deducted — paid via Stripe
+        type: CreditTransactionType.USAGE,
+        description: `Credit report purchased for ${companyName || connectId}`,
+        reference,
+      });
+    }
+
+    logger.info('Credit report purchase completed', {
+      userId,
+      connectId,
+      companyName,
+      sessionId: session.id,
+    });
+
+    // Notify user
+    const user = await User.findByPk(userId);
+    if (user) {
+      await notificationService.create({
+        userId,
+        type: NotificationType.SYSTEM,
+        title: 'Credit Report Purchased',
+        message: `Your credit report for ${companyName || 'the requested company'} is now available.`,
+        link: `/buyer/creditsafe?connectId=${connectId}`,
+      });
+    }
   }
 }
 

@@ -627,6 +627,72 @@ class StripeService {
   }
 
   /**
+   * Create a Stripe Checkout Session for one-time credit report purchase ($55)
+   */
+  async createCreditReportCheckout(params: {
+    customerId: string;
+    userId: string;
+    connectId: string;
+    companyName: string;
+    successUrl: string;
+    cancelUrl: string;
+  }): Promise<CheckoutSessionResult> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        customer: params.customerId,
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              unit_amount: 5500, // $55.00
+              product_data: {
+                name: 'CreditSafe Business Credit Report',
+                description: `Full credit report for ${params.companyName}`,
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: params.successUrl,
+        cancel_url: params.cancelUrl,
+        metadata: {
+          type: 'credit_report_purchase',
+          userId: params.userId,
+          connectId: params.connectId,
+          companyName: params.companyName,
+        },
+      });
+
+      logger.info('Credit report checkout session created', {
+        sessionId: session.id,
+        customerId: params.customerId,
+        connectId: params.connectId,
+      });
+
+      return {
+        success: true,
+        sessionId: session.id,
+        url: session.url || undefined,
+      };
+    } catch (error) {
+      logError('Failed to create credit report checkout session', error as Error, {
+        customerId: params.customerId,
+        connectId: params.connectId,
+      });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
    * Create a Stripe Checkout Session for subscription
    */
   async createCheckoutSession(params: CheckoutSessionParams): Promise<CheckoutSessionResult> {

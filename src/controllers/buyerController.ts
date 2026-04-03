@@ -812,3 +812,167 @@ export const checkOrUnlockCreditReport = asyncHandler(async (req: AuthRequest, r
 
   res.json({ success: true, data: { unlocked: true, free: false, newBalance: result.newBalance } });
 });
+
+// Creditsafe company search — open to all authenticated buyers (search is free, report costs $55)
+export const creditsafeOpenSearch = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { name, state } = req.query;
+  if (!name) {
+    res.status(400).json({ success: false, error: 'Company name is required' });
+    return;
+  }
+
+  const searchResults = await creditsafeService.searchCompanies({
+    countries: 'US',
+    name: name as string,
+    state: state as string | undefined,
+    pageSize: 10,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      companies: searchResults.companies || [],
+      totalResults: searchResults.totalSize || 0,
+    },
+  });
+});
+
+// Creditsafe report — for purchased reports (check purchase status first)
+export const creditsafePurchasedReport = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { connectId } = req.params;
+  const isAdmin = req.user.role === UserRole.ADMIN;
+
+  // Check if user has access (premium subscription or one-time purchase)
+  const subscription = await Subscription.findOne({ where: { userId: req.user.id } });
+  const plan = subscription?.plan?.toUpperCase();
+  const isActive = subscription?.status === SubscriptionStatus.ACTIVE;
+  const includedInPlan = isActive && (
+    plan === SubscriptionPlan.PROFESSIONAL ||
+    plan === SubscriptionPlan.PREMIUM ||
+    plan === SubscriptionPlan.ENTERPRISE ||
+    plan === SubscriptionPlan.VIP_ACCESS
+  );
+
+  if (!isAdmin && !includedInPlan) {
+    // Check one-time purchase
+    const reference = `credit_report_purchase:${connectId}`;
+    const existing = await CreditTransaction.findOne({
+      where: { userId: req.user.id, reference, type: CreditTransactionType.USAGE },
+    });
+    if (!existing) {
+      res.status(403).json({ success: false, error: 'Credit report not purchased. Please purchase access first.' });
+      return;
+    }
+  }
+
+  const report = await creditsafeService.getCreditReport(connectId, { includeIndicators: true });
+  res.json({ success: true, data: report });
+});
+
+// Create Stripe checkout session for one-time $55 credit report purchase
+export const createCreditReportCheckout = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { connectId, companyName } = req.body;
+  if (!connectId || !companyName) {
+    res.status(400).json({ success: false, error: 'connectId and companyName are required' });
+    return;
+  }
+
+  // Check if already purchased
+  const reference = `credit_report_purchase:${connectId}`;
+  const existing = await CreditTransaction.findOne({
+    where: { userId: req.user.id, reference, type: CreditTransactionType.USAGE },
+  });
+  if (existing) {
+    res.json({ success: false, error: 'You have already purchased this credit report' });
+    return;
+  }
+
+  // Get or create Stripe customer
+  const user = await User.findByPk(req.user.id);
+  const customer = await stripeService.getOrCreateCustomer(
+    req.user.id,
+    req.user.email,
+    req.user.name || req.user.email,
+    user?.stripeCustomerId || undefined
+  );
+
+  if (customer.id !== user?.stripeCustomerId) {
+    await User.update({ stripeCustomerId: customer.id }, { where: { id: req.user.id } });
+  }
+
+  const frontendUrl = config.frontendUrl || 'http://localhost:5173';
+
+  const result = await stripeService.createCreditReportCheckout({
+    customerId: customer.id,
+    userId: req.user.id,
+    connectId,
+    companyName,
+    successUrl: `${frontendUrl}/buyer/creditsafe?purchase=success&connectId=${connectId}`,
+    cancelUrl: `${frontendUrl}/buyer/creditsafe?purchase=canceled`,
+  });
+
+  if (!result.success) {
+    throw new BadRequestError(result.error || 'Failed to create checkout session');
+  }
+
+  res.json({
+    success: true,
+    data: { sessionId: result.sessionId, url: result.url },
+  });
+});
+
+// Check if a credit report has been purchased for a given connectId
+export const checkCreditReportPurchase = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { connectId } = req.params;
+  const isAdmin = req.user.role === UserRole.ADMIN;
+
+  // Admin always has access
+  if (isAdmin) {
+    res.json({ success: true, data: { purchased: true, free: true } });
+    return;
+  }
+
+  // Check subscription — Enterprise/VIP/Premium/Professional get it included
+  const subscription = await Subscription.findOne({ where: { userId: req.user.id } });
+  const plan = subscription?.plan?.toUpperCase();
+  const isActive = subscription?.status === SubscriptionStatus.ACTIVE;
+  const includedInPlan = isActive && (
+    plan === SubscriptionPlan.PROFESSIONAL ||
+    plan === SubscriptionPlan.PREMIUM ||
+    plan === SubscriptionPlan.ENTERPRISE ||
+    plan === SubscriptionPlan.VIP_ACCESS
+  );
+
+  if (includedInPlan) {
+    res.json({ success: true, data: { purchased: true, free: true } });
+    return;
+  }
+
+  // Check one-time purchase
+  const reference = `credit_report_purchase:${connectId}`;
+  const existing = await CreditTransaction.findOne({
+    where: { userId: req.user.id, reference, type: CreditTransactionType.USAGE },
+  });
+
+  res.json({ success: true, data: { purchased: !!existing, free: false, price: 55 } });
+});
