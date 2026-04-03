@@ -110,9 +110,11 @@ export const getListing = asyncHandler(async (req: AuthRequest, res: Response) =
     }
   }
 
-  // Mask MC/DOT for buyers who haven't unlocked
+  // Mask MC/DOT for display, but always include real DOT for carrier data fetching
   const responseData = { ...listing };
   if (!listing.isUnlocked && !isOwner && !isAdmin) {
+    // Keep real DOT in a separate field so frontend can fetch carrier intelligence
+    responseData._realDotNumber = responseData.dotNumber;
     responseData.mcNumber = maskNumber(responseData.mcNumber);
     if (responseData.dotNumber) responseData.dotNumber = maskNumber(responseData.dotNumber);
   }
