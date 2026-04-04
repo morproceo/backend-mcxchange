@@ -98,6 +98,7 @@ export const connectDatabase = async (): Promise<void> => {
     await addColumnIfMissing('users', 'dotNumber', 'VARCHAR(50) NULL');
     await addColumnIfMissing('listings', 'rmisSetup', 'TINYINT(1) NOT NULL DEFAULT 0');
     await addColumnIfMissing('listings', 'setupWithBrokers', 'TINYINT(1) NOT NULL DEFAULT 0');
+    await addColumnIfMissing('listings', 'freeToUnlock', 'TINYINT(1) NOT NULL DEFAULT 0');
 
     // Expand document type enum to include seller document types
     try {
