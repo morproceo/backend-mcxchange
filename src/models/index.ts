@@ -596,6 +596,7 @@ export class Listing extends Model {
   declare listingPrice?: number;
   declare isPremium: boolean;
   declare isVip: boolean;
+  declare freeToUnlock: boolean;
   declare status: ListingStatus;
   declare visibility: ListingVisibility;
   declare city: string;
@@ -693,6 +694,11 @@ Listing.init(
     isVip: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
+    },
+    freeToUnlock: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      comment: 'If true, buyers with any active subscription can unlock without spending a credit',
     },
     status: {
       type: DataTypes.ENUM(...Object.values(ListingStatus)),
@@ -871,6 +877,7 @@ Listing.init(
       { fields: ['listingPrice'] },
       { fields: ['isPremium'] },
       { fields: ['isVip'] },
+      { fields: ['freeToUnlock'] },
       // Composite indexes for common search patterns (reduces query cost)
       { fields: ['status', 'visibility'], name: 'idx_listings_status_visibility' },
       { fields: ['status', 'state', 'isPremium', 'isVip'], name: 'idx_listings_search_filters' },

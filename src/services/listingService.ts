@@ -7,11 +7,13 @@ import {
   SavedListing,
   UnlockedListing,
   CreditTransaction,
+  Subscription,
   ListingStatus,
   ListingVisibility,
   SafetyRating,
   AmazonRelayStatus,
   CreditTransactionType,
+  SubscriptionStatus,
 } from '../models';
 import { ListingQueryParams, CreateListingData, PaginationInfo } from '../types';
 import { NotFoundError, ForbiddenError } from '../middleware/errorHandler';
@@ -549,35 +551,70 @@ class ListingService {
       return { success: true, alreadyUnlocked: true };
     }
 
-    // Check user credits
+    // Check user
     const user = await User.findByPk(userId);
 
     if (!user) {
       throw new NotFoundError('User');
     }
 
+    // Free-to-unlock listings: require active subscription but no credit
+    if (listing.freeToUnlock) {
+      const subscription = await Subscription.findOne({
+        where: { userId, status: SubscriptionStatus.ACTIVE },
+      });
+
+      if (!subscription) {
+        throw new ForbiddenError('An active subscription is required to unlock free listings.');
+      }
+
+      const t = await sequelize.transaction();
+      try {
+        await UnlockedListing.create(
+          { userId, listingId, creditsUsed: 0 },
+          { transaction: t }
+        );
+
+        await CreditTransaction.create(
+          {
+            userId,
+            type: CreditTransactionType.USAGE,
+            amount: 0,
+            balance: user.totalCredits - user.usedCredits,
+            description: `Free unlock - listing MC-${listing.mcNumber}`,
+            reference: listingId,
+          },
+          { transaction: t }
+        );
+
+        await t.commit();
+      } catch (error) {
+        await t.rollback();
+        throw error;
+      }
+
+      return { success: true, alreadyUnlocked: false };
+    }
+
+    // Standard unlock: deduct 1 credit
     const availableCredits = user.totalCredits - user.usedCredits;
     if (availableCredits < 1) {
       throw new ForbiddenError('Insufficient credits. Please purchase more credits.');
     }
 
-    // Use transaction to unlock and deduct credit
     const t = await sequelize.transaction();
 
     try {
-      // Create unlocked record
       await UnlockedListing.create(
         { userId, listingId, creditsUsed: 1 },
         { transaction: t }
       );
 
-      // Deduct credit
       await user.update(
         { usedCredits: user.usedCredits + 1 },
         { transaction: t }
       );
 
-      // Record credit transaction
       await CreditTransaction.create(
         {
           userId,
