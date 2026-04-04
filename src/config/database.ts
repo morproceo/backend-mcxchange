@@ -77,13 +77,7 @@ export const connectDatabase = async (): Promise<void> => {
     await sequelize.authenticate();
     console.log('Database connected successfully');
 
-    // Sync models - use force: false to only create missing tables
-    // Using alter: true causes duplicate index issues in MySQL
-    // Sync in all environments to create tables if they don't exist
-    await sequelize.sync({ force: false });
-    console.log('Database models synchronized');
-
-    // Safe column migrations — adds columns that sync({ force: false }) won't create
+    // Safe column migrations — MUST run before sync() so indexes on new columns don't fail
     const addColumnIfMissing = async (table: string, column: string, type: string) => {
       try {
         await sequelize.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${type}`, { logging: false });
@@ -110,6 +104,10 @@ export const connectDatabase = async (): Promise<void> => {
     } catch (e: any) {
       // Ignore if already correct
     }
+
+    // Sync models after migrations so indexes on new columns succeed
+    await sequelize.sync({ force: false });
+    console.log('Database models synchronized');
   } catch (error) {
     console.error('Database connection failed:', error);
     throw error;
