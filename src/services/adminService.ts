@@ -139,7 +139,7 @@ class AdminService {
   }
 
   // Approve listing
-  async approveListing(listingId: string, adminId: string, notes?: string, listingPrice?: number) {
+  async approveListing(listingId: string, adminId: string, notes?: string, listingPrice?: number, freeToUnlock?: boolean) {
     const listing = await Listing.findByPk(listingId);
 
     if (!listing) {
@@ -152,6 +152,7 @@ class AdminService {
     await listing.update({
       status: ListingStatus.ACTIVE,
       listingPrice: finalListingPrice,
+      freeToUnlock: freeToUnlock || false,
       reviewedBy: adminId,
       reviewedAt: new Date(),
       reviewNotes: notes,

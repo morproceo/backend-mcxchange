@@ -72,9 +72,9 @@ export const approveListing = asyncHandler(async (req: AuthRequest, res: Respons
   }
 
   const { id } = req.params;
-  const { notes, listingPrice } = req.body;
+  const { notes, listingPrice, freeToUnlock } = req.body;
 
-  const listing = await adminService.approveListing(id, req.user.id, notes, listingPrice);
+  const listing = await adminService.approveListing(id, req.user.id, notes, listingPrice, freeToUnlock);
 
   res.json({
     success: true,
