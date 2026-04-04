@@ -848,6 +848,7 @@ class AdminService {
     visibility?: string;
     isPremium?: boolean;
     isVip?: boolean;
+    freeToUnlock?: boolean;
   }) {
     const listing = await Listing.findByPk(listingId);
 
@@ -896,6 +897,7 @@ class AdminService {
     if (data.visibility !== undefined) updateData.visibility = data.visibility.toUpperCase();
     if (data.isPremium !== undefined) updateData.isPremium = data.isPremium;
     if (data.isVip !== undefined) updateData.isVip = data.isVip;
+    if (data.freeToUnlock !== undefined) updateData.freeToUnlock = data.freeToUnlock;
 
     await listing.update(updateData);
 
