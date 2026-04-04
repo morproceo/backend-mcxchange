@@ -27,6 +27,9 @@
     "trucking",
     "marketplace"
   ],
+  "engines": {
+    "node": "20.x"
+  },
   "author": "MorProInc",
   "license": "ISC",
   "dependencies": {

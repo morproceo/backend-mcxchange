@@ -199,9 +199,9 @@ export function validateConfig(): void {
       errors.push('JWT_REFRESH_SECRET must be set and at least 32 characters in production');
     }
 
-    // Database must be configured
-    if (!process.env.DB_HOST || !process.env.DB_NAME || !process.env.DB_USER) {
-      errors.push('Database configuration (DB_HOST, DB_NAME, DB_USER) is required in production');
+    // Database must be configured (JAWSDB_URL or individual vars)
+    if (!process.env.JAWSDB_URL && (!process.env.DB_HOST || !process.env.DB_NAME || !process.env.DB_USER)) {
+      errors.push('Database configuration (JAWSDB_URL or DB_HOST, DB_NAME, DB_USER) is required in production');
     }
 
     // Stripe must be configured for payments

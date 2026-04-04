@@ -62,50 +62,35 @@ const transports: winston.transport[] = [
   }),
 ];
 
-// Add file transports in production
-if (config.nodeEnv === 'production') {
-  // Ensure logs directory exists
+// Add file transports in production (skip on Heroku — ephemeral filesystem)
+if (config.nodeEnv === 'production' && !process.env.DYNO) {
   const logsDir = path.join(process.cwd(), 'logs');
 
-  // Error log file
   transports.push(
     new winston.transports.File({
       filename: path.join(logsDir, 'error.log'),
       level: 'error',
-      format: combine(
-        timestamp(),
-        errors({ stack: true }),
-        json()
-      ),
-      maxsize: 10 * 1024 * 1024, // 10MB
+      format: combine(timestamp(), errors({ stack: true }), json()),
+      maxsize: 10 * 1024 * 1024,
       maxFiles: 5,
     })
   );
 
-  // Combined log file
   transports.push(
     new winston.transports.File({
       filename: path.join(logsDir, 'combined.log'),
-      format: combine(
-        timestamp(),
-        errors({ stack: true }),
-        json()
-      ),
-      maxsize: 10 * 1024 * 1024, // 10MB
+      format: combine(timestamp(), errors({ stack: true }), json()),
+      maxsize: 10 * 1024 * 1024,
       maxFiles: 5,
     })
   );
 
-  // HTTP access log file
   transports.push(
     new winston.transports.File({
       filename: path.join(logsDir, 'access.log'),
       level: 'http',
-      format: combine(
-        timestamp(),
-        json()
-      ),
-      maxsize: 10 * 1024 * 1024, // 10MB
+      format: combine(timestamp(), json()),
+      maxsize: 10 * 1024 * 1024,
       maxFiles: 10,
     })
   );
