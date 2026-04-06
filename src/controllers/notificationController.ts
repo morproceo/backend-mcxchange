@@ -1,8 +1,10 @@
 import { Response } from 'express';
+import { Op } from 'sequelize';
 import { notificationService } from '../services/notificationService';
 import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { parseIntParam, parseBooleanParam } from '../utils/helpers';
+import { Message, Transaction, TransactionStatus, UserRole } from '../models';
 
 // Get notifications
 export const getNotifications = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -120,5 +122,59 @@ export const getCountsByType = asyncHandler(async (req: AuthRequest, res: Respon
   res.json({
     success: true,
     data: counts,
+  });
+});
+
+// Get nav badge counts for sidebar notifications
+export const getNavBadgeCounts = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const userId = req.user.id;
+  const role = req.user.role;
+
+  // Unread messages count
+  const unreadMessages = await Message.count({
+    where: { receiverId: userId, read: false },
+  });
+
+  // Active closing statuses
+  const closingStatuses = [
+    TransactionStatus.DEPOSIT_RECEIVED,
+    TransactionStatus.IN_REVIEW,
+    TransactionStatus.BUYER_APPROVED,
+    TransactionStatus.SELLER_APPROVED,
+    TransactionStatus.BOTH_APPROVED,
+    TransactionStatus.ADMIN_FINAL_REVIEW,
+    TransactionStatus.PAYMENT_PENDING,
+    TransactionStatus.PAYMENT_RECEIVED,
+  ];
+
+  // Non-terminal transaction statuses (everything except COMPLETED and CANCELLED)
+  const activeStatuses = [
+    TransactionStatus.AWAITING_DEPOSIT,
+    ...closingStatuses,
+  ];
+
+  // Build where clause based on role
+  const txnWhere = role === UserRole.ADMIN
+    ? {}
+    : role === UserRole.SELLER
+    ? { sellerId: userId }
+    : { buyerId: userId };
+
+  const newTransactions = await Transaction.count({
+    where: { ...txnWhere, status: { [Op.in]: activeStatuses } },
+  });
+
+  const activeClosings = await Transaction.count({
+    where: { ...txnWhere, status: { [Op.in]: closingStatuses } },
+  });
+
+  res.json({
+    success: true,
+    data: { unreadMessages, newTransactions, activeClosings },
   });
 });

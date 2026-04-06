@@ -7,6 +7,7 @@ import {
   clearAll,
   getUnreadCount,
   getCountsByType,
+  getNavBadgeCounts,
 } from '../controllers/notificationController';
 import { authenticate } from '../middleware/auth';
 
@@ -23,6 +24,9 @@ router.get('/unread-count', getUnreadCount);
 
 // Get counts by type
 router.get('/counts', getCountsByType);
+
+// Get nav badge counts for sidebar
+router.get('/nav-counts', getNavBadgeCounts);
 
 // Mark all as read
 router.put('/read-all', markAllAsRead);
