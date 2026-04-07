@@ -42,8 +42,10 @@ class DocumentService {
       if (!transaction) {
         throw new NotFoundError('Transaction');
       }
-      // Both buyer and seller can upload to transaction
-      if (transaction.buyerId !== uploaderId && transaction.sellerId !== uploaderId) {
+      // Buyer, seller, and admin can upload to transaction
+      const uploader = await User.findByPk(uploaderId);
+      const isAdmin = uploader?.role === 'ADMIN';
+      if (!isAdmin && transaction.buyerId !== uploaderId && transaction.sellerId !== uploaderId) {
         throw new ForbiddenError('You are not part of this transaction');
       }
     }
