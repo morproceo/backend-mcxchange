@@ -1362,6 +1362,109 @@ class StripeService {
   }
 
   // ============================================
+  // Final Payment Checkout with Connect Split
+  // ============================================
+
+  /**
+   * Create a Stripe Checkout Session for the final MC payment
+   * Uses Stripe Connect to split payment between seller and platform
+   *
+   * The buyer is charged the full remaining balance (agreedPrice - deposit).
+   * The seller receives their asking price directly to their connected account.
+   * The platform retains the difference as commission.
+   */
+  async createFinalPaymentCheckout(params: {
+    customerId: string;
+    amount: number; // Total charge in cents (finalPaymentAmount = agreedPrice - deposit)
+    sellerPayout: number; // Amount to seller in cents (askingPrice)
+    sellerConnectedAccountId: string; // Seller's Stripe Connect account ID
+    buyerId: string;
+    sellerId: string;
+    transactionId: string;
+    mcNumber: string;
+    successUrl: string;
+    cancelUrl: string;
+  }): Promise<CheckoutSessionResult> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    // application_fee_amount = what the platform keeps from this payment
+    // amount - sellerPayout = platform commission from the final payment
+    const applicationFee = params.amount - params.sellerPayout;
+
+    if (applicationFee < 0) {
+      return { success: false, error: 'Invalid payment split: seller payout exceeds charge amount' };
+    }
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        customer: params.customerId,
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: 'MC Authority - Final Payment',
+                description: `Final payment for MC #${params.mcNumber} purchase`,
+              },
+              unit_amount: params.amount,
+            },
+            quantity: 1,
+          },
+        ],
+        payment_intent_data: {
+          application_fee_amount: applicationFee,
+          transfer_data: {
+            destination: params.sellerConnectedAccountId,
+          },
+        },
+        success_url: params.successUrl,
+        cancel_url: params.cancelUrl,
+        metadata: {
+          type: 'final_payment',
+          buyerId: params.buyerId,
+          sellerId: params.sellerId,
+          transactionId: params.transactionId,
+          mcNumber: params.mcNumber,
+          sellerPayout: String(params.sellerPayout),
+          applicationFee: String(applicationFee),
+        },
+      });
+
+      logger.info('Final payment checkout session created (Connect split)', {
+        sessionId: session.id,
+        customerId: params.customerId,
+        buyerId: params.buyerId,
+        sellerId: params.sellerId,
+        transactionId: params.transactionId,
+        totalCharge: params.amount,
+        sellerPayout: params.sellerPayout,
+        applicationFee,
+        connectedAccount: params.sellerConnectedAccountId,
+      });
+
+      return {
+        success: true,
+        sessionId: session.id,
+        url: session.url || undefined,
+      };
+    } catch (error) {
+      logError('Failed to create final payment checkout session', error as Error, {
+        customerId: params.customerId,
+        transactionId: params.transactionId,
+        sellerConnectedAccountId: params.sellerConnectedAccountId,
+      });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  // ============================================
   // Identity Verification
   // ============================================
 

@@ -637,6 +637,107 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
     }
   }
 
+  // Handle final payment via Stripe Connect split
+  if (type === 'final_payment') {
+    const transactionId = metadata?.transactionId;
+    const buyerId = metadata?.buyerId;
+    const sellerId = metadata?.sellerId;
+    const mcNumber = metadata?.mcNumber;
+
+    if (!transactionId || !buyerId || !sellerId) {
+      logger.warn('Final payment checkout missing required metadata', {
+        sessionId: session.id,
+        metadata,
+      });
+      return;
+    }
+
+    const transaction = await Transaction.findByPk(transactionId);
+    if (transaction && transaction.status === TransactionStatus.PAYMENT_PENDING) {
+      const amountPaid = session.amount_total ? session.amount_total / 100 : 0;
+      const sellerPayoutCents = parseInt(metadata?.sellerPayout || '0');
+      const applicationFeeCents = parseInt(metadata?.applicationFee || '0');
+
+      await transaction.update({
+        status: TransactionStatus.PAYMENT_RECEIVED,
+        finalPaymentAmount: amountPaid,
+        finalPaidAt: new Date(),
+        finalPaymentMethod: 'STRIPE' as any,
+        sellerPayout: sellerPayoutCents / 100,
+        platformFee: applicationFeeCents / 100,
+      });
+
+      // Create Payment record
+      await Payment.create({
+        type: PaymentType.FINAL_PAYMENT,
+        amount: amountPaid,
+        status: PaymentStatus.COMPLETED,
+        method: 'STRIPE',
+        stripePaymentId: session.payment_intent as string,
+        description: `Final payment for MC #${mcNumber || 'N/A'} via Stripe Connect`,
+        completedAt: new Date(),
+        transactionId,
+        userId: buyerId,
+      });
+
+      logger.info('Final payment received via Stripe Connect', {
+        transactionId,
+        amount: amountPaid,
+        sellerPayout: sellerPayoutCents / 100,
+        platformFee: applicationFeeCents / 100,
+        buyerId,
+        sellerId,
+      });
+
+      // Get buyer and seller for notifications
+      const buyer = await User.findByPk(buyerId);
+      const seller = await User.findByPk(sellerId);
+
+      // Notify seller
+      await notificationService.notifyTransactionStatus(
+        sellerId,
+        'Final Payment Received',
+        `The buyer has completed the final payment of $${amountPaid.toLocaleString()} for MC #${mcNumber || 'N/A'}. Funds will be deposited to your connected account.`,
+        transactionId
+      );
+
+      // Notify buyer
+      await notificationService.notifyTransactionStatus(
+        buyerId,
+        'Payment Confirmed',
+        `Your payment of $${amountPaid.toLocaleString()} for MC #${mcNumber || 'N/A'} has been processed. The admin will complete the transfer shortly.`,
+        transactionId
+      );
+
+      // Send email to buyer
+      if (buyer) {
+        await emailService.sendPaymentReceived(buyer.email, {
+          userName: buyer.name,
+          mcNumber: mcNumber || 'N/A',
+          amount: amountPaid,
+          paymentType: 'final payment',
+          transactionUrl: `${config.frontendUrl}/transaction/${transactionId}`,
+        });
+      }
+
+      // Send email to seller
+      if (seller) {
+        await emailService.sendPaymentReceived(seller.email, {
+          userName: seller.name,
+          mcNumber: mcNumber || 'N/A',
+          amount: sellerPayoutCents / 100,
+          paymentType: 'seller payout',
+          transactionUrl: `${config.frontendUrl}/transaction/${transactionId}`,
+        });
+      }
+    } else {
+      logger.warn('Transaction not found or not in PAYMENT_PENDING status for final payment', {
+        transactionId,
+        currentStatus: transaction?.status,
+      });
+    }
+  }
+
   // Handle credit pack purchases from checkout
   if (type === 'credit_pack') {
     const userId = metadata?.userId;

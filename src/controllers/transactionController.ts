@@ -396,6 +396,129 @@ export const createDepositCheckout = asyncHandler(async (req: AuthRequest, res: 
   });
 });
 
+// Create final payment checkout session (Stripe Connect split payment)
+// Charges buyer the remaining balance, routes seller's asking price to their
+// connected account, and retains the difference as platform commission.
+export const createFinalPaymentCheckout = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+
+  // Get transaction with listing and seller
+  const transaction = await Transaction.findByPk(id, {
+    include: [
+      { model: Listing, as: 'listing' },
+      { model: User, as: 'seller' },
+    ],
+  });
+
+  if (!transaction) {
+    throw new NotFoundError('Transaction not found');
+  }
+
+  // Verify the buyer owns this transaction
+  if (transaction.buyerId !== req.user.id) {
+    throw new ForbiddenError('You do not have permission to pay for this transaction');
+  }
+
+  // Verify transaction is ready for final payment
+  if (transaction.status !== TransactionStatus.PAYMENT_PENDING) {
+    throw new BadRequestError('Transaction is not ready for final payment');
+  }
+
+  // Get buyer
+  const buyer = await User.findByPk(req.user.id);
+  if (!buyer) {
+    throw new NotFoundError('Buyer not found');
+  }
+
+  // Get seller
+  const seller = await User.findByPk(transaction.sellerId);
+  if (!seller) {
+    throw new NotFoundError('Seller not found');
+  }
+
+  // Verify seller has a connected Stripe account
+  if (!seller.stripeAccountId) {
+    throw new BadRequestError('Seller has not set up their payout account. Please contact support.');
+  }
+
+  // Verify seller's connected account is onboarded
+  const isOnboarded = await stripeService.isAccountOnboarded(seller.stripeAccountId);
+  if (!isOnboarded) {
+    throw new BadRequestError('Seller payout account is not fully set up. Please contact support.');
+  }
+
+  // Get or create Stripe customer for the buyer
+  const customer = await stripeService.getOrCreateCustomer(
+    buyer.id,
+    buyer.email,
+    buyer.name,
+    buyer.stripeCustomerId || undefined
+  );
+  const stripeCustomerId = customer.id;
+
+  if (stripeCustomerId !== buyer.stripeCustomerId) {
+    await buyer.update({ stripeCustomerId });
+  }
+
+  // Calculate amounts
+  const listing = (transaction as any).listing;
+  const askingPrice = listing?.askingPrice || 0;
+  const agreedPrice = transaction.agreedPrice;
+  const depositAmount = transaction.depositAmount || 0;
+  const finalPaymentAmount = agreedPrice - depositAmount;
+  const sellerPayout = askingPrice; // Seller gets their full asking price
+  const platformCommission = agreedPrice - askingPrice; // Total platform commission
+
+  if (finalPaymentAmount <= 0) {
+    throw new BadRequestError('Invalid final payment amount');
+  }
+
+  if (sellerPayout > finalPaymentAmount) {
+    throw new BadRequestError('Seller payout exceeds final payment amount');
+  }
+
+  const mcNumber = listing?.mcNumber || 'N/A';
+  const frontendUrl = config.frontendUrl || 'http://localhost:5173';
+
+  const result = await stripeService.createFinalPaymentCheckout({
+    customerId: stripeCustomerId,
+    amount: Math.round(finalPaymentAmount * 100), // Convert to cents
+    sellerPayout: Math.round(sellerPayout * 100), // Convert to cents
+    sellerConnectedAccountId: seller.stripeAccountId,
+    buyerId: req.user.id,
+    sellerId: transaction.sellerId,
+    transactionId: transaction.id,
+    mcNumber,
+    successUrl: `${frontendUrl}/transaction/${transaction.id}?payment=success`,
+    cancelUrl: `${frontendUrl}/transaction/${transaction.id}?payment=cancelled`,
+  });
+
+  if (!result.success) {
+    throw new BadRequestError(result.error || 'Failed to create payment checkout session');
+  }
+
+  // Update transaction with payment split details
+  await transaction.update({
+    sellerPayout: sellerPayout,
+    platformFee: platformCommission,
+    finalPaymentAmount: finalPaymentAmount,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      sessionId: result.sessionId,
+      url: result.url,
+    },
+    message: 'Payment checkout session created',
+  });
+});
+
 // Verify deposit payment status - used when returning from Stripe checkout
 // This checks Stripe directly and updates the transaction if paid
 export const verifyDepositStatus = asyncHandler(async (req: AuthRequest, res: Response) => {

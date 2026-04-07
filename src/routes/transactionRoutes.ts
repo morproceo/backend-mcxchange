@@ -18,6 +18,7 @@ import {
   paymentValidation,
   messageValidation,
   createDepositCheckout,
+  createFinalPaymentCheckout,
   verifyDepositStatus,
   adminCreateTransaction,
   adminCreateTransactionValidation,
@@ -50,6 +51,7 @@ router.post('/:id/deposit', validate(paymentValidation), payDeposit);
 router.post('/:id/deposit-checkout', createDepositCheckout);
 router.post('/:id/verify-deposit-status', verifyDepositStatus);
 router.post('/:id/final-payment', validate(paymentValidation), payFinal);
+router.post('/:id/final-payment-checkout', createFinalPaymentCheckout);
 
 // Seller actions
 router.post('/:id/seller/accept-terms', sellerAcceptTerms);
