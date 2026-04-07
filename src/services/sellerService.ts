@@ -160,7 +160,7 @@ class SellerService {
         {
           model: Listing,
           as: 'listing',
-          attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'price', 'status'],
+          attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'askingPrice', 'listingPrice', 'status'],
         },
         {
           model: User,

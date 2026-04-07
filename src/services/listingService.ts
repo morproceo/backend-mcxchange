@@ -163,10 +163,10 @@ class ListingService {
     let order: Order = [['createdAt', 'DESC']];
     switch (sortBy) {
       case 'price_asc':
-        order = [['price', 'ASC']];
+        order = [['askingPrice', 'ASC']];
         break;
       case 'price_desc':
-        order = [['price', 'DESC']];
+        order = [['askingPrice', 'DESC']];
         break;
       case 'newest':
         order = [['createdAt', 'DESC']];

@@ -72,7 +72,7 @@ class BuyerService {
         {
           model: Listing,
           as: 'listing',
-          attributes: ['mcNumber', 'title', 'price'],
+          attributes: ['mcNumber', 'title', 'askingPrice', 'listingPrice'],
         },
         {
           model: User,
@@ -126,7 +126,7 @@ class BuyerService {
         {
           model: Listing,
           as: 'listing',
-          attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'price', 'status', 'city', 'state', 'isPremium'],
+          attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'askingPrice', 'listingPrice', 'status', 'city', 'state', 'isPremium'],
         },
         {
           model: User,
@@ -189,7 +189,7 @@ class BuyerService {
         model: Listing,
         as: 'listing',
         attributes: [
-          'id', 'mcNumber', 'dotNumber', 'title', 'price',
+          'id', 'mcNumber', 'dotNumber', 'title', 'askingPrice', 'listingPrice',
           'city', 'state', 'status', 'isPremium', 'safetyRating',
           'amazonStatus', 'views',
         ],
@@ -290,7 +290,7 @@ class BuyerService {
         {
           model: Listing,
           as: 'listing',
-          attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'price'],
+          attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'askingPrice', 'listingPrice'],
         },
         {
           model: User,
@@ -644,7 +644,7 @@ class BuyerService {
       include: [{
         model: Listing,
         as: 'listing',
-        attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'price', 'city', 'state', 'isPremium'],
+        attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'askingPrice', 'listingPrice', 'city', 'state', 'isPremium'],
       }],
     });
 

@@ -211,7 +211,7 @@ class UserService {
       offset,
       limit,
       attributes: [
-        'id', 'mcNumber', 'dotNumber', 'title', 'price',
+        'id', 'mcNumber', 'dotNumber', 'title', 'askingPrice', 'listingPrice',
         'city', 'state', 'isPremium', 'yearsActive',
         'safetyRating', 'amazonStatus', 'views', 'createdAt',
       ],

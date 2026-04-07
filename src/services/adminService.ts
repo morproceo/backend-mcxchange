@@ -569,7 +569,7 @@ class AdminService {
         {
           model: Listing,
           as: 'listing',
-          attributes: ['id', 'mcNumber', 'title', 'price'],
+          attributes: ['id', 'mcNumber', 'title', 'askingPrice', 'listingPrice'],
           include: [
             {
               model: User,
@@ -700,7 +700,7 @@ class AdminService {
         await request.reload({
           include: [
             { model: User, as: 'buyer', attributes: ['id', 'name', 'email', 'totalCredits', 'usedCredits'] },
-            { model: Listing, as: 'listing', attributes: ['id', 'mcNumber', 'title', 'price'] },
+            { model: Listing, as: 'listing', attributes: ['id', 'mcNumber', 'title', 'askingPrice', 'listingPrice'] },
           ],
         });
 
@@ -1186,7 +1186,7 @@ class AdminService {
     // Average price
     const avgPrice = await Listing.findOne({
       where: { ...where, status: ListingStatus.ACTIVE },
-      attributes: [[Listing.sequelize!.fn('AVG', Listing.sequelize!.col('price')), 'avgPrice']],
+      attributes: [[Listing.sequelize!.fn('AVG', Listing.sequelize!.col('askingPrice')), 'avgPrice']],
       raw: true,
     });
 
@@ -1267,7 +1267,7 @@ class AdminService {
         {
           model: Listing,
           as: 'listing',
-          attributes: ['id', 'mcNumber', 'title', 'price', 'askingPrice', 'legalName', 'status'],
+          attributes: ['id', 'mcNumber', 'title', 'askingPrice', 'listingPrice', 'legalName', 'status'],
         },
         {
           model: User,

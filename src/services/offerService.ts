@@ -67,7 +67,7 @@ class OfferService {
         {
           model: Listing,
           as: 'listing',
-          attributes: ['id', 'mcNumber', 'title', 'price'],
+          attributes: ['id', 'mcNumber', 'title', 'askingPrice', 'listingPrice'],
         },
         {
           model: User,
@@ -153,7 +153,7 @@ class OfferService {
         {
           model: Listing,
           as: 'listing',
-          attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'price', 'status', 'city', 'state', 'isPremium'],
+          attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'askingPrice', 'listingPrice', 'status', 'city', 'state', 'isPremium'],
         },
         {
           model: User,
@@ -184,16 +184,17 @@ class OfferService {
     const offers = await Offer.findAll({
       where,
       order: [['createdAt', 'DESC']],
+      attributes: { exclude: ['message'] }, // Hide buyer's message from seller — admin only
       include: [
         {
           model: Listing,
           as: 'listing',
-          attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'price', 'status'],
+          attributes: ['id', 'mcNumber', 'dotNumber', 'title', 'askingPrice', 'listingPrice', 'status'],
         },
         {
           model: User,
           as: 'buyer',
-          attributes: ['id', 'name', 'email', 'verified', 'trustScore'],
+          attributes: ['id', 'name', 'verified', 'trustScore'],
         },
         {
           model: Transaction,
