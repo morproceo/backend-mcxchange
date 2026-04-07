@@ -94,15 +94,14 @@ export const connectDatabase = async (): Promise<void> => {
     await addColumnIfMissing('listings', 'setupWithBrokers', 'TINYINT(1) NOT NULL DEFAULT 0');
     await addColumnIfMissing('listings', 'freeToUnlock', 'TINYINT(1) NOT NULL DEFAULT 0');
 
-    // Expand document type enum to include seller document types
+    // Convert document type from ENUM to VARCHAR to avoid enum sync issues
     try {
       await sequelize.query(
-        `ALTER TABLE \`documents\` MODIFY COLUMN \`type\` ENUM('INSURANCE','UCC_FILING','AUTHORITY','SAFETY_RECORD','BILL_OF_SALE','ARTICLES_OF_INCORPORATION','EIN_LETTER','LOSS_RUNS','LETTER_OF_RELEASE','PURCHASE_AGREEMENT','SIGNED_AGREEMENT','OTHER') NOT NULL`,
-        { logging: false }
+        `ALTER TABLE \`documents\` MODIFY COLUMN \`type\` VARCHAR(50) NOT NULL`,
       );
-      console.log('Migration: expanded documents.type enum');
+      console.log('Migration: converted documents.type to VARCHAR');
     } catch (e: any) {
-      // Ignore if already correct
+      console.warn('Migration warning (documents.type):', e.message || e);
     }
 
     // Sync models after migrations so indexes on new columns succeed

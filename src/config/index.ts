@@ -106,7 +106,7 @@ export const config = {
   upload: {
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760', 10), // 10MB
     uploadDir: process.env.UPLOAD_DIR || './uploads',
-    allowedTypes: ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'image/webp'] as string[],
+    allowedTypes: ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'image/webp', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'] as string[],
     // S3 configuration (optional)
     s3: {
       enabled: process.env.S3_ENABLED === 'true',

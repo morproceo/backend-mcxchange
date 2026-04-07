@@ -921,7 +921,7 @@ Document.init(
       primaryKey: true,
     },
     type: {
-      type: DataTypes.ENUM(...Object.values(DocumentType)),
+      type: DataTypes.STRING(50),
       allowNull: false,
     },
     name: {
