@@ -1267,7 +1267,7 @@ class AdminService {
         {
           model: Listing,
           as: 'listing',
-          attributes: ['id', 'mcNumber', 'title', 'price', 'status'],
+          attributes: ['id', 'mcNumber', 'title', 'price', 'askingPrice', 'legalName', 'status'],
         },
         {
           model: User,
@@ -1526,7 +1526,7 @@ class AdminService {
   }
 
   // Forward offer to seller (admin) — sets sellerAmount and notifies seller
-  async forwardOfferToSeller(offerId: string, adminId: string, sellerAmount: number, notes?: string) {
+  async forwardOfferToSeller(offerId: string, adminId: string, sellerAmount: number, notes?: string, messageToSeller?: string) {
     const offer = await Offer.findByPk(offerId, {
       include: [
         {
@@ -1558,6 +1558,7 @@ class AdminService {
       adminReviewedBy: adminId,
       adminReviewedAt: new Date(),
       adminNotes: notes,
+      adminMessageToSeller: messageToSeller,
     });
 
     // Record admin action
@@ -1575,11 +1576,14 @@ class AdminService {
     });
 
     // Notify seller — show sellerAmount, NOT buyer's amount
+    const notificationMessage = messageToSeller
+      ? `You received a $${sellerAmount.toLocaleString()} offer on MC-${listing?.mcNumber || 'N/A'}. Message: ${messageToSeller}`
+      : `You received a $${sellerAmount.toLocaleString()} offer on MC-${listing?.mcNumber || 'N/A'}`;
     await Notification.create({
       userId: offer.sellerId,
       type: NotificationType.OFFER,
       title: 'New Offer Received',
-      message: `You received a $${sellerAmount.toLocaleString()} offer on MC-${listing?.mcNumber || 'N/A'}`,
+      message: notificationMessage,
       link: `/seller/offers`,
       metadata: JSON.stringify({ offerId: offer.id, listingId: listing?.id }),
     });
