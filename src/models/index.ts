@@ -56,6 +56,8 @@ export enum DocumentType {
   EIN_LETTER = 'EIN_LETTER',
   LOSS_RUNS = 'LOSS_RUNS',
   LETTER_OF_RELEASE = 'LETTER_OF_RELEASE',
+  PURCHASE_AGREEMENT = 'PURCHASE_AGREEMENT',
+  SIGNED_AGREEMENT = 'SIGNED_AGREEMENT',
   OTHER = 'OTHER'
 }
 
@@ -991,6 +993,7 @@ export class Offer extends Model {
   declare adminReviewedBy?: string;
   declare adminReviewedAt?: Date;
   declare adminNotes?: string;
+  declare adminMessageToSeller?: string;
   declare listingId: string;
   declare buyerId: string;
   declare sellerId: string;
@@ -1072,6 +1075,10 @@ Offer.init(
       allowNull: true,
     },
     adminNotes: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    adminMessageToSeller: {
       type: DataTypes.TEXT,
       allowNull: true,
     },
