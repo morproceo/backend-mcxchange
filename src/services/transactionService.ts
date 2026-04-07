@@ -400,8 +400,20 @@ class TransactionService {
       throw new NotFoundError('Transaction');
     }
 
-    if (transaction.status !== TransactionStatus.BOTH_APPROVED) {
+    // Check the actual approval flags, not just the status string
+    // Status can get out of sync if approvals happened while status was IN_REVIEW
+    if (!transaction.buyerApproved || !transaction.sellerApproved) {
       throw new ForbiddenError('Both parties must approve before admin review');
+    }
+
+    // If both approved but status wasn't updated to BOTH_APPROVED, fix it
+    if (transaction.status !== TransactionStatus.BOTH_APPROVED) {
+      logger.warn('Status out of sync: both parties approved but status was', {
+        transactionId,
+        status: transaction.status,
+        buyerApproved: transaction.buyerApproved,
+        sellerApproved: transaction.sellerApproved,
+      });
     }
 
     await transaction.update({
