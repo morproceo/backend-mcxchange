@@ -50,7 +50,7 @@ router.get('/offers', requireSubscription, getOffers);
 router.get('/purchases', requireSubscription, getPurchases);
 router.get('/saved', requireSubscription, getSavedListings);
 router.get('/unlocked', requireSubscription, getUnlockedListings);
-router.get('/transactions', requireSubscription, getTransactions);
+router.get('/transactions', getTransactions);
 
 // Premium requests - require subscription to request premium access
 router.post('/premium-requests', requireSubscription, createPremiumRequest);
