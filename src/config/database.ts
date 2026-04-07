@@ -97,7 +97,7 @@ export const connectDatabase = async (): Promise<void> => {
     // Expand document type enum to include seller document types
     try {
       await sequelize.query(
-        `ALTER TABLE \`documents\` MODIFY COLUMN \`type\` ENUM('INSURANCE','UCC_FILING','AUTHORITY','SAFETY_RECORD','BILL_OF_SALE','ARTICLES_OF_INCORPORATION','EIN_LETTER','LOSS_RUNS','LETTER_OF_RELEASE','OTHER') NOT NULL`,
+        `ALTER TABLE \`documents\` MODIFY COLUMN \`type\` ENUM('INSURANCE','UCC_FILING','AUTHORITY','SAFETY_RECORD','BILL_OF_SALE','ARTICLES_OF_INCORPORATION','EIN_LETTER','LOSS_RUNS','LETTER_OF_RELEASE','PURCHASE_AGREEMENT','SIGNED_AGREEMENT','OTHER') NOT NULL`,
         { logging: false }
       );
       console.log('Migration: expanded documents.type enum');
