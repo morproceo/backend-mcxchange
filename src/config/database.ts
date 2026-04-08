@@ -94,6 +94,12 @@ export const connectDatabase = async (): Promise<void> => {
     await addColumnIfMissing('listings', 'setupWithBrokers', 'TINYINT(1) NOT NULL DEFAULT 0');
     await addColumnIfMissing('listings', 'freeToUnlock', 'TINYINT(1) NOT NULL DEFAULT 0');
 
+    // Escrow columns for transaction payment tracking
+    await addColumnIfMissing('transactions', 'escrowAmount', 'DECIMAL(12,2) NULL');
+    await addColumnIfMissing('transactions', 'escrowConfirmedAt', 'DATETIME NULL');
+    await addColumnIfMissing('transactions', 'escrowConfirmedBy', 'CHAR(36) NULL');
+    await addColumnIfMissing('transactions', 'escrowPaymentMethod', 'VARCHAR(50) NULL');
+
     // Convert document type from ENUM to VARCHAR to avoid enum sync issues
     try {
       await sequelize.query(
