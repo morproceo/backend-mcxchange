@@ -511,7 +511,15 @@ class StripeService {
       const session = await stripe.checkout.sessions.create({
         customer: params.customerId,
         mode: 'payment',
-        payment_method_types: ['us_bank_account'],
+        payment_method_types: ['customer_balance'],
+        payment_method_options: {
+          customer_balance: {
+            funding_type: 'bank_transfer',
+            bank_transfer: {
+              type: 'us_bank_transfer',
+            },
+          },
+        },
         line_items: [
           {
             price_data: {
@@ -1401,7 +1409,15 @@ class StripeService {
       const session = await stripe.checkout.sessions.create({
         customer: params.customerId,
         mode: 'payment',
-        payment_method_types: ['us_bank_account'],
+        payment_method_types: ['customer_balance'],
+        payment_method_options: {
+          customer_balance: {
+            funding_type: 'bank_transfer',
+            bank_transfer: {
+              type: 'us_bank_transfer',
+            },
+          },
+        },
         line_items: [
           {
             price_data: {
