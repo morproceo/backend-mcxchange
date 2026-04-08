@@ -1127,6 +1127,10 @@ export class Transaction extends Model {
   declare finalPaymentMethod?: PaymentMethod;
   declare finalPaymentRef?: string;
   declare escrowStatus?: string;
+  declare escrowAmount?: number;
+  declare escrowConfirmedAt?: Date;
+  declare escrowConfirmedBy?: string;
+  declare escrowPaymentMethod?: string;
   declare escrowReleaseAt?: Date;
   declare disputeReason?: string;
   declare disputeOpenedAt?: Date;
@@ -1254,6 +1258,22 @@ Transaction.init(
     },
     escrowStatus: {
       type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    escrowAmount: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
+    },
+    escrowConfirmedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    escrowConfirmedBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
+    escrowPaymentMethod: {
+      type: DataTypes.STRING(50),
       allowNull: true,
     },
     escrowReleaseAt: {

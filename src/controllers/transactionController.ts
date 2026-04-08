@@ -719,3 +719,48 @@ export const adminDeleteTransaction = asyncHandler(async (req: AuthRequest, res:
     message: result.message,
   });
 });
+
+// Validation for confirm escrow
+export const confirmEscrowValidation = [
+  body('amount').isNumeric().withMessage('Amount is required'),
+  body('paymentMethod').isIn(['ZELLE', 'WIRE', 'CHECK', 'STRIPE']).withMessage('Invalid payment method'),
+];
+
+// Admin confirms payment received into escrow
+export const adminConfirmEscrow = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id } = req.params;
+  const { amount, paymentMethod, notes } = req.body;
+
+  const transaction = await Transaction.findByPk(id);
+
+  if (!transaction) {
+    throw new NotFoundError('Transaction not found');
+  }
+
+  await transaction.update({
+    escrowStatus: 'FUNDED',
+    escrowAmount: Number(amount),
+    escrowConfirmedAt: new Date(),
+    escrowConfirmedBy: req.user.id,
+    escrowPaymentMethod: paymentMethod,
+    adminNotes: notes
+      ? `${transaction.adminNotes ? transaction.adminNotes + '\n' : ''}[Escrow] ${paymentMethod} payment of $${Number(amount).toLocaleString()} confirmed. ${notes}`
+      : transaction.adminNotes,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      escrowStatus: 'FUNDED',
+      escrowAmount: Number(amount),
+      escrowConfirmedAt: new Date(),
+      escrowPaymentMethod: paymentMethod,
+    },
+    message: `$${Number(amount).toLocaleString()} confirmed in escrow via ${paymentMethod}`,
+  });
+});
