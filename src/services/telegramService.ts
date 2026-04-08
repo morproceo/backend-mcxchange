@@ -148,7 +148,7 @@ class TelegramService {
     safetyRating?: string;
     totalInspections?: number;
   }, customMessage?: string): Promise<{ success: boolean; messageId?: number; error?: string }> {
-    const frontendUrl = process.env.FRONTEND_URL || 'https://mc-xchange.vercel.app';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://www.domilea.com';
     const listingUrl = `${frontendUrl}/mc/${listing.id}`;
 
     // Build the message

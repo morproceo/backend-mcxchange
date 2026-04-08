@@ -144,14 +144,24 @@ export const shareListing = async (req: Request, res: Response) => {
       });
     }
 
-    // Fetch inspections from FMCSA
+    // Fetch inspections from FMCSA SMS data (uses totalInspections, not sum of individual types)
     let totalInspections: number = 0;
     try {
-      const fmcsaData = await fmcsaService.lookupByMC(listing.mcNumber);
-      if (fmcsaData) {
-        totalInspections = (fmcsaData.driverInsp || 0) +
-                          (fmcsaData.vehicleInsp || 0) +
-                          (fmcsaData.hazmatInsp || 0);
+      const dotNumber = listing.dotNumber;
+      if (dotNumber) {
+        const smsData = await fmcsaService.getSMSData(dotNumber);
+        if (smsData) {
+          totalInspections = smsData.totalInspections || 0;
+        }
+      } else {
+        // Fallback: lookup by MC to get DOT, then get SMS data
+        const fmcsaData = await fmcsaService.lookupByMC(listing.mcNumber);
+        if (fmcsaData?.dotNumber) {
+          const smsData = await fmcsaService.getSMSData(fmcsaData.dotNumber);
+          if (smsData) {
+            totalInspections = smsData.totalInspections || 0;
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to fetch FMCSA data for Telegram share:', error);
