@@ -9,6 +9,9 @@ import {
   getAnalytics,
   createListingFeeCheckout,
   getStripePaymentHistory,
+  getConnectStatus,
+  createConnectAccount,
+  getConnectDashboardLink,
 } from '../controllers/sellerController';
 import { authenticate, sellerOnly } from '../middleware/auth';
 
@@ -44,5 +47,10 @@ router.post('/listing-fee/checkout', createListingFeeCheckout);
 
 // Stripe payment history
 router.get('/stripe-history', getStripePaymentHistory);
+
+// Stripe Connect - Payout setup
+router.get('/connect/status', getConnectStatus);
+router.post('/connect/create', createConnectAccount);
+router.get('/connect/dashboard', getConnectDashboardLink);
 
 export default router;

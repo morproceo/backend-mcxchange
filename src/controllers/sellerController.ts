@@ -1,10 +1,11 @@
 import { Response } from 'express';
 import { sellerService } from '../services/sellerService';
 import { stripeService } from '../services/stripeService';
-import { asyncHandler, BadRequestError } from '../middleware/errorHandler';
+import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { ListingStatus, User } from '../models';
 import { parseIntParam } from '../utils/helpers';
+import { config } from '../config';
 
 // Get seller dashboard stats
 export const getDashboardStats = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -263,6 +264,180 @@ export const getStripePaymentHistory = asyncHandler(async (req: AuthRequest, res
       charges: transformedCharges,
       checkoutSessions: transformedCheckoutSessions,
       stripeCustomerId: user.stripeCustomerId,
+    },
+  });
+});
+
+// ============================================
+// Stripe Connect - Seller Payout Setup
+// ============================================
+
+// Get seller's Connect account status
+export const getConnectStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const user = await User.findByPk(req.user.id);
+  if (!user) {
+    throw new NotFoundError('User not found');
+  }
+
+  if (!user.stripeAccountId) {
+    res.json({
+      success: true,
+      data: {
+        hasAccount: false,
+        isOnboarded: false,
+        chargesEnabled: false,
+        payoutsEnabled: false,
+        detailsSubmitted: false,
+      },
+    });
+    return;
+  }
+
+  const account = await stripeService.getConnectedAccount(user.stripeAccountId);
+
+  if (!account) {
+    res.json({
+      success: true,
+      data: {
+        hasAccount: true,
+        accountId: user.stripeAccountId,
+        isOnboarded: false,
+        chargesEnabled: false,
+        payoutsEnabled: false,
+        detailsSubmitted: false,
+        error: 'Could not retrieve account details',
+      },
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      hasAccount: true,
+      accountId: user.stripeAccountId,
+      isOnboarded: account.details_submitted && account.charges_enabled && account.payouts_enabled,
+      chargesEnabled: account.charges_enabled,
+      payoutsEnabled: account.payouts_enabled,
+      detailsSubmitted: account.details_submitted,
+    },
+  });
+});
+
+// Create a Stripe Connect account for the seller and return onboarding link
+export const createConnectAccount = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const user = await User.findByPk(req.user.id);
+  if (!user) {
+    throw new NotFoundError('User not found');
+  }
+
+  // If seller already has a Connect account, just return a new onboarding link
+  if (user.stripeAccountId) {
+    const isOnboarded = await stripeService.isAccountOnboarded(user.stripeAccountId);
+    if (isOnboarded) {
+      throw new BadRequestError('Your payout account is already set up and active');
+    }
+
+    // Account exists but not fully onboarded — generate a new onboarding link
+    const frontendUrl = config.frontendUrl || 'http://localhost:5173';
+    const linkResult = await stripeService.createAccountLink({
+      accountId: user.stripeAccountId,
+      refreshUrl: `${frontendUrl}/seller/payout-setup?refresh=true`,
+      returnUrl: `${frontendUrl}/seller/payout-setup?onboarding=complete`,
+    });
+
+    if (!linkResult.success) {
+      throw new BadRequestError(linkResult.error || 'Failed to create onboarding link');
+    }
+
+    res.json({
+      success: true,
+      data: {
+        accountId: user.stripeAccountId,
+        onboardingUrl: linkResult.url,
+      },
+      message: 'Continue setting up your payout account',
+    });
+    return;
+  }
+
+  // Create a new Connect account
+  const accountResult = await stripeService.createConnectedAccount({
+    userId: user.id,
+    email: user.email,
+    businessName: user.companyName || undefined,
+  });
+
+  if (!accountResult.success || !accountResult.accountId) {
+    throw new BadRequestError(accountResult.error || 'Failed to create payout account');
+  }
+
+  // Save the account ID to the user record
+  await user.update({ stripeAccountId: accountResult.accountId });
+
+  // Generate onboarding link
+  const frontendUrl = config.frontendUrl || 'http://localhost:5173';
+  const linkResult = await stripeService.createAccountLink({
+    accountId: accountResult.accountId,
+    refreshUrl: `${frontendUrl}/seller/payout-setup?refresh=true`,
+    returnUrl: `${frontendUrl}/seller/payout-setup?onboarding=complete`,
+  });
+
+  if (!linkResult.success) {
+    throw new BadRequestError(linkResult.error || 'Failed to create onboarding link');
+  }
+
+  res.json({
+    success: true,
+    data: {
+      accountId: accountResult.accountId,
+      onboardingUrl: linkResult.url,
+    },
+    message: 'Payout account created. Complete the onboarding to start receiving payments.',
+  });
+});
+
+// Get a Stripe Express dashboard login link for the seller
+export const getConnectDashboardLink = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const user = await User.findByPk(req.user.id);
+  if (!user) {
+    throw new NotFoundError('User not found');
+  }
+
+  if (!user.stripeAccountId) {
+    throw new BadRequestError('No payout account found. Please set up your account first.');
+  }
+
+  const isOnboarded = await stripeService.isAccountOnboarded(user.stripeAccountId);
+  if (!isOnboarded) {
+    throw new BadRequestError('Your payout account setup is not complete.');
+  }
+
+  const result = await stripeService.createLoginLink(user.stripeAccountId);
+
+  if (!result.success) {
+    throw new BadRequestError(result.error || 'Failed to create dashboard link');
+  }
+
+  res.json({
+    success: true,
+    data: {
+      url: result.url,
     },
   });
 });
