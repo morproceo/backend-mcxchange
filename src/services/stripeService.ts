@@ -502,6 +502,8 @@ class StripeService {
     successUrl: string;
     cancelUrl: string;
     metadata?: Record<string, string>;
+    productName?: string;
+    productDescription?: string;
   }): Promise<CheckoutSessionResult> {
     if (!stripe) {
       return { success: false, error: 'Payment service not available' };
@@ -517,8 +519,8 @@ class StripeService {
             price_data: {
               currency: 'usd',
               product_data: {
-                name: 'MC Authority Deposit',
-                description: `Refundable deposit for MC #${params.mcNumber} purchase`,
+                name: params.productName || 'MC Authority Deposit',
+                description: params.productDescription || `Deposit for MC #${params.mcNumber} purchase`,
               },
               unit_amount: params.amount,
             },

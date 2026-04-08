@@ -500,6 +500,8 @@ export const createFinalPaymentCheckout = asyncHandler(async (req: AuthRequest, 
       mcNumber,
       successUrl: `${frontendUrl}/transaction/${transaction.id}?payment=success`,
       cancelUrl: `${frontendUrl}/transaction/${transaction.id}?payment=cancelled`,
+      productName: 'MC Authority - Final Payment',
+      productDescription: `Final payment for MC #${mcNumber} purchase`,
       metadata: {
         type: 'final_payment',
         sellerId: transaction.sellerId,
