@@ -396,9 +396,11 @@ export const createDepositCheckout = asyncHandler(async (req: AuthRequest, res: 
   });
 });
 
-// Create final payment checkout session (Stripe Connect split payment)
-// Charges buyer the remaining balance, routes seller's asking price to their
-// connected account, and retains the difference as platform commission.
+// Create final payment checkout session
+// Collects the full remaining balance to the platform's Stripe account.
+// If the seller has a fully onboarded Connect account, the payment is
+// automatically split (seller payout via Connect, platform keeps commission).
+// Otherwise, the full amount goes to the platform for manual payout later.
 export const createFinalPaymentCheckout = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.user) {
     res.status(401).json({ success: false, error: 'Not authenticated' });
@@ -435,23 +437,6 @@ export const createFinalPaymentCheckout = asyncHandler(async (req: AuthRequest, 
     throw new NotFoundError('Buyer not found');
   }
 
-  // Get seller
-  const seller = await User.findByPk(transaction.sellerId);
-  if (!seller) {
-    throw new NotFoundError('Seller not found');
-  }
-
-  // Verify seller has a connected Stripe account
-  if (!seller.stripeAccountId) {
-    throw new BadRequestError('Seller has not set up their payout account. Please contact support.');
-  }
-
-  // Verify seller's connected account is onboarded
-  const isOnboarded = await stripeService.isAccountOnboarded(seller.stripeAccountId);
-  if (!isOnboarded) {
-    throw new BadRequestError('Seller payout account is not fully set up. Please contact support.');
-  }
-
   // Get or create Stripe customer for the buyer
   const customer = await stripeService.getOrCreateCustomer(
     buyer.id,
@@ -478,25 +463,51 @@ export const createFinalPaymentCheckout = asyncHandler(async (req: AuthRequest, 
     throw new BadRequestError('Invalid final payment amount');
   }
 
-  if (sellerPayout > finalPaymentAmount) {
-    throw new BadRequestError('Seller payout exceeds final payment amount');
-  }
-
   const mcNumber = listing?.mcNumber || 'N/A';
   const frontendUrl = config.frontendUrl || 'http://localhost:5173';
 
-  const result = await stripeService.createFinalPaymentCheckout({
-    customerId: stripeCustomerId,
-    amount: Math.round(finalPaymentAmount * 100), // Convert to cents
-    sellerPayout: Math.round(sellerPayout * 100), // Convert to cents
-    sellerConnectedAccountId: seller.stripeAccountId,
-    buyerId: req.user.id,
-    sellerId: transaction.sellerId,
-    transactionId: transaction.id,
-    mcNumber,
-    successUrl: `${frontendUrl}/transaction/${transaction.id}?payment=success`,
-    cancelUrl: `${frontendUrl}/transaction/${transaction.id}?payment=cancelled`,
-  });
+  // Check if seller has a fully onboarded Connect account for auto-split
+  const seller = await User.findByPk(transaction.sellerId);
+  let useConnectSplit = false;
+  if (seller?.stripeAccountId) {
+    useConnectSplit = await stripeService.isAccountOnboarded(seller.stripeAccountId);
+  }
+
+  let result;
+
+  if (useConnectSplit && seller?.stripeAccountId) {
+    // Seller has Connect account — auto-split payment
+    result = await stripeService.createFinalPaymentCheckout({
+      customerId: stripeCustomerId,
+      amount: Math.round(finalPaymentAmount * 100),
+      sellerPayout: Math.round(sellerPayout * 100),
+      sellerConnectedAccountId: seller.stripeAccountId,
+      buyerId: req.user.id,
+      sellerId: transaction.sellerId,
+      transactionId: transaction.id,
+      mcNumber,
+      successUrl: `${frontendUrl}/transaction/${transaction.id}?payment=success`,
+      cancelUrl: `${frontendUrl}/transaction/${transaction.id}?payment=cancelled`,
+    });
+  } else {
+    // No seller Connect account — collect full amount to platform
+    result = await stripeService.createDepositCheckout({
+      customerId: stripeCustomerId,
+      amount: Math.round(finalPaymentAmount * 100),
+      buyerId: req.user.id,
+      transactionId: transaction.id,
+      offerId: transaction.offerId || '',
+      mcNumber,
+      successUrl: `${frontendUrl}/transaction/${transaction.id}?payment=success`,
+      cancelUrl: `${frontendUrl}/transaction/${transaction.id}?payment=cancelled`,
+      metadata: {
+        type: 'final_payment',
+        sellerId: transaction.sellerId,
+        sellerPayout: String(sellerPayout),
+        platformFee: String(platformCommission),
+      },
+    });
+  }
 
   if (!result.success) {
     throw new BadRequestError(result.error || 'Failed to create payment checkout session');
