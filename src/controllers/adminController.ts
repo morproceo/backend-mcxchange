@@ -473,14 +473,14 @@ export const adminForwardOffer = asyncHandler(async (req: AuthRequest, res: Resp
   }
 
   const { id } = req.params;
-  const { sellerAmount, notes } = req.body;
+  const { sellerAmount, notes, messageToSeller } = req.body;
 
   if (!sellerAmount || sellerAmount <= 0) {
     res.status(400).json({ success: false, error: 'sellerAmount is required and must be positive' });
     return;
   }
 
-  const offer = await adminService.forwardOfferToSeller(id, req.user.id, Number(sellerAmount), notes);
+  const offer = await adminService.forwardOfferToSeller(id, req.user.id, Number(sellerAmount), notes, messageToSeller);
 
   res.json({
     success: true,
@@ -1158,4 +1158,145 @@ export const getActivityLog = asyncHandler(async (req: AuthRequest, res: Respons
     success: true,
     data: activityLog,
   });
+});
+
+// ============================================
+// Invoice Management
+// ============================================
+
+export const createInvoiceValidation = [
+  body('userId').notEmpty().withMessage('User ID is required'),
+  body('lineItems').isArray({ min: 1 }).withMessage('At least one line item is required'),
+  body('lineItems.*.description').notEmpty().withMessage('Line item description is required'),
+  body('lineItems.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
+  body('lineItems.*.unitPrice').isFloat({ min: 0.01 }).withMessage('Unit price must be positive'),
+];
+
+// Create and send a Stripe invoice
+export const createAndSendInvoice = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const {
+    userId,
+    lineItems,
+    dueDate,
+    notes,
+    invoiceType,
+    mcNumber,
+    paymentMethods,
+    autoSend,
+  } = req.body;
+
+  // Get user and ensure they have a Stripe customer
+  const { User } = require('../models');
+  const user = await User.findByPk(userId);
+  if (!user) {
+    res.status(404).json({ success: false, error: 'User not found' });
+    return;
+  }
+
+  const customer = await stripeService.getOrCreateCustomer(
+    user.id.toString(),
+    user.email,
+    user.name,
+    user.stripeCustomerId || undefined
+  );
+
+  // Save stripeCustomerId back to user if not set
+  if (!user.stripeCustomerId) {
+    await user.update({ stripeCustomerId: customer.id });
+  }
+
+  // Convert line items to cents
+  const stripeLineItems = lineItems.map((item: any) => ({
+    description: item.description,
+    quantity: item.quantity,
+    unitAmountCents: Math.round(item.unitPrice * 100),
+  }));
+
+  // Build metadata
+  const metadata: Record<string, string> = {
+    invoiceType: invoiceType || 'custom',
+    createdBy: req.user?.id?.toString() || 'admin',
+  };
+  if (mcNumber) metadata.mcNumber = mcNumber;
+
+  const result = await stripeService.createAndSendInvoice({
+    customerId: customer.id,
+    lineItems: stripeLineItems,
+    dueDate: dueDate ? Math.floor(new Date(dueDate).getTime() / 1000) : undefined,
+    memo: notes || undefined,
+    metadata,
+    paymentMethodTypes: paymentMethods || ['us_bank_account'],
+    autoSend: autoSend !== false,
+  });
+
+  if (!result.success) {
+    res.status(500).json({ success: false, error: result.error });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data: {
+      invoice: result.invoice,
+      hostedUrl: result.hostedUrl,
+    },
+  });
+});
+
+// List all Stripe invoices
+export const getAdminInvoices = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const limit = parseIntParam(req.query.limit as string) || 20;
+  const startingAfter = req.query.startingAfter as string | undefined;
+  const status = req.query.status as string | undefined;
+
+  const result = await stripeService.listAllInvoices({
+    limit,
+    startingAfter,
+    status,
+  });
+
+  res.json({
+    success: true,
+    data: result.invoices,
+    hasMore: result.hasMore,
+  });
+});
+
+// Get a single invoice
+export const getAdminInvoice = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const invoice = await stripeService.getInvoice(id);
+
+  if (!invoice) {
+    res.status(404).json({ success: false, error: 'Invoice not found' });
+    return;
+  }
+
+  res.json({ success: true, data: invoice });
+});
+
+// Send a draft invoice
+export const sendAdminInvoice = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const result = await stripeService.sendInvoice(id);
+
+  if (!result.success) {
+    res.status(500).json({ success: false, error: result.error });
+    return;
+  }
+
+  res.json({ success: true, data: result.invoice });
+});
+
+// Void an invoice
+export const voidAdminInvoice = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const result = await stripeService.voidInvoice(id);
+
+  if (!result.success) {
+    res.status(500).json({ success: false, error: result.error });
+    return;
+  }
+
+  res.json({ success: true });
 });

@@ -1066,6 +1066,141 @@ class StripeService {
   }
 
   /**
+   * Create and optionally send a Stripe invoice with line items.
+   * Supports bank_transfer (wire/ACH) as a payment method.
+   */
+  async createAndSendInvoice(params: {
+    customerId: string;
+    lineItems: Array<{ description: string; quantity: number; unitAmountCents: number }>;
+    dueDate?: number; // Unix timestamp
+    memo?: string;
+    metadata?: Record<string, string>;
+    paymentMethodTypes?: string[];
+    autoSend?: boolean;
+  }): Promise<{ success: boolean; invoice?: Stripe.Invoice; hostedUrl?: string; error?: string }> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      // Create invoice items first
+      for (const item of params.lineItems) {
+        await stripe.invoiceItems.create({
+          customer: params.customerId,
+          description: item.description,
+          amount: item.unitAmountCents * item.quantity,
+          currency: 'usd',
+        });
+      }
+
+      // Build payment settings — include bank_transfer for wire/ACH
+      const paymentMethodTypes = params.paymentMethodTypes || ['us_bank_account'];
+      const paymentSettings: Stripe.InvoiceCreateParams.PaymentSettings = {
+        payment_method_types: paymentMethodTypes as any,
+      };
+
+      // Create the invoice
+      const invoice = await stripe.invoices.create({
+        customer: params.customerId,
+        collection_method: 'send_invoice',
+        days_until_due: params.dueDate
+          ? Math.max(1, Math.ceil((params.dueDate - Date.now() / 1000) / 86400))
+          : 7,
+        description: params.memo || undefined,
+        metadata: params.metadata || {},
+        payment_settings: paymentSettings,
+      });
+
+      // If auto-send, finalize and send
+      if (params.autoSend) {
+        const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
+        const sent = await stripe.invoices.sendInvoice(finalized.id);
+
+        return {
+          success: true,
+          invoice: sent,
+          hostedUrl: sent.hosted_invoice_url || undefined,
+        };
+      }
+
+      return {
+        success: true,
+        invoice,
+      };
+    } catch (error) {
+      logError('Failed to create invoice', error as Error, {
+        customerId: params.customerId,
+      });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Finalize and send a draft invoice
+   */
+  async sendInvoice(invoiceId: string): Promise<{ success: boolean; invoice?: Stripe.Invoice; error?: string }> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const finalized = await stripe.invoices.finalizeInvoice(invoiceId);
+      const sent = await stripe.invoices.sendInvoice(finalized.id);
+      return { success: true, invoice: sent };
+    } catch (error) {
+      logError('Failed to send invoice', error as Error, { invoiceId });
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
+  /**
+   * Void an open invoice
+   */
+  async voidInvoice(invoiceId: string): Promise<{ success: boolean; error?: string }> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      await stripe.invoices.voidInvoice(invoiceId);
+      return { success: true };
+    } catch (error) {
+      logError('Failed to void invoice', error as Error, { invoiceId });
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
+  /**
+   * List all invoices (not customer-specific) for admin use
+   */
+  async listAllInvoices(params?: {
+    limit?: number;
+    startingAfter?: string;
+    status?: string;
+  }): Promise<{ invoices: Stripe.Invoice[]; hasMore: boolean }> {
+    if (!stripe) return { invoices: [], hasMore: false };
+
+    try {
+      const result = await stripe.invoices.list({
+        limit: params?.limit || 20,
+        starting_after: params?.startingAfter || undefined,
+        status: params?.status as any || undefined,
+      });
+
+      return {
+        invoices: result.data,
+        hasMore: result.has_more,
+      };
+    } catch (error) {
+      logError('Failed to list invoices', error as Error);
+      return { invoices: [], hasMore: false };
+    }
+  }
+
+  /**
    * Get all charges/payments for a customer
    */
   async getCustomerCharges(

@@ -56,6 +56,12 @@ import {
   updateNotificationSettings,
   getUserActivityLog,
   getActivityLog,
+  createAndSendInvoice,
+  createInvoiceValidation,
+  getAdminInvoices,
+  getAdminInvoice,
+  sendAdminInvoice,
+  voidAdminInvoice,
 } from '../controllers/adminController';
 import { authenticate, adminOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
@@ -141,5 +147,12 @@ router.post('/disputes/process-auto-unblock', processAutoUnblock);
 // Notification Settings
 router.get('/settings/notifications', getNotificationSettings);
 router.put('/settings/notifications', updateNotificationSettings);
+
+// Invoices (Stripe)
+router.get('/invoices', getAdminInvoices);
+router.post('/invoices', validate(createInvoiceValidation), createAndSendInvoice);
+router.get('/invoices/:id', getAdminInvoice);
+router.post('/invoices/:id/send', sendAdminInvoice);
+router.post('/invoices/:id/void', voidAdminInvoice);
 
 export default router;
