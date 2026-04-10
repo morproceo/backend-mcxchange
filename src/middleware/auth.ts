@@ -79,6 +79,7 @@ export const authenticate = async (
       });
       return;
     }
+    console.error('Authentication middleware error:', (error as Error)?.message, (error as Error)?.stack);
     res.status(500).json({
       success: false,
       error: 'Authentication error.',

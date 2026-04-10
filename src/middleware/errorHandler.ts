@@ -258,6 +258,21 @@ export const errorHandler = (
     }
   }
   // ----------------------------------------
+  // Handle file upload / storage errors
+  // ----------------------------------------
+  else if (err.message?.includes('File type') && err.message?.includes('is not allowed')) {
+    statusCode = 400;
+    message = err.message;
+  }
+  else if (err.message?.includes('Failed to upload file to storage')) {
+    statusCode = 502;
+    message = 'File storage service unavailable. Please try again later.';
+    logError('S3 upload failure', err, {
+      requestId: req.requestId,
+      path: req.path,
+    });
+  }
+  // ----------------------------------------
   // Handle Stripe errors
   // ----------------------------------------
   else if (err.name === 'StripeError' || (err as any).type?.startsWith('Stripe')) {

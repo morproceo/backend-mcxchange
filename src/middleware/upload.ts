@@ -106,10 +106,18 @@ const multerSingle = upload.single('file');
 
 export const uploadSingle = (req: Request, res: Response, next: NextFunction) => {
   multerSingle(req, res, async (err: any) => {
-    if (err) return next(err);
+    if (err) {
+      logger.error('Multer upload error:', err?.message || err, 'code:', err?.code, 'name:', err?.name);
+      return next(err);
+    }
+
+    if (!req.file) {
+      // No file in request — let the controller handle the missing file
+      return next();
+    }
 
     // If S3 is enabled and we have a file buffer, upload to S3
-    if (s3Client && req.file && req.file.buffer) {
+    if (s3Client && req.file.buffer) {
       try {
         const url = await uploadToS3(req.file);
         (req.file as any).s3Url = url;
@@ -117,6 +125,8 @@ export const uploadSingle = (req: Request, res: Response, next: NextFunction) =>
         logger.error('S3 upload failed:', s3Err?.message || s3Err, 'bucket:', config.upload.s3.bucket, 'region:', config.upload.s3.region);
         return next(new Error(`Failed to upload file to storage: ${s3Err?.message || 'Unknown error'}`));
       }
+    } else if (s3Client && !req.file.buffer) {
+      logger.warn('S3 enabled but file has no buffer — file may have been saved to disk instead');
     }
 
     next();
