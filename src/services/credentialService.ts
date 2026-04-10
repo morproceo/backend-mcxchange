@@ -94,15 +94,8 @@ class CredentialService {
       order: [['createdAt', 'ASC']],
     });
 
-    // Buyer can only see released credentials when payment is confirmed
+    // Buyer can only see credentials that admin has explicitly released
     if (isBuyer) {
-      const paymentConfirmed = [
-        TransactionStatus.PAYMENT_RECEIVED,
-        TransactionStatus.COMPLETED,
-      ].includes(transaction.status as TransactionStatus);
-
-      if (!paymentConfirmed) return [];
-
       return credentials
         .filter(c => c.releasedToBuyer)
         .map(c => this.decryptCredential(c));
