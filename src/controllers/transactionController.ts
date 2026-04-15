@@ -364,8 +364,12 @@ export const createDepositCheckout = asyncHandler(async (req: AuthRequest, res: 
     await buyer.update({ stripeCustomerId });
   }
 
-  // Deposit is $1,000 = 100000 cents
-  const depositAmountCents = 100000;
+  // Accept custom deposit amount from request body, default to $1,000
+  const depositAmountDollars = req.body.depositAmount ? Number(req.body.depositAmount) : 1000;
+  if (depositAmountDollars < 1 || depositAmountDollars > 1000000) {
+    throw new BadRequestError('Deposit amount must be between $1 and $1,000,000');
+  }
+  const depositAmountCents = Math.round(depositAmountDollars * 100);
 
   // Get MC number from listing
   const mcNumber = transaction.listing?.mcNumber || 'Unknown';
