@@ -810,6 +810,7 @@ class AdminService {
 
   // Admin update listing (can update any field including status)
   async updateListing(listingId: string, adminId: string, data: {
+    sellerId?: string;
     mcNumber?: string;
     dotNumber?: string;
     legalName?: string;
@@ -858,6 +859,27 @@ class AdminService {
 
     // Build update object
     const updateData: any = {};
+
+    // Handle seller reassignment
+    if (data.sellerId !== undefined && data.sellerId !== listing.sellerId) {
+      const newSeller = await User.findByPk(data.sellerId);
+      if (!newSeller) {
+        throw new NotFoundError('New seller');
+      }
+      updateData.sellerId = data.sellerId;
+
+      // Log seller reassignment separately for audit trail
+      await AdminAction.create({
+        adminId,
+        action: 'REASSIGN_LISTING_SELLER',
+        targetType: 'LISTING',
+        targetId: listingId,
+        metadata: JSON.stringify({
+          previousSellerId: listing.sellerId,
+          newSellerId: data.sellerId,
+        }),
+      });
+    }
 
     if (data.mcNumber !== undefined) updateData.mcNumber = data.mcNumber;
     if (data.dotNumber !== undefined) updateData.dotNumber = data.dotNumber;
