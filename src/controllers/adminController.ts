@@ -1302,9 +1302,40 @@ export const voidAdminInvoice = asyncHandler(async (req: AuthRequest, res: Respo
   res.json({ success: true });
 });
 
-// Release payout to seller via Stripe Transfer
+// Check if seller is eligible for instant payout
+export const checkSellerInstantPayoutEligibility = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+
+  const transaction = await Transaction.findByPk(id, {
+    include: [{ model: User, as: 'seller' }],
+  });
+
+  if (!transaction) {
+    throw new NotFoundError('Transaction not found');
+  }
+
+  const seller = (transaction as any).seller as User;
+  if (!seller?.stripeAccountId) {
+    res.json({ success: true, data: { eligible: false, hasDebitCard: false, reason: 'No Stripe Connect account' } });
+    return;
+  }
+
+  const result = await stripeService.checkInstantPayoutEligibility(seller.stripeAccountId);
+
+  res.json({
+    success: true,
+    data: {
+      eligible: result.eligible,
+      hasDebitCard: result.hasDebitCard,
+      reason: !result.hasDebitCard ? 'Seller needs to add a debit card to their Stripe account' : undefined,
+    },
+  });
+});
+
+// Release payout to seller via Stripe Transfer (standard or instant)
 export const releasePayoutToSeller = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
+  const { payoutMethod } = req.body; // 'standard' or 'instant'
 
   const transaction = await Transaction.findByPk(id, {
     include: [
@@ -1352,8 +1383,21 @@ export const releasePayoutToSeller = asyncHandler(async (req: AuthRequest, res: 
 
   const amountInCents = Math.round(Number(payoutAmount) * 100);
   const mcNumber = listing?.mcNumber || 'N/A';
+  const isInstant = payoutMethod === 'instant';
 
-  // Create the transfer to seller's Connect account
+  // For instant payout, verify eligibility first
+  if (isInstant) {
+    const eligibility = await stripeService.checkInstantPayoutEligibility(seller.stripeAccountId);
+    if (!eligibility.eligible) {
+      throw new BadRequestError(
+        eligibility.hasDebitCard
+          ? 'Seller account is not eligible for instant payouts'
+          : 'Seller needs to add a debit card to their Stripe account for instant payouts'
+      );
+    }
+  }
+
+  // Step 1: Transfer funds from platform to seller's Connect account balance
   const transferResult = await stripeService.createTransfer({
     amount: amountInCents,
     destinationAccountId: seller.stripeAccountId,
@@ -1363,6 +1407,7 @@ export const releasePayoutToSeller = asyncHandler(async (req: AuthRequest, res: 
       sellerId: seller.id,
       mcNumber: mcNumber,
       type: 'seller_payout',
+      payoutMethod: isInstant ? 'instant' : 'standard',
     },
   });
 
@@ -1375,28 +1420,65 @@ export const releasePayoutToSeller = asyncHandler(async (req: AuthRequest, res: 
     throw new BadRequestError(`Failed to create transfer: ${transferResult.error}`);
   }
 
+  let instantPayoutResult = null;
+  let payoutStatusValue = 'RELEASED';
+
+  // Step 2: If instant, create an instant payout from seller's Connect balance to their debit card
+  if (isInstant) {
+    instantPayoutResult = await stripeService.createInstantPayout({
+      amount: amountInCents,
+      connectedAccountId: seller.stripeAccountId,
+      description: `Instant payout for MC #${mcNumber} sale`,
+      metadata: {
+        transactionId: transaction.id,
+        transferId: transferResult.transferId || '',
+      },
+    });
+
+    if (!instantPayoutResult.success) {
+      // Transfer succeeded but instant payout failed — funds are in seller's Stripe balance
+      // They'll get it via standard payout schedule (2 days)
+      logger.warn('Instant payout failed after transfer succeeded, falling back to standard', {
+        transactionId: transaction.id,
+        sellerId: seller.id,
+        error: instantPayoutResult.error,
+      });
+      payoutStatusValue = 'RELEASED'; // Still released, just not instant
+    } else {
+      payoutStatusValue = 'INSTANT_RELEASED';
+    }
+  }
+
   // Update transaction with payout info
   await transaction.update({
-    payoutStatus: 'RELEASED',
+    payoutStatus: payoutStatusValue,
     payoutReleasedAt: new Date(),
     payoutTransferId: transferResult.transferId,
   });
 
   // Add timeline entry
+  const timelineDesc = isInstant && instantPayoutResult?.success
+    ? `Instant payout of $${Number(payoutAmount).toLocaleString()} released to seller's debit card (Transfer: ${transferResult.transferId}, Payout: ${instantPayoutResult.payoutId})`
+    : `Payout of $${Number(payoutAmount).toLocaleString()} released to seller via Stripe Transfer (${transferResult.transferId})`;
+
   await TransactionTimeline.create({
     transactionId: transaction.id,
     status: TransactionStatus.COMPLETED,
-    title: 'Payout Released',
-    description: `Payout of $${Number(payoutAmount).toLocaleString()} released to seller via Stripe Transfer (${transferResult.transferId})`,
+    title: isInstant && instantPayoutResult?.success ? 'Instant Payout Released' : 'Payout Released',
+    description: timelineDesc,
     actorId: req.user!.id,
     actorRole: 'ADMIN',
   });
 
   // Notify seller
+  const notifMessage = isInstant && instantPayoutResult?.success
+    ? `Your instant payout of $${Number(payoutAmount).toLocaleString()} for MC #${mcNumber} has been sent to your debit card. It should arrive within minutes.`
+    : `Your payout of $${Number(payoutAmount).toLocaleString()} for MC #${mcNumber} has been released to your connected bank account. It typically arrives within 2 business days.`;
+
   await Notification.create({
     userId: seller.id,
-    title: 'Payout Released!',
-    message: `Your payout of $${Number(payoutAmount).toLocaleString()} for MC #${mcNumber} has been released to your connected bank account.`,
+    title: isInstant && instantPayoutResult?.success ? 'Instant Payout Sent!' : 'Payout Released!',
+    message: notifMessage,
     type: NotificationType.PAYMENT,
     link: `/transaction/${transaction.id}`,
   });
@@ -1406,16 +1488,23 @@ export const releasePayoutToSeller = asyncHandler(async (req: AuthRequest, res: 
     sellerId: seller.id,
     amount: payoutAmount,
     transferId: transferResult.transferId,
+    payoutMethod: isInstant ? 'instant' : 'standard',
+    instantPayoutId: instantPayoutResult?.payoutId,
   });
 
   res.json({
     success: true,
-    message: `Payout of $${Number(payoutAmount).toLocaleString()} released to seller`,
+    message: isInstant && instantPayoutResult?.success
+      ? `Instant payout of $${Number(payoutAmount).toLocaleString()} sent to seller's debit card`
+      : `Payout of $${Number(payoutAmount).toLocaleString()} released to seller`,
     data: {
       transferId: transferResult.transferId,
       amount: payoutAmount,
-      payoutStatus: 'RELEASED',
+      payoutStatus: payoutStatusValue,
       payoutReleasedAt: new Date(),
+      payoutMethod: isInstant && instantPayoutResult?.success ? 'instant' : 'standard',
+      instantPayoutId: instantPayoutResult?.payoutId || null,
+      instantPayoutFee: instantPayoutResult?.fee || null,
     },
   });
 });

@@ -1499,6 +1499,113 @@ class StripeService {
   }
 
   // ============================================
+  // Instant Payouts (to seller's debit card)
+  // ============================================
+
+  /**
+   * Check if a connected account is eligible for instant payouts
+   * Requires the account to have a debit card as an external account
+   */
+  async checkInstantPayoutEligibility(accountId: string): Promise<{
+    eligible: boolean;
+    hasDebitCard: boolean;
+    error?: string;
+  }> {
+    if (!stripe) {
+      return { eligible: false, hasDebitCard: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const account = await stripe.accounts.retrieve(accountId);
+
+      // Check if account has instant payouts capability
+      const payoutsEnabled = account.payouts_enabled;
+
+      // Check for a debit card as external account
+      const externalAccounts = await stripe.accounts.listExternalAccounts(accountId, {
+        object: 'card',
+        limit: 10,
+      });
+
+      const hasDebitCard = externalAccounts.data.some(
+        (card: any) => card.object === 'card'
+      );
+
+      return {
+        eligible: payoutsEnabled === true && hasDebitCard,
+        hasDebitCard,
+      };
+    } catch (error) {
+      logError('Failed to check instant payout eligibility', error as Error, { accountId });
+      return {
+        eligible: false,
+        hasDebitCard: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  /**
+   * Create an instant payout from a connected account's Stripe balance to their debit card
+   * Must be called AFTER a transfer has been made to the connected account
+   * Fee: 1% of payout amount (min $0.50), charged to the connected account balance
+   */
+  async createInstantPayout(params: {
+    amount: number; // In cents
+    connectedAccountId: string;
+    description?: string;
+    metadata?: Record<string, string>;
+  }): Promise<{
+    success: boolean;
+    payoutId?: string;
+    arrivalDate?: number;
+    fee?: number;
+    error?: string;
+  }> {
+    if (!stripe) {
+      return { success: false, error: 'Payment service not available' };
+    }
+
+    try {
+      const payout = await stripe.payouts.create(
+        {
+          amount: params.amount,
+          currency: 'usd',
+          method: 'instant',
+          description: params.description,
+          metadata: params.metadata,
+        },
+        {
+          stripeAccount: params.connectedAccountId,
+        }
+      );
+
+      logger.info('Instant payout created', {
+        payoutId: payout.id,
+        amount: params.amount,
+        connectedAccountId: params.connectedAccountId,
+        arrivalDate: payout.arrival_date,
+      });
+
+      return {
+        success: true,
+        payoutId: payout.id,
+        arrivalDate: payout.arrival_date,
+        fee: Math.max(Math.round(params.amount * 0.01), 50), // 1% min $0.50
+      };
+    } catch (error) {
+      logError('Failed to create instant payout', error as Error, {
+        connectedAccountId: params.connectedAccountId,
+        amount: params.amount,
+      });
+      return {
+        success: false,
+        error: (error as Error).message,
+      };
+    }
+  }
+
+  // ============================================
   // Final Payment Checkout with Connect Split
   // ============================================
 
