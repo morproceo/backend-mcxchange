@@ -4,7 +4,7 @@ import { notificationService } from '../services/notificationService';
 import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { parseIntParam, parseBooleanParam } from '../utils/helpers';
-import { Message, Transaction, TransactionStatus, UserRole } from '../models';
+import { Message, Transaction, TransactionStatus, UserRole, Consultation, ConsultationStatus } from '../models';
 
 // Get notifications
 export const getNotifications = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -173,8 +173,13 @@ export const getNavBadgeCounts = asyncHandler(async (req: AuthRequest, res: Resp
     where: { ...txnWhere, status: { [Op.in]: closingStatuses } },
   });
 
+  // Paid consultations awaiting admin action (admin-only)
+  const paidConsultations = role === UserRole.ADMIN
+    ? await Consultation.count({ where: { status: ConsultationStatus.PAID } })
+    : 0;
+
   res.json({
     success: true,
-    data: { unreadMessages, newTransactions, activeClosings },
+    data: { unreadMessages, newTransactions, activeClosings, paidConsultations },
   });
 });
