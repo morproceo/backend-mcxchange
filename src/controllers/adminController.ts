@@ -1,12 +1,13 @@
 import { Response } from 'express';
 import { body } from 'express-validator';
 import { adminService } from '../services/adminService';
-import { asyncHandler } from '../middleware/errorHandler';
+import { asyncHandler, NotFoundError, BadRequestError } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
-import { PremiumRequestStatus } from '../models';
+import { PremiumRequestStatus, Transaction, User, Listing, TransactionTimeline, Notification, TransactionStatus, NotificationType } from '../models';
 import { parseIntParam, parseBooleanParam } from '../utils/helpers';
 import { stripeService } from '../services/stripeService';
 import { pricingConfigService } from '../services/pricingConfigService';
+import logger from '../utils/logger';
 
 // Validation rules
 export const rejectListingValidation = [
@@ -1299,4 +1300,122 @@ export const voidAdminInvoice = asyncHandler(async (req: AuthRequest, res: Respo
   }
 
   res.json({ success: true });
+});
+
+// Release payout to seller via Stripe Transfer
+export const releasePayoutToSeller = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+
+  const transaction = await Transaction.findByPk(id, {
+    include: [
+      { model: User, as: 'seller' },
+      { model: User, as: 'buyer' },
+      { model: Listing, as: 'listing' },
+    ],
+  });
+
+  if (!transaction) {
+    throw new NotFoundError('Transaction not found');
+  }
+
+  if (transaction.status !== 'COMPLETED') {
+    throw new BadRequestError('Transaction must be completed before releasing payout');
+  }
+
+  if (transaction.payoutStatus === 'RELEASED') {
+    throw new BadRequestError('Payout has already been released for this transaction');
+  }
+
+  const seller = (transaction as any).seller as User;
+  if (!seller) {
+    throw new NotFoundError('Seller not found');
+  }
+
+  if (!seller.stripeAccountId) {
+    throw new BadRequestError('Seller does not have a Stripe Connect account set up');
+  }
+
+  // Verify seller account is fully onboarded
+  const isOnboarded = await stripeService.isAccountOnboarded(seller.stripeAccountId);
+  if (!isOnboarded) {
+    throw new BadRequestError('Seller Stripe Connect account is not fully onboarded');
+  }
+
+  // Calculate payout amount — use sellerPayout if set, otherwise use agreedPrice minus platformFee
+  const listing = (transaction as any).listing;
+  const payoutAmount = transaction.sellerPayout
+    || (listing?.askingPrice || transaction.agreedPrice);
+
+  if (!payoutAmount || payoutAmount <= 0) {
+    throw new BadRequestError('Invalid payout amount');
+  }
+
+  const amountInCents = Math.round(Number(payoutAmount) * 100);
+  const mcNumber = listing?.mcNumber || 'N/A';
+
+  // Create the transfer to seller's Connect account
+  const transferResult = await stripeService.createTransfer({
+    amount: amountInCents,
+    destinationAccountId: seller.stripeAccountId,
+    description: `Payout for MC #${mcNumber} sale - Transaction ${transaction.id}`,
+    metadata: {
+      transactionId: transaction.id,
+      sellerId: seller.id,
+      mcNumber: mcNumber,
+      type: 'seller_payout',
+    },
+  });
+
+  if (!transferResult.success) {
+    logger.error('Failed to release payout to seller', {
+      transactionId: transaction.id,
+      sellerId: seller.id,
+      error: transferResult.error,
+    });
+    throw new BadRequestError(`Failed to create transfer: ${transferResult.error}`);
+  }
+
+  // Update transaction with payout info
+  await transaction.update({
+    payoutStatus: 'RELEASED',
+    payoutReleasedAt: new Date(),
+    payoutTransferId: transferResult.transferId,
+  });
+
+  // Add timeline entry
+  await TransactionTimeline.create({
+    transactionId: transaction.id,
+    status: TransactionStatus.COMPLETED,
+    title: 'Payout Released',
+    description: `Payout of $${Number(payoutAmount).toLocaleString()} released to seller via Stripe Transfer (${transferResult.transferId})`,
+    actorId: req.user!.id,
+    actorRole: 'ADMIN',
+  });
+
+  // Notify seller
+  await Notification.create({
+    userId: seller.id,
+    title: 'Payout Released!',
+    message: `Your payout of $${Number(payoutAmount).toLocaleString()} for MC #${mcNumber} has been released to your connected bank account.`,
+    type: NotificationType.PAYMENT,
+    link: `/transaction/${transaction.id}`,
+  });
+
+  logger.info('Payout released to seller', {
+    transactionId: transaction.id,
+    sellerId: seller.id,
+    amount: payoutAmount,
+    transferId: transferResult.transferId,
+  });
+
+  res.json({
+    success: true,
+    message: `Payout of $${Number(payoutAmount).toLocaleString()} released to seller`,
+    data: {
+      transferId: transferResult.transferId,
+      amount: payoutAmount,
+      payoutStatus: 'RELEASED',
+      payoutReleasedAt: new Date(),
+    },
+  });
 });

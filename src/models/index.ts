@@ -1139,6 +1139,9 @@ export class Transaction extends Model {
   declare buyerNotes?: string;
   declare sellerNotes?: string;
   declare adminNotes?: string;
+  declare payoutStatus?: string;
+  declare payoutReleasedAt?: Date;
+  declare payoutTransferId?: string;
   declare completedAt?: Date;
   declare cancelledAt?: Date;
   declare listingId: string;
@@ -1306,6 +1309,19 @@ Transaction.init(
     },
     adminNotes: {
       type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    payoutStatus: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      defaultValue: null,
+    },
+    payoutReleasedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    payoutTransferId: {
+      type: DataTypes.STRING(255),
       allowNull: true,
     },
     completedAt: {

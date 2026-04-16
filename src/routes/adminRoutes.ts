@@ -62,6 +62,7 @@ import {
   getAdminInvoice,
   sendAdminInvoice,
   voidAdminInvoice,
+  releasePayoutToSeller,
 } from '../controllers/adminController';
 import { authenticate, adminOnly } from '../middleware/auth';
 import validate from '../middleware/validate';
@@ -104,6 +105,7 @@ router.put('/premium-requests/:id', updatePremiumRequest);
 
 // Transactions
 router.get('/transactions', getAllTransactions);
+router.post('/transactions/:id/release-payout', releasePayoutToSeller);
 
 // Offers
 router.get('/offers', getAllOffers);
