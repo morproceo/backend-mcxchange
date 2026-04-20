@@ -111,6 +111,7 @@ export const getUsers = asyncHandler(async (req: AuthRequest, res: Response) => 
     search: req.query.search as string,
     role: req.query.role as string,
     status: req.query.status as string,
+    subscriptionStatus: req.query.subscriptionStatus as string,
   });
 
   res.json({
@@ -961,6 +962,29 @@ export const cancelUserSubscription = asyncHandler(async (req: AuthRequest, res:
 
 export const getSubscriptionAnalytics = asyncHandler(async (_req: AuthRequest, res: Response) => {
   const data = await adminService.getSubscriptionAnalytics();
+  res.json({ success: true, data });
+});
+
+// ============================================
+// Buyer Preferences (admin view)
+// ============================================
+
+export const getAdminUserPreferences = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id: userId } = req.params;
+  const data = await adminService.getUserPreferences(userId);
+  res.json({ success: true, data });
+});
+
+export const updateAdminUserPreferences = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id: userId } = req.params;
+  const data = await adminService.updateUserPreferences(userId, req.body || {});
+  res.json({ success: true, data });
+});
+
+export const getAdminUserMatches = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id: userId } = req.params;
+  const limit = Math.min(Math.max(parseIntParam(req.query.limit as string) ?? 10, 1), 50);
+  const data = await adminService.getUserMatches(userId, limit);
   res.json({ success: true, data });
 });
 

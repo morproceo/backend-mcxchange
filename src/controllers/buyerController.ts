@@ -6,8 +6,10 @@ import { asyncHandler, BadRequestError } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { parseIntParam } from '../utils/helpers';
 import { config } from '../config';
-import { User, UnlockedListing, Listing, Subscription, SubscriptionPlan, SubscriptionStatus, UserRole, CreditTransaction, CreditTransactionType } from '../models';
+import { User, UnlockedListing, Listing, Subscription, SubscriptionPlan, SubscriptionStatus, UserRole, CreditTransaction, CreditTransactionType, ListingStatus } from '../models';
 import { creditService } from '../services/creditService';
+import { buyerPreferencesService } from '../services/buyerPreferencesService';
+import { rankListings, hasAnyCriteria } from '../services/matchService';
 
 // Get buyer dashboard stats
 export const getDashboardStats = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -948,4 +950,56 @@ export const checkCreditReportPurchase = asyncHandler(async (req: AuthRequest, r
   });
 
   res.json({ success: true, data: { purchased: !!existing, free: false, price: 55 } });
+});
+
+// ============================================
+// Buyer Preferences (what I'm looking to buy)
+// ============================================
+
+export const getMyPreferences = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+  const prefs = await buyerPreferencesService.getByUserId(req.user.id);
+  res.json({ success: true, data: buyerPreferencesService.toBuyerView(prefs) });
+});
+
+export const updateMyPreferences = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+  const prefs = await buyerPreferencesService.upsert(req.user.id, req.body || {}, 'BUYER');
+  res.json({ success: true, data: buyerPreferencesService.toBuyerView(prefs) });
+});
+
+export const getMyMatches = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+  const limit = Math.min(Math.max(parseIntParam(req.query.limit as string) ?? 10, 1), 50);
+  const prefs = await buyerPreferencesService.getByUserId(req.user.id);
+  if (!prefs || !hasAnyCriteria(prefs)) {
+    res.json({ success: true, data: { matches: [], hasPreferences: false } });
+    return;
+  }
+
+  const listings = await Listing.findAll({
+    where: { status: ListingStatus.ACTIVE },
+    limit: 500,
+  });
+  const ranked = rankListings(listings, prefs, limit);
+  res.json({
+    success: true,
+    data: {
+      hasPreferences: true,
+      matches: ranked.map((l) => ({
+        listing: l.toJSON(),
+        matchScore: l.matchScore,
+        matchReasons: l.matchReasons,
+      })),
+    },
+  });
 });

@@ -33,6 +33,8 @@ import { adminNotificationService } from './adminNotificationService';
 import { config } from '../config';
 import logger from '../utils/logger';
 import { stripeService, SUBSCRIPTION_PRICE_IDS } from './stripeService';
+import { buyerPreferencesService, BuyerPreferencesInput } from './buyerPreferencesService';
+import { rankListings, hasAnyCriteria } from './matchService';
 
 class AdminService {
   // Get dashboard stats (cached for 5 minutes to reduce query load)
@@ -223,8 +225,9 @@ class AdminService {
     search?: string;
     role?: string;
     status?: string;
+    subscriptionStatus?: string;
   }) {
-    const { page = 1, limit = 20, search, role, status } = params;
+    const { page = 1, limit = 20, search, role, status, subscriptionStatus } = params;
     const offset = (page - 1) * limit;
 
     const where: any = {};
@@ -245,11 +248,23 @@ class AdminService {
       where.status = status;
     }
 
+    const subscriptionInclude: any = {
+      model: Subscription,
+      as: 'subscription',
+      attributes: ['plan', 'status'],
+      required: false,
+    };
+    if (subscriptionStatus) {
+      subscriptionInclude.required = true;
+      subscriptionInclude.where = { status: subscriptionStatus };
+    }
+
     const { count: total, rows: users } = await User.findAndCountAll({
       where,
       order: [['createdAt', 'DESC']],
       offset,
       limit,
+      distinct: true,
       attributes: [
         'id',
         'email',
@@ -267,12 +282,7 @@ class AdminService {
         'identityVerificationStatus',
         'identityVerifiedAt',
       ],
-      include: [{
-        model: Subscription,
-        as: 'subscription',
-        attributes: ['plan', 'status'],
-        required: false,
-      }],
+      include: [subscriptionInclude],
     });
 
     // OPTIMIZED: Get counts for all users in a SINGLE query instead of N+1
@@ -2691,6 +2701,37 @@ class AdminService {
       unmappedPriceIds: Array.from(unmappedPriceIds.entries()).map(([priceId, count]) => ({
         priceId,
         count,
+      })),
+    };
+  }
+
+  /** Admin view of a buyer's preferences — includes adminNotes. */
+  async getUserPreferences(userId: string) {
+    const prefs = await buyerPreferencesService.getByUserId(userId);
+    return prefs ? prefs.toJSON() : null;
+  }
+
+  async updateUserPreferences(userId: string, data: BuyerPreferencesInput) {
+    const prefs = await buyerPreferencesService.upsert(userId, data, 'ADMIN');
+    return prefs.toJSON();
+  }
+
+  async getUserMatches(userId: string, limit = 10) {
+    const prefs = await buyerPreferencesService.getByUserId(userId);
+    if (!prefs || !hasAnyCriteria(prefs)) {
+      return { hasPreferences: false, matches: [] };
+    }
+    const listings = await Listing.findAll({
+      where: { status: ListingStatus.ACTIVE },
+      limit: 500,
+    });
+    const ranked = rankListings(listings, prefs, limit);
+    return {
+      hasPreferences: true,
+      matches: ranked.map((l) => ({
+        listing: l.toJSON(),
+        matchScore: l.matchScore,
+        matchReasons: l.matchReasons,
       })),
     };
   }

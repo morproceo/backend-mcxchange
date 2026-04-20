@@ -27,6 +27,9 @@ import {
   checkCreditReportPurchase,
   creditsafeOpenSearch,
   creditsafePurchasedReport,
+  getMyPreferences,
+  updateMyPreferences,
+  getMyMatches,
 } from '../controllers/buyerController';
 import { authenticate, buyerOnly, requireSubscription, requireProfessionalSubscription, requireEnterpriseSubscription } from '../middleware/auth';
 
@@ -81,5 +84,10 @@ router.get('/creditsafe/purchase/:connectId', checkCreditReportPurchase);
 // Terms of Service - no subscription required
 router.get('/terms-status', getTermsStatus);
 router.post('/accept-terms', acceptTerms);
+
+// Buyer preferences (what I'm looking to buy) + matches
+router.get('/preferences', getMyPreferences);
+router.put('/preferences', updateMyPreferences);
+router.get('/matches', getMyMatches);
 
 export default router;

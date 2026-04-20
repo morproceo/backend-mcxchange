@@ -47,6 +47,9 @@ import {
   adjustCreditsValidation,
   cancelUserSubscription,
   getSubscriptionAnalytics,
+  getAdminUserPreferences,
+  updateAdminUserPreferences,
+  getAdminUserMatches,
   blockUserForMismatch,
   blockUserMismatchValidation,
   getAllDisputes,
@@ -100,6 +103,11 @@ router.post('/users/:id/unblock', unblockUser);
 router.post('/users/:id/verify-seller', verifySeller);
 router.post('/users/:id/credits', validate(adjustCreditsValidation), adjustUserCredits);
 router.post('/users/:id/cancel-subscription', cancelUserSubscription);
+
+// Buyer preferences (admin view/edit) + match suggestions
+router.get('/users/:id/preferences', getAdminUserPreferences);
+router.put('/users/:id/preferences', updateAdminUserPreferences);
+router.get('/users/:id/matches', getAdminUserMatches);
 
 // Subscription analytics (live from Stripe)
 router.get('/analytics/subscriptions', getSubscriptionAnalytics);

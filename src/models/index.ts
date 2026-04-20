@@ -2560,6 +2560,81 @@ ProcessedWebhookEvent.init(
   }
 );
 
+// ==================== BUYER PREFERENCES MODEL ====================
+
+export class BuyerPreferences extends Model {
+  declare id: string;
+  declare userId: string;
+  declare minPrice?: number | null;
+  declare maxPrice?: number | null;
+  declare preferredStates?: string[] | null;
+  declare cargoTypes?: string[] | null;
+  declare minYearsActive?: number | null;
+  declare minFleetSize?: number | null;
+  declare preferredSafetyRating?: SafetyRating | null;
+  declare needsAmazon?: boolean | null;
+  declare minAmazonRelayScore?: string | null;
+  declare needsHighway?: boolean | null;
+  declare needsFactoring?: boolean | null;
+  declare needsRmis?: boolean | null;
+  declare needsEmail?: boolean | null;
+  declare needsPhone?: boolean | null;
+  declare needsInsurance?: boolean | null;
+  declare buyerNotes?: string | null;
+  declare adminNotes?: string | null;
+  declare lastEditedBy?: 'BUYER' | 'ADMIN' | null;
+  declare lastEditedAt?: Date | null;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+
+  declare readonly user?: User;
+}
+
+BuyerPreferences.init(
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      unique: true,
+    },
+    minPrice: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
+    maxPrice: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
+    preferredStates: { type: DataTypes.JSON, allowNull: true },
+    cargoTypes: { type: DataTypes.JSON, allowNull: true },
+    minYearsActive: { type: DataTypes.INTEGER, allowNull: true },
+    minFleetSize: { type: DataTypes.INTEGER, allowNull: true },
+    preferredSafetyRating: {
+      type: DataTypes.ENUM(...Object.values(SafetyRating)),
+      allowNull: true,
+    },
+    needsAmazon: { type: DataTypes.BOOLEAN, allowNull: true },
+    minAmazonRelayScore: { type: DataTypes.STRING(2), allowNull: true },
+    needsHighway: { type: DataTypes.BOOLEAN, allowNull: true },
+    needsFactoring: { type: DataTypes.BOOLEAN, allowNull: true },
+    needsRmis: { type: DataTypes.BOOLEAN, allowNull: true },
+    needsEmail: { type: DataTypes.BOOLEAN, allowNull: true },
+    needsPhone: { type: DataTypes.BOOLEAN, allowNull: true },
+    needsInsurance: { type: DataTypes.BOOLEAN, allowNull: true },
+    buyerNotes: { type: DataTypes.TEXT, allowNull: true },
+    adminNotes: { type: DataTypes.TEXT, allowNull: true },
+    lastEditedBy: {
+      type: DataTypes.ENUM('BUYER', 'ADMIN'),
+      allowNull: true,
+    },
+    lastEditedAt: { type: DataTypes.DATE, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'buyer_preferences',
+    indexes: [{ unique: true, fields: ['userId'] }],
+  }
+);
+
 // ==================== ASSOCIATIONS ====================
 
 // User associations
@@ -2575,6 +2650,8 @@ User.hasMany(SavedListing, { foreignKey: 'userId', as: 'savedListings' });
 User.hasMany(UnlockedListing, { foreignKey: 'userId', as: 'unlockedListings' });
 User.hasMany(CreditTransaction, { foreignKey: 'userId', as: 'creditHistory' });
 User.hasOne(Subscription, { foreignKey: 'userId', as: 'subscription' });
+User.hasOne(BuyerPreferences, { foreignKey: 'userId', as: 'preferences' });
+BuyerPreferences.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 User.hasMany(Message, { foreignKey: 'senderId', as: 'sentMessages' });
 User.hasMany(Message, { foreignKey: 'receiverId', as: 'receivedMessages' });
 User.hasMany(Notification, { foreignKey: 'userId', as: 'notifications' });
@@ -2702,6 +2779,7 @@ export default {
   UnlockedListing,
   CreditTransaction,
   Subscription,
+  BuyerPreferences,
   Message,
   Notification,
   PremiumRequest,

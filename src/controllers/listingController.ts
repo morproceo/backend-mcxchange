@@ -5,6 +5,8 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest, ListingQueryParams } from '../types';
 import { parseBooleanParam, parseIntParam } from '../utils/helpers';
 import { Subscription, SubscriptionPlan, SubscriptionStatus, UserRole, UnlockedListing } from '../models';
+import { buyerPreferencesService } from '../services/buyerPreferencesService';
+import { scoreListing, hasAnyCriteria } from '../services/matchService';
 
 // Mask an MC/DOT number: show first half, replace rest with bullets
 function maskNumber(num: string): string {
@@ -82,6 +84,20 @@ export const getListings = asyncHandler(async (req: AuthRequest, res: Response) 
       if (listing.dotNumber) listing.dotNumber = maskNumber(listing.dotNumber);
       return listing;
     });
+  }
+
+  // Attach match score for authenticated buyers with preferences
+  if (userId && !isAdmin && !isSeller) {
+    const prefs = await buyerPreferencesService.getByUserId(userId);
+    if (prefs && hasAnyCriteria(prefs)) {
+      const sourceListings = result.listings;
+      listings = listings.map((masked: any, i: number) => {
+        const src = sourceListings[i];
+        if (!src) return masked;
+        const { score, reasons } = scoreListing(src, prefs);
+        return { ...masked, matchScore: score, matchReasons: reasons };
+      });
+    }
   }
 
   res.json({
