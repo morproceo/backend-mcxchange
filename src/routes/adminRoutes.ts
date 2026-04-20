@@ -45,6 +45,9 @@ import {
   getStripeBalanceTransactions,
   adjustUserCredits,
   adjustCreditsValidation,
+  recordManualDeposit,
+  recordManualDepositValidation,
+  getUserListingsForDeposit,
   cancelUserSubscription,
   getSubscriptionAnalytics,
   getAdminUserPreferences,
@@ -102,6 +105,8 @@ router.post('/users/:id/block', validate(blockUserValidation), blockUser);
 router.post('/users/:id/unblock', unblockUser);
 router.post('/users/:id/verify-seller', verifySeller);
 router.post('/users/:id/credits', validate(adjustCreditsValidation), adjustUserCredits);
+router.get('/users/:id/listings-for-deposit', getUserListingsForDeposit);
+router.post('/users/:id/manual-deposit', validate(recordManualDepositValidation), recordManualDeposit);
 router.post('/users/:id/cancel-subscription', cancelUserSubscription);
 
 // Buyer preferences (admin view/edit) + match suggestions

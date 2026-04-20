@@ -15,6 +15,7 @@ import {
   AccountDispute,
   UnlockedListing,
   CreditTransaction,
+  Payment,
   ListingStatus,
   UserStatus,
   PremiumRequestStatus,
@@ -24,6 +25,10 @@ import {
   OfferStatus,
   AccountDisputeStatus,
   CreditTransactionType,
+  PaymentType,
+  PaymentStatus,
+  PaymentMethod,
+  SubscriptionStatus,
   Subscription,
 } from '../models';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../middleware/errorHandler';
@@ -2733,6 +2738,231 @@ class AdminService {
         matchScore: l.matchScore,
         matchReasons: l.matchReasons,
       })),
+    };
+  }
+
+  // List the buyer's transactions that are awaiting deposit — used to populate the manual-deposit MC dropdown
+  async getUserListingsForDeposit(userId: string) {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    const transactions = await Transaction.findAll({
+      where: {
+        buyerId: userId,
+        status: TransactionStatus.AWAITING_DEPOSIT,
+      },
+      include: [
+        {
+          model: Listing,
+          as: 'listing',
+          attributes: ['id', 'mcNumber', 'dotNumber', 'legalName', 'title', 'askingPrice', 'city', 'state'],
+        },
+      ],
+      order: [['createdAt', 'DESC']],
+    });
+
+    return transactions.map((t) => ({
+      transactionId: t.id,
+      listingId: t.listingId,
+      depositAmount: t.depositAmount,
+      agreedPrice: t.agreedPrice,
+      status: t.status,
+      createdAt: t.createdAt,
+      mc: t.listing
+        ? {
+            mcNumber: t.listing.mcNumber,
+            dotNumber: t.listing.dotNumber,
+            legalName: t.listing.legalName,
+            title: t.listing.title,
+            askingPrice: t.listing.askingPrice,
+            location: `${t.listing.city || ''}${t.listing.city && t.listing.state ? ', ' : ''}${t.listing.state || ''}`,
+          }
+        : null,
+    }));
+  }
+
+  // Record a deposit the admin received OUTSIDE the platform (bank transfer, cash, etc.).
+  // If transactionId is provided, advances that transaction to DEPOSIT_RECEIVED — mirrors verifyDeposit flow.
+  // If no transactionId (MC not yet listed on the platform), saves a standalone Payment tied to the user with freeform notes.
+  async recordManualDeposit(
+    userId: string,
+    adminId: string,
+    input: {
+      amount: number;
+      paymentMethod: PaymentMethod;
+      reference?: string;
+      transactionId?: string;
+      notes?: string;
+    }
+  ) {
+    const { amount, paymentMethod, reference, transactionId, notes } = input;
+
+    const user = await User.findByPk(userId, {
+      include: [{ model: Subscription, as: 'subscription' }],
+    });
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    const isSubscribed = user.subscription?.status === SubscriptionStatus.ACTIVE;
+    if (!isSubscribed) {
+      throw new BadRequestError('Manual deposit recording is only available for paid (subscribed) users');
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestError('Amount must be a positive number');
+    }
+
+    if (!transactionId && !notes?.trim()) {
+      throw new BadRequestError('Notes are required when no MC listing is selected');
+    }
+
+    // Case 1: linked to an existing transaction — advance it like verifyDeposit does
+    if (transactionId) {
+      const transaction = await Transaction.findByPk(transactionId, {
+        include: [{ model: Listing, as: 'listing' }],
+      });
+
+      if (!transaction) {
+        throw new NotFoundError('Transaction');
+      }
+
+      if (transaction.buyerId !== userId) {
+        throw new BadRequestError('Selected transaction does not belong to this user');
+      }
+
+      if (transaction.status !== TransactionStatus.AWAITING_DEPOSIT) {
+        throw new BadRequestError(`Transaction is in status ${transaction.status}, cannot record deposit`);
+      }
+
+      const now = new Date();
+      const t = await sequelize.transaction();
+      let payment: Payment;
+      try {
+        payment = await Payment.create(
+          {
+            transactionId,
+            userId,
+            type: PaymentType.DEPOSIT,
+            amount,
+            method: paymentMethod,
+            reference: reference || null,
+            status: PaymentStatus.COMPLETED,
+            description: notes?.trim() || `Off-platform deposit recorded by admin`,
+            verifiedBy: adminId,
+            verifiedAt: now,
+            completedAt: now,
+          },
+          { transaction: t }
+        );
+
+        await transaction.update(
+          {
+            status: TransactionStatus.DEPOSIT_RECEIVED,
+            depositPaidAt: now,
+            depositPaymentMethod: paymentMethod,
+            depositPaymentRef: reference || null,
+            adminId,
+          },
+          { transaction: t }
+        );
+
+        await TransactionTimeline.create(
+          {
+            transactionId,
+            status: TransactionStatus.DEPOSIT_RECEIVED,
+            title: 'Deposit Recorded by Admin',
+            description: `Admin recorded an off-platform ${paymentMethod} deposit of $${amount}${reference ? ` (ref: ${reference})` : ''}${notes?.trim() ? ` — Notes: ${notes.trim()}` : ''}`,
+            actorId: adminId,
+            actorRole: UserRole.ADMIN,
+          },
+          { transaction: t }
+        );
+
+        await AdminAction.create(
+          {
+            adminId,
+            action: 'RECORD_MANUAL_DEPOSIT',
+            targetType: 'TRANSACTION',
+            targetId: transactionId,
+            reason: `Recorded $${amount} ${paymentMethod} deposit for user ${user.email}${reference ? ` (ref: ${reference})` : ''}${notes?.trim() ? ` — ${notes.trim()}` : ''}`,
+          },
+          { transaction: t }
+        );
+
+        await t.commit();
+      } catch (error) {
+        await t.rollback();
+        throw error;
+      }
+
+      // Notify buyer + seller outside the transaction
+      await Notification.create({
+        userId: transaction.buyerId,
+        type: NotificationType.PAYMENT,
+        title: 'Deposit Confirmed',
+        message: `Your deposit of $${amount} has been recorded. The transaction is moving forward.`,
+      });
+      await Notification.create({
+        userId: transaction.sellerId,
+        type: NotificationType.PAYMENT,
+        title: 'Deposit Received',
+        message: `The buyer's deposit has been confirmed. The transaction is now in review.`,
+      });
+
+      return {
+        mode: 'linked' as const,
+        paymentId: payment.id,
+        transactionId,
+        listingId: transaction.listingId,
+        amount,
+        paymentMethod,
+        reference: reference || null,
+        notes: notes?.trim() || null,
+      };
+    }
+
+    // Case 2: no transaction — MC not yet on the platform. Save standalone Payment + admin action.
+    const payment = await Payment.create({
+      userId,
+      type: PaymentType.DEPOSIT,
+      amount,
+      method: paymentMethod,
+      reference: reference || null,
+      status: PaymentStatus.COMPLETED,
+      description: `Off-platform deposit (MC not on platform). Notes: ${notes!.trim()}`,
+      metadata: JSON.stringify({ offPlatform: true, notes: notes!.trim() }),
+      verifiedBy: adminId,
+      verifiedAt: new Date(),
+      completedAt: new Date(),
+    });
+
+    await AdminAction.create({
+      adminId,
+      action: 'RECORD_MANUAL_DEPOSIT',
+      targetType: 'USER',
+      targetId: userId,
+      reason: `Recorded $${amount} ${paymentMethod} off-platform deposit (MC not on platform)${reference ? ` (ref: ${reference})` : ''} — ${notes!.trim()}`,
+    });
+
+    await Notification.create({
+      userId,
+      type: NotificationType.PAYMENT,
+      title: 'Deposit Recorded',
+      message: `A deposit of $${amount} has been recorded on your account.`,
+    });
+
+    return {
+      mode: 'standalone' as const,
+      paymentId: payment.id,
+      transactionId: null,
+      listingId: null,
+      amount,
+      paymentMethod,
+      reference: reference || null,
+      notes: notes!.trim(),
     };
   }
 }

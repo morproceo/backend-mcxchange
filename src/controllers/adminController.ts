@@ -936,6 +936,50 @@ export const adjustUserCredits = asyncHandler(async (req: AuthRequest, res: Resp
 });
 
 // ============================================
+// Manual Deposit Recording (off-platform)
+// ============================================
+
+export const recordManualDepositValidation = [
+  body('amount').isFloat({ gt: 0 }).withMessage('Amount must be a positive number'),
+  body('paymentMethod').isIn(['ZELLE', 'WIRE', 'CHECK', 'STRIPE']).withMessage('Invalid payment method'),
+  body('transactionId').optional({ nullable: true, checkFalsy: true }).isUUID().withMessage('Transaction ID must be a valid UUID'),
+  body('reference').optional({ nullable: true, checkFalsy: true }).trim().isLength({ max: 255 }),
+  body('notes').optional({ nullable: true, checkFalsy: true }).trim().isLength({ max: 2000 }),
+];
+
+export const recordManualDeposit = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { id: userId } = req.params;
+  const { amount, paymentMethod, transactionId, reference, notes } = req.body;
+
+  const result = await adminService.recordManualDeposit(userId, req.user.id, {
+    amount: Number(amount),
+    paymentMethod,
+    transactionId: transactionId || undefined,
+    reference: reference || undefined,
+    notes: notes || undefined,
+  });
+
+  res.json({
+    success: true,
+    data: result,
+    message: result.mode === 'linked'
+      ? 'Deposit recorded and transaction advanced to DEPOSIT_RECEIVED'
+      : 'Deposit recorded (MC not on platform)',
+  });
+});
+
+export const getUserListingsForDeposit = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id: userId } = req.params;
+  const data = await adminService.getUserListingsForDeposit(userId);
+  res.json({ success: true, data });
+});
+
+// ============================================
 // Cancel User Subscription
 // ============================================
 
