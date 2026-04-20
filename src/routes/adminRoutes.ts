@@ -46,6 +46,7 @@ import {
   adjustUserCredits,
   adjustCreditsValidation,
   cancelUserSubscription,
+  getSubscriptionAnalytics,
   blockUserForMismatch,
   blockUserMismatchValidation,
   getAllDisputes,
@@ -99,6 +100,9 @@ router.post('/users/:id/unblock', unblockUser);
 router.post('/users/:id/verify-seller', verifySeller);
 router.post('/users/:id/credits', validate(adjustCreditsValidation), adjustUserCredits);
 router.post('/users/:id/cancel-subscription', cancelUserSubscription);
+
+// Subscription analytics (live from Stripe)
+router.get('/analytics/subscriptions', getSubscriptionAnalytics);
 
 // Premium requests
 router.get('/premium-requests', getPremiumRequests);

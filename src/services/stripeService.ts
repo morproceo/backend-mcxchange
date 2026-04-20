@@ -762,6 +762,38 @@ class StripeService {
   }
 
   /**
+   * List ALL subscriptions across all customers (paginated).
+   * Used for admin analytics (breakdown by plan, MRR, etc.).
+   */
+  async listAllSubscriptions(
+    status: Stripe.SubscriptionListParams['status'] = 'all'
+  ): Promise<Stripe.Subscription[]> {
+    if (!stripe) return [];
+
+    const all: Stripe.Subscription[] = [];
+    let startingAfter: string | undefined;
+
+    try {
+      while (true) {
+        const page = await stripe.subscriptions.list({
+          status,
+          limit: 100,
+          starting_after: startingAfter,
+        });
+
+        all.push(...page.data);
+
+        if (!page.has_more || page.data.length === 0) break;
+        startingAfter = page.data[page.data.length - 1].id;
+      }
+      return all;
+    } catch (error) {
+      logError('Failed to list all subscriptions', error as Error);
+      throw error;
+    }
+  }
+
+  /**
    * Cancel a subscription
    */
   async cancelSubscription(

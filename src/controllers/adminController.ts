@@ -956,6 +956,15 @@ export const cancelUserSubscription = asyncHandler(async (req: AuthRequest, res:
 });
 
 // ============================================
+// Subscription Analytics (live from Stripe)
+// ============================================
+
+export const getSubscriptionAnalytics = asyncHandler(async (_req: AuthRequest, res: Response) => {
+  const data = await adminService.getSubscriptionAnalytics();
+  res.json({ success: true, data });
+});
+
+// ============================================
 // Account Dispute Management
 // ============================================
 

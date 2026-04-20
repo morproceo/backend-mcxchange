@@ -32,7 +32,7 @@ import { emailService } from './emailService';
 import { adminNotificationService } from './adminNotificationService';
 import { config } from '../config';
 import logger from '../utils/logger';
-import { stripeService } from './stripeService';
+import { stripeService, SUBSCRIPTION_PRICE_IDS } from './stripeService';
 
 class AdminService {
   // Get dashboard stats (cached for 5 minutes to reduce query load)
@@ -2605,6 +2605,93 @@ class AdminService {
         : 'Subscription marked as cancelled in database (Stripe cancellation failed — subscription may not exist in Stripe or was already cancelled)',
       stripeCancelled,
       subscription,
+    };
+  }
+
+  /**
+   * Subscription analytics pulled live from Stripe (source of truth for billing).
+   * Groups subscriptions by plan + billing interval + status so admins can see
+   * which plans are actually popular and compute MRR.
+   */
+  async getSubscriptionAnalytics() {
+    // Build a reverse map: priceId -> { plan, interval }
+    const priceIdToPlan = new Map<string, { plan: string; interval: 'monthly' | 'yearly' }>();
+    for (const [plan, prices] of Object.entries(SUBSCRIPTION_PRICE_IDS)) {
+      if (prices.monthly) priceIdToPlan.set(prices.monthly, { plan, interval: 'monthly' });
+      if (prices.yearly) priceIdToPlan.set(prices.yearly, { plan, interval: 'yearly' });
+    }
+
+    const subs = await stripeService.listAllSubscriptions('all');
+
+    type Bucket = {
+      plan: string;
+      interval: 'monthly' | 'yearly' | 'unknown';
+      status: string;
+      count: number;
+      mrr: number; // in cents, normalized to monthly
+    };
+    const bucketMap = new Map<string, Bucket>();
+    const totals: Record<string, number> = {};
+    let mrrTotalCents = 0;
+    const unmappedPriceIds = new Map<string, number>();
+
+    for (const sub of subs) {
+      totals[sub.status] = (totals[sub.status] || 0) + 1;
+
+      const item = sub.items?.data?.[0];
+      const priceId = item?.price?.id;
+      if (!priceId) continue;
+
+      const mapped = priceIdToPlan.get(priceId);
+      const plan = mapped?.plan || 'unknown';
+      const interval = mapped?.interval || 'unknown';
+
+      if (!mapped) {
+        unmappedPriceIds.set(priceId, (unmappedPriceIds.get(priceId) || 0) + 1);
+      }
+
+      // Normalize amount to monthly cents (yearly -> /12). Multiply by quantity.
+      const unitAmount = item?.price?.unit_amount ?? 0;
+      const quantity = item?.quantity ?? 1;
+      const rawMonthly = interval === 'yearly' ? unitAmount / 12 : unitAmount;
+      const itemMrr = Math.round(rawMonthly * quantity);
+
+      const key = `${plan}|${interval}|${sub.status}`;
+      const existing = bucketMap.get(key);
+      if (existing) {
+        existing.count += 1;
+        if (sub.status === 'active' || sub.status === 'trialing') existing.mrr += itemMrr;
+      } else {
+        bucketMap.set(key, {
+          plan,
+          interval,
+          status: sub.status,
+          count: 1,
+          mrr: sub.status === 'active' || sub.status === 'trialing' ? itemMrr : 0,
+        });
+      }
+
+      if (sub.status === 'active' || sub.status === 'trialing') {
+        mrrTotalCents += itemMrr;
+      }
+    }
+
+    const byPlan = Array.from(bucketMap.values()).sort((a, b) => {
+      if (a.plan !== b.plan) return a.plan.localeCompare(b.plan);
+      if (a.interval !== b.interval) return a.interval.localeCompare(b.interval);
+      return a.status.localeCompare(b.status);
+    });
+
+    return {
+      byPlan,
+      totals,
+      totalSubscriptions: subs.length,
+      mrrCents: mrrTotalCents,
+      mrrDollars: mrrTotalCents / 100,
+      unmappedPriceIds: Array.from(unmappedPriceIds.entries()).map(([priceId, count]) => ({
+        priceId,
+        count,
+      })),
     };
   }
 }
