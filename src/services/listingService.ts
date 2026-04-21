@@ -207,6 +207,11 @@ class ListingService {
           where: verified !== undefined ? { verified } : undefined,
           required: verified !== undefined,
         },
+        {
+          association: 'trucks',
+          required: false,
+          attributes: ['id'],
+        },
       ],
     });
 
