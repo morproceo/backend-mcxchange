@@ -58,6 +58,7 @@ export interface ListingQueryParams {
   sortBy?: 'price_asc' | 'price_desc' | 'trust_score' | 'newest' | 'oldest' | 'years_active';
   status?: string;
   sellerId?: string;
+  authorityType?: 'CARRIER' | 'BROKER' | 'FREIGHT_FORWARDER';
 }
 
 // JWT Payload
@@ -201,6 +202,7 @@ export interface CreateListingData {
   isVip?: boolean;
   fmcsaData?: string;
   authorityHistory?: string;
+  authorityType?: 'CARRIER' | 'BROKER' | 'FREIGHT_FORWARDER';
   insuranceHistory?: string;
   insuranceCompany?: string;
   monthlyInsurancePremium?: number;

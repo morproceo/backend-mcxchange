@@ -51,6 +51,7 @@ export const getListings = asyncHandler(async (req: AuthRequest, res: Response) 
     minYears: parseIntParam(req.query.minYears as string),
     sortBy: req.query.sortBy as ListingQueryParams['sortBy'],
     status: req.query.status as string,
+    authorityType: req.query.authorityType as ListingQueryParams['authorityType'],
   };
 
   const result = await listingService.getListings(params);

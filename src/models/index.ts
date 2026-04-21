@@ -46,6 +46,12 @@ export enum AmazonRelayStatus {
   SUSPENDED = 'SUSPENDED'
 }
 
+export enum AuthorityType {
+  CARRIER = 'CARRIER',
+  BROKER = 'BROKER',
+  FREIGHT_FORWARDER = 'FREIGHT_FORWARDER'
+}
+
 export enum TruckCondition {
   EXCELLENT = 'EXCELLENT',
   GOOD = 'GOOD',
@@ -611,6 +617,7 @@ export class Listing extends Model {
   declare city: string;
   declare state: string;
   declare address?: string;
+  declare authorityType: AuthorityType;
   declare yearsActive: number;
   declare fleetSize: number;
   declare totalDrivers: number;
@@ -728,6 +735,12 @@ Listing.init(
     address: {
       type: DataTypes.STRING(500),
       allowNull: true,
+    },
+    authorityType: {
+      type: DataTypes.ENUM(...Object.values(AuthorityType)),
+      allowNull: false,
+      defaultValue: AuthorityType.CARRIER,
+      comment: 'Whether the MC being sold is a motor carrier, a broker, or a freight forwarder',
     },
     yearsActive: {
       type: DataTypes.INTEGER,
