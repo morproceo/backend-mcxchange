@@ -171,6 +171,56 @@ const avatarMulter = multer({
 // Avatar upload middleware
 export const avatarUpload = avatarMulter.single('avatar');
 
+// Truck photo upload — images only, up to 5 per request, uploads to S3 if enabled
+const truckPhotoMulter = multer({
+  storage: s3Client ? multer.memoryStorage() : documentStorage,
+  fileFilter: imageFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB per image
+  },
+});
+
+const multerTruckPhotos = truckPhotoMulter.array('photos', 5);
+
+async function uploadTruckPhotoToS3(file: Express.Multer.File): Promise<string> {
+  if (!s3Client) throw new Error('S3 is not configured');
+  const uniqueId = uuidv4();
+  const ext = path.extname(file.originalname);
+  const key = `trucks/${uniqueId}${ext}`;
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: config.upload.s3.bucket,
+      Key: key,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+    })
+  );
+  return `https://${config.upload.s3.bucket}.s3.${config.upload.s3.region}.amazonaws.com/${key}`;
+}
+
+export const uploadTruckPhotos = (req: Request, res: Response, next: NextFunction) => {
+  multerTruckPhotos(req, res, async (err: any) => {
+    if (err) {
+      logger.error('Truck photo upload error:', err?.message || err);
+      return next(err);
+    }
+    const files = (req.files as Express.Multer.File[] | undefined) || [];
+    if (s3Client && files.length > 0) {
+      try {
+        for (const f of files) {
+          if (f.buffer) {
+            (f as any).s3Url = await uploadTruckPhotoToS3(f);
+          }
+        }
+      } catch (s3Err: any) {
+        logger.error('S3 truck photo upload failed:', s3Err?.message || s3Err);
+        return next(new Error(`Failed to upload truck photos: ${s3Err?.message || 'Unknown error'}`));
+      }
+    }
+    next();
+  });
+};
+
 /**
  * Generate a pre-signed URL for an S3 object.
  * Extracts the S3 key from a full S3 URL or uses the string as-is if it's already a key.

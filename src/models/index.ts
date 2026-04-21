@@ -46,6 +46,13 @@ export enum AmazonRelayStatus {
   SUSPENDED = 'SUSPENDED'
 }
 
+export enum TruckCondition {
+  EXCELLENT = 'EXCELLENT',
+  GOOD = 'GOOD',
+  FAIR = 'FAIR',
+  POOR = 'POOR'
+}
+
 export enum DocumentType {
   INSURANCE = 'INSURANCE',
   UCC_FILING = 'UCC_FILING',
@@ -2681,6 +2688,91 @@ MatchNotificationSent.init(
   }
 );
 
+// ==================== TRUCK MODELS ====================
+// A listing can optionally include one or more trucks (the physical asset)
+// being sold together with the motor carrier authority.
+
+export class Truck extends Model {
+  declare id: string;
+  declare listingId: string;
+  declare make: string;
+  declare model: string;
+  declare year?: number | null;
+  declare mileage?: number | null;
+  declare vin?: string | null;
+  declare condition?: TruckCondition | null;
+  declare description?: string | null;
+  declare displayOrder: number;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+
+  declare readonly photos?: TruckPhoto[];
+}
+
+Truck.init(
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    listingId: { type: DataTypes.UUID, allowNull: false },
+    make: { type: DataTypes.STRING(100), allowNull: false },
+    model: { type: DataTypes.STRING(100), allowNull: false },
+    year: { type: DataTypes.INTEGER, allowNull: true },
+    mileage: { type: DataTypes.INTEGER, allowNull: true },
+    vin: { type: DataTypes.STRING(32), allowNull: true },
+    condition: {
+      type: DataTypes.ENUM(...Object.values(TruckCondition)),
+      allowNull: true,
+    },
+    description: { type: DataTypes.TEXT, allowNull: true },
+    displayOrder: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+  },
+  {
+    sequelize,
+    tableName: 'trucks',
+    indexes: [{ fields: ['listingId'] }],
+  }
+);
+
+export class TruckPhoto extends Model {
+  declare id: string;
+  declare truckId: string;
+  declare url: string;
+  declare filename?: string | null;
+  declare displayOrder: number;
+  declare readonly createdAt: Date;
+}
+
+TruckPhoto.init(
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    truckId: { type: DataTypes.UUID, allowNull: false },
+    url: { type: DataTypes.STRING(1000), allowNull: false },
+    filename: { type: DataTypes.STRING(255), allowNull: true },
+    displayOrder: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+  },
+  {
+    sequelize,
+    tableName: 'truck_photos',
+    updatedAt: false,
+    indexes: [{ fields: ['truckId'] }],
+  }
+);
+
 // ==================== ASSOCIATIONS ====================
 
 // User associations
@@ -2725,6 +2817,12 @@ Listing.hasMany(Transaction, { foreignKey: 'listingId', as: 'transactions' });
 Listing.hasMany(SavedListing, { foreignKey: 'listingId', as: 'savedBy' });
 Listing.hasMany(UnlockedListing, { foreignKey: 'listingId', as: 'unlockedBy' });
 Listing.hasMany(PremiumRequest, { foreignKey: 'listingId', as: 'premiumRequests' });
+Listing.hasMany(Truck, { foreignKey: 'listingId', as: 'trucks' });
+
+// Truck associations
+Truck.belongsTo(Listing, { foreignKey: 'listingId', as: 'listing' });
+Truck.hasMany(TruckPhoto, { foreignKey: 'truckId', as: 'photos' });
+TruckPhoto.belongsTo(Truck, { foreignKey: 'truckId', as: 'truck' });
 
 // Document associations
 Document.belongsTo(Listing, { foreignKey: 'listingId', as: 'listing' });
@@ -2827,6 +2925,8 @@ export default {
   Subscription,
   BuyerPreferences,
   MatchNotificationSent,
+  Truck,
+  TruckPhoto,
   Message,
   Notification,
   PremiumRequest,

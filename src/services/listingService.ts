@@ -236,6 +236,11 @@ class ListingService {
           required: false,
           attributes: ['id', 'type', 'name', 'status'],
         },
+        {
+          association: 'trucks',
+          required: false,
+          include: [{ association: 'photos' }],
+        },
       ],
     });
 
@@ -323,12 +328,41 @@ class ListingService {
       status: initialStatus,
     });
 
+    // Optionally create trucks if the seller supplied them with the listing.
+    const trucksInput = (data as any).trucks as Array<{
+      make: string;
+      model: string;
+      year?: number | null;
+      mileage?: number | null;
+      vin?: string | null;
+      condition?: string | null;
+      description?: string | null;
+    }> | undefined;
+    if (trucksInput && trucksInput.length > 0) {
+      const { truckService } = await import('./truckService');
+      await truckService.createMany(
+        listing.id,
+        trucksInput.filter((t) => t && t.make && t.model).map((t) => ({
+          make: t.make,
+          model: t.model,
+          year: t.year ?? null,
+          mileage: t.mileage ?? null,
+          vin: t.vin ?? null,
+          condition: (t.condition as any) ?? null,
+          description: t.description ?? null,
+        }))
+      );
+    }
+
     const listingWithSeller = await Listing.findByPk(listing.id, {
-      include: [{
-        model: User,
-        as: 'seller',
-        attributes: ['id', 'name', 'verified', 'trustScore'],
-      }],
+      include: [
+        {
+          model: User,
+          as: 'seller',
+          attributes: ['id', 'name', 'verified', 'trustScore'],
+        },
+        { association: 'trucks', required: false, include: [{ association: 'photos' }] },
+      ],
     });
 
     // Invalidate listings cache (new listing added)
