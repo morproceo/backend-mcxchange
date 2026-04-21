@@ -2635,6 +2635,52 @@ BuyerPreferences.init(
   }
 );
 
+// ==================== MATCH NOTIFICATION SENT MODEL ====================
+// Dedupe table so a buyer is never emailed twice about the same listing.
+
+export type MatchNotificationReason = 'amazon' | 'score';
+
+export class MatchNotificationSent extends Model {
+  declare id: string;
+  declare buyerId: string;
+  declare listingId: string;
+  declare reason: MatchNotificationReason;
+  declare matchScore?: number | null;
+  declare readonly sentAt: Date;
+}
+
+MatchNotificationSent.init(
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    buyerId: { type: DataTypes.UUID, allowNull: false },
+    listingId: { type: DataTypes.UUID, allowNull: false },
+    reason: {
+      type: DataTypes.ENUM('amazon', 'score'),
+      allowNull: false,
+    },
+    matchScore: { type: DataTypes.INTEGER, allowNull: true },
+    sentAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    sequelize,
+    tableName: 'match_notifications_sent',
+    timestamps: false,
+    indexes: [
+      { unique: true, fields: ['buyerId', 'listingId', 'reason'] },
+      { fields: ['listingId'] },
+      { fields: ['buyerId'] },
+    ],
+  }
+);
+
 // ==================== ASSOCIATIONS ====================
 
 // User associations
@@ -2780,6 +2826,7 @@ export default {
   CreditTransaction,
   Subscription,
   BuyerPreferences,
+  MatchNotificationSent,
   Message,
   Notification,
   PremiumRequest,

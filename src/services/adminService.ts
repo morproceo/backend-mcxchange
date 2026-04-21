@@ -1,6 +1,7 @@
 import { Op, QueryTypes } from 'sequelize';
 import sequelize from '../config/database';
 import { cacheService, CacheKeys, CacheTTL } from './cacheService';
+import { notifyMatchingBuyers } from './matchNotificationService';
 import {
   User,
   Listing,
@@ -182,6 +183,12 @@ class AdminService {
       title: 'Listing Approved',
       message: `Your listing MC-${listing.mcNumber} has been approved and is now live.`,
       link: `/seller/listings`,
+    });
+
+    // Fan out match emails to buyers whose preferences match this listing.
+    // Fire-and-forget — we don't want email failures to block the approval response.
+    notifyMatchingBuyers(listingId).catch((err) => {
+      console.error('notifyMatchingBuyers failed for listing', listingId, err);
     });
 
     return listing;
@@ -1881,6 +1888,13 @@ class AdminService {
       message: `A listing for MC-${data.mcNumber} has been created for your account.`,
       link: `/seller/listings`,
     });
+
+    // Fan out match emails if this admin-created listing is already ACTIVE.
+    if (listing.status === ListingStatus.ACTIVE) {
+      notifyMatchingBuyers(listing.id).catch((err) => {
+        console.error('notifyMatchingBuyers failed for listing', listing.id, err);
+      });
+    }
 
     return listing;
   }

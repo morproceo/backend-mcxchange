@@ -1107,6 +1107,100 @@ class EmailService {
           View Request: {{adminUrl}}
         `,
       },
+      'amazon-match': {
+        subject: 'New Amazon Relay carrier just listed on Domilea',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>${baseStyles}</head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>📦 New Amazon Relay Carrier</h1>
+              </div>
+              <div class="content">
+                <h2>Hi {{name}},</h2>
+                <p>You told us you're looking for a motor carrier with <strong>active Amazon Relay</strong> — one just got listed on Domilea.</p>
+                <div class="highlight">
+                  <p><strong>Location:</strong> {{state}}</p>
+                  <p><strong>Listed price:</strong> <span class="amount">\${{price}}</span></p>
+                  <p><strong>Amazon Relay status:</strong> {{amazonStatus}}{{amazonScoreLine}}</p>
+                </div>
+                <p>Head to Domilea and unlock the full details for 1 credit.</p>
+                <a href="{{listingUrl}}" class="button">View this listing</a>
+                <p style="font-size: 12px; color: #888; margin-top: 30px;">You're getting this because your buyer preferences say you want Amazon Relay. <a href="{{preferencesUrl}}">Update your preferences</a>.</p>
+              </div>
+              <div class="footer">
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+        text: `
+          New Amazon Relay carrier just listed on Domilea
+
+          Hi {{name}},
+
+          A motor carrier with active Amazon Relay just got listed. You said you were looking for one.
+
+          State: {{state}}
+          Listed price: \${{price}}
+          Amazon Relay: {{amazonStatus}}{{amazonScoreLine}}
+
+          View the listing: {{listingUrl}}
+
+          Update your preferences: {{preferencesUrl}}
+        `,
+      },
+      'score-match': {
+        subject: 'New listing matches your criteria ({{matchScore}}% match)',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>${baseStyles}</head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>🎯 {{matchScore}}% Match</h1>
+              </div>
+              <div class="content">
+                <h2>Hi {{name}},</h2>
+                <p>A new motor carrier was just listed on Domilea and it matches what you're looking for.</p>
+                <div class="highlight">
+                  <p><strong>Match score:</strong> <span class="amount">{{matchScore}}%</span></p>
+                  <p><strong>Why it matches:</strong> {{matchReasons}}</p>
+                  <p><strong>Location:</strong> {{state}}</p>
+                  <p><strong>Listed price:</strong> \${{price}}</p>
+                </div>
+                <p>Unlock the MC, DOT, and company details for 1 credit.</p>
+                <a href="{{listingUrl}}" class="button">View this listing</a>
+                <p style="font-size: 12px; color: #888; margin-top: 30px;">You're getting this because your saved buyer preferences matched this listing. <a href="{{preferencesUrl}}">Update your preferences</a>.</p>
+              </div>
+              <div class="footer">
+                <p>&copy; ${new Date().getFullYear()} Domilea. All rights reserved.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+        text: `
+          New listing matches your criteria ({{matchScore}}% match)
+
+          Hi {{name}},
+
+          A new motor carrier was just listed on Domilea and matches your saved preferences.
+
+          Match score: {{matchScore}}%
+          Why it matches: {{matchReasons}}
+          State: {{state}}
+          Listed price: \${{price}}
+
+          View the listing: {{listingUrl}}
+
+          Update your preferences: {{preferencesUrl}}
+        `,
+      },
     };
   }
 
@@ -1224,6 +1318,44 @@ class EmailService {
     data: ListingStatusData & { dashboardUrl: string }
   ): Promise<boolean> {
     const template = this.compileTemplate('listing-rejected', data);
+    return this.send(to, template.subject, template.html, template.text);
+  }
+
+  /**
+   * Send "new Amazon Relay carrier listed" notification to a buyer who asked for Amazon.
+   */
+  async sendAmazonMatchNotification(
+    to: string,
+    data: {
+      name: string;
+      state: string;
+      price: string;
+      amazonStatus: string;
+      amazonScoreLine: string;
+      listingUrl: string;
+      preferencesUrl: string;
+    }
+  ): Promise<boolean> {
+    const template = this.compileTemplate('amazon-match', data);
+    return this.send(to, template.subject, template.html, template.text);
+  }
+
+  /**
+   * Send "new listing matches your preferences" notification to a buyer.
+   */
+  async sendScoreMatchNotification(
+    to: string,
+    data: {
+      name: string;
+      matchScore: number;
+      matchReasons: string;
+      state: string;
+      price: string;
+      listingUrl: string;
+      preferencesUrl: string;
+    }
+  ): Promise<boolean> {
+    const template = this.compileTemplate('score-match', data);
     return this.send(to, template.subject, template.html, template.text);
   }
 

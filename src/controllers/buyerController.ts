@@ -11,6 +11,12 @@ import { creditService } from '../services/creditService';
 import { buyerPreferencesService } from '../services/buyerPreferencesService';
 import { rankListings, hasAnyCriteria } from '../services/matchService';
 
+function maskNumber(num: string | null | undefined): string | null | undefined {
+  if (!num) return num;
+  const half = Math.ceil(num.length / 2);
+  return num.substring(0, half) + '•'.repeat(num.length - half);
+}
+
 // Get buyer dashboard stats
 export const getDashboardStats = asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.user) {
@@ -991,15 +997,32 @@ export const getMyMatches = asyncHandler(async (req: AuthRequest, res: Response)
     limit: 500,
   });
   const ranked = rankListings(listings, prefs, limit);
+
+  const unlockedRecords = await UnlockedListing.findAll({
+    where: { userId: req.user.id },
+    attributes: ['listingId'],
+  });
+  const unlockedIds = new Set(unlockedRecords.map((u: any) => u.listingId));
+
   res.json({
     success: true,
     data: {
       hasPreferences: true,
-      matches: ranked.map((l) => ({
-        listing: l.toJSON(),
-        matchScore: l.matchScore,
-        matchReasons: l.matchReasons,
-      })),
+      matches: ranked.map((l) => {
+        const raw = l.toJSON() as any;
+        const isUnlocked = unlockedIds.has(raw.id);
+        if (!isUnlocked) {
+          raw.mcNumber = maskNumber(raw.mcNumber);
+          if (raw.dotNumber) raw.dotNumber = maskNumber(raw.dotNumber);
+          raw.legalName = null;
+        }
+        return {
+          listing: raw,
+          matchScore: l.matchScore,
+          matchReasons: l.matchReasons,
+          isUnlocked,
+        };
+      }),
     },
   });
 });
