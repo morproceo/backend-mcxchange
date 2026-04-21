@@ -12,9 +12,11 @@ import {
   ListingVisibility,
   SafetyRating,
   AmazonRelayStatus,
+  AuthorityType,
   CreditTransactionType,
   SubscriptionStatus,
 } from '../models';
+import { deriveAuthorityType } from '../utils/authorityType';
 import { ListingQueryParams, CreateListingData, PaginationInfo } from '../types';
 import { NotFoundError, ForbiddenError } from '../middleware/errorHandler';
 import { getPaginationInfo } from '../utils/helpers';
@@ -77,6 +79,7 @@ class ListingService {
       sortBy = 'newest',
       status,
       sellerId,
+      authorityType,
     } = params;
 
     const offset = (page - 1) * limit;
@@ -159,6 +162,11 @@ class ListingService {
       (where as Record<string, unknown>).sellerId = sellerId;
     }
 
+    // Authority type filter (carrier / broker / freight forwarder)
+    if (authorityType) {
+      (where as Record<string, unknown>).authorityType = authorityType;
+    }
+
     // Build orderBy
     let order: Order = [['createdAt', 'DESC']];
     switch (sortBy) {
@@ -183,7 +191,7 @@ class ListingService {
     const cacheKey = `${CacheKeys.LISTINGS}${JSON.stringify({
       status, state, search, minPrice, maxPrice, safetyRating, amazonStatus,
       verified, premium, vip, highwaySetup, hasEmail, hasPhone, minYears,
-      sortBy, sellerId, page, limit,
+      sortBy, sellerId, authorityType, page, limit,
     })}`;
 
     // Try to get from cache first (5 minute TTL)
@@ -289,6 +297,10 @@ class ListingService {
     // If payment was made (submitForReview flag), set status to PENDING_REVIEW
     const initialStatus = data.submitForReview ? ListingStatus.PENDING_REVIEW : ListingStatus.DRAFT;
 
+    const authorityType = (data.authorityType as AuthorityType | undefined)
+      || deriveAuthorityType(data.authorityHistory)
+      || AuthorityType.CARRIER;
+
     const listing = await Listing.create({
       sellerId,
       mcNumber: data.mcNumber,
@@ -301,6 +313,7 @@ class ListingService {
       city: data.city,
       state: data.state.toUpperCase(),
       address: data.address,
+      authorityType,
       yearsActive: data.yearsActive || 0,
       fleetSize: data.fleetSize || 0,
       totalDrivers: data.totalDrivers || 0,
