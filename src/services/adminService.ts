@@ -31,6 +31,8 @@ import {
   PaymentMethod,
   SubscriptionStatus,
   Subscription,
+  Truck,
+  TruckPhoto,
 } from '../models';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../middleware/errorHandler';
 import { getPaginationInfo, calculateDeposit, calculatePlatformFee } from '../utils/helpers';
@@ -819,6 +821,11 @@ class AdminService {
           model: User,
           as: 'seller',
           attributes: ['id', 'name', 'email', 'verified', 'trustScore', 'createdAt', 'phone', 'companyName'],
+        },
+        {
+          model: Truck,
+          as: 'trucks',
+          include: [{ model: TruckPhoto, as: 'photos' }],
         },
       ],
     });
