@@ -47,6 +47,7 @@ export interface ListingQueryParams {
   state?: string;
   safetyRating?: string;
   amazonStatus?: string;
+  authorityType?: string;
   trustLevel?: string;
   verified?: boolean;
   premium?: boolean;
@@ -188,6 +189,7 @@ export interface CreateListingData {
   bondAmount?: number;
   amazonStatus?: string;
   amazonRelayScore?: string;
+  authorityType?: string;
   highwaySetup?: boolean;
   sellingWithEmail?: boolean;
   sellingWithPhone?: boolean;

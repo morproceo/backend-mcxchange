@@ -12,6 +12,7 @@ import {
   ListingVisibility,
   SafetyRating,
   AmazonRelayStatus,
+  AuthorityType,
   CreditTransactionType,
   SubscriptionStatus,
 } from '../models';
@@ -42,6 +43,16 @@ function normalizeSafetyRating(rating: string | undefined | null): SafetyRating 
   return SafetyRating.NONE;
 }
 
+// Normalize authority type to valid enum value, defaulting to MOTOR_CARRIER
+function normalizeAuthorityType(type: string | undefined | null): AuthorityType {
+  if (!type) return AuthorityType.MOTOR_CARRIER;
+  const normalized = type.toUpperCase().trim();
+  if (normalized === AuthorityType.BROKER) return AuthorityType.BROKER;
+  if (normalized === AuthorityType.MOTOR_CARRIER_AND_BROKER) return AuthorityType.MOTOR_CARRIER_AND_BROKER;
+  if (normalized === AuthorityType.FREIGHT_FORWARDER) return AuthorityType.FREIGHT_FORWARDER;
+  return AuthorityType.MOTOR_CARRIER;
+}
+
 // Helper function to normalize Amazon relay status to valid enum value
 function normalizeAmazonStatus(status: string | undefined | null): AmazonRelayStatus {
   if (!status) return AmazonRelayStatus.NONE;
@@ -67,6 +78,7 @@ class ListingService {
       state,
       safetyRating,
       amazonStatus,
+      authorityType,
       verified,
       premium,
       vip,
@@ -122,6 +134,19 @@ class ListingService {
     // Amazon status filter
     if (amazonStatus) {
       (where as Record<string, unknown>).amazonStatus = amazonStatus.toUpperCase();
+    }
+
+    // Authority type filter (comma-separated list, e.g. "BROKER,MOTOR_CARRIER_AND_BROKER")
+    if (authorityType) {
+      const types = authorityType
+        .split(',')
+        .map((t) => t.trim().toUpperCase())
+        .filter(Boolean);
+      if (types.length === 1) {
+        (where as Record<string, unknown>).authorityType = types[0];
+      } else if (types.length > 1) {
+        (where as Record<string, unknown>).authorityType = { [Op.in]: types };
+      }
     }
 
     // Premium filter
@@ -182,7 +207,7 @@ class ListingService {
     // Build cache key from query params (for search results caching)
     const cacheKey = `${CacheKeys.LISTINGS}${JSON.stringify({
       status, state, search, minPrice, maxPrice, safetyRating, amazonStatus,
-      verified, premium, vip, highwaySetup, hasEmail, hasPhone, minYears,
+      authorityType, verified, premium, vip, highwaySetup, hasEmail, hasPhone, minYears,
       sortBy, sellerId, page, limit,
     })}`;
 
@@ -316,6 +341,7 @@ class ListingService {
       bondAmount: data.bondAmount,
       amazonStatus: normalizeAmazonStatus(data.amazonStatus),
       amazonRelayScore: data.amazonRelayScore,
+      authorityType: normalizeAuthorityType(data.authorityType),
       highwaySetup: data.highwaySetup || false,
       sellingWithEmail: data.sellingWithEmail || false,
       sellingWithPhone: data.sellingWithPhone || false,
@@ -409,6 +435,7 @@ class ListingService {
       ...(data.cargoCoverage !== undefined && { cargoCoverage: data.cargoCoverage }),
       ...(data.amazonStatus && { amazonStatus: normalizeAmazonStatus(data.amazonStatus) }),
       ...(data.amazonRelayScore !== undefined && { amazonRelayScore: data.amazonRelayScore }),
+      ...(data.authorityType && { authorityType: normalizeAuthorityType(data.authorityType) }),
       ...(data.highwaySetup !== undefined && { highwaySetup: data.highwaySetup }),
       ...(data.sellingWithEmail !== undefined && { sellingWithEmail: data.sellingWithEmail }),
       ...(data.sellingWithPhone !== undefined && { sellingWithPhone: data.sellingWithPhone }),

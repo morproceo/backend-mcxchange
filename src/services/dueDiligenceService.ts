@@ -303,15 +303,28 @@ class DueDiligenceService {
     });
     totalScore += hasInsurance ? SCORE_WEIGHTS.fmcsa.insuranceOnFile : 0;
 
-    // Factor 4: Authority Status
-    const authorityActive = authority?.commonAuthorityStatus === 'ACTIVE' ||
-                           authority?.contractAuthorityStatus === 'ACTIVE';
+    // Factor 4: Authority Status — credit any active FMCSA authority
+    // (common, contract, OR broker). Broker-only authorities are valid
+    // operating authority and should not be penalized.
+    const commonActive = authority?.commonAuthorityStatus === 'ACTIVE';
+    const contractActive = authority?.contractAuthorityStatus === 'ACTIVE';
+    const brokerActive = authority?.brokerAuthorityStatus === 'ACTIVE';
+    const authorityActive = commonActive || contractActive || brokerActive;
+
+    const activeTypes: string[] = [];
+    if (commonActive) activeTypes.push('Common');
+    if (contractActive) activeTypes.push('Contract');
+    if (brokerActive) activeTypes.push('Broker');
+    const authorityDetail = activeTypes.length > 0
+      ? `Active: ${activeTypes.join(', ')}`
+      : (authority?.commonAuthorityStatus || 'Unknown');
+
     factors.push({
       name: 'Authority Status',
       points: authorityActive ? SCORE_WEIGHTS.fmcsa.authorityStatus : 0,
       maxPoints: SCORE_WEIGHTS.fmcsa.authorityStatus,
       status: authorityActive ? 'pass' : 'warning',
-      detail: authority?.commonAuthorityStatus || 'Unknown',
+      detail: authorityDetail,
     });
     totalScore += authorityActive ? SCORE_WEIGHTS.fmcsa.authorityStatus : 0;
 

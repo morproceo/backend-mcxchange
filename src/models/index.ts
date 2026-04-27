@@ -46,6 +46,13 @@ export enum AmazonRelayStatus {
   SUSPENDED = 'SUSPENDED'
 }
 
+export enum AuthorityType {
+  MOTOR_CARRIER = 'MOTOR_CARRIER',
+  BROKER = 'BROKER',
+  MOTOR_CARRIER_AND_BROKER = 'MOTOR_CARRIER_AND_BROKER',
+  FREIGHT_FORWARDER = 'FREIGHT_FORWARDER'
+}
+
 export enum TruckCondition {
   EXCELLENT = 'EXCELLENT',
   GOOD = 'GOOD',
@@ -622,6 +629,7 @@ export class Listing extends Model {
   declare bondAmount?: number;
   declare amazonStatus: AmazonRelayStatus;
   declare amazonRelayScore?: string;
+  declare authorityType: AuthorityType;
   declare highwaySetup: boolean;
   declare hasFactoring: boolean;
   declare factoringCompany?: string;
@@ -772,6 +780,12 @@ Listing.init(
     amazonRelayScore: {
       type: DataTypes.STRING(10),
       allowNull: true,
+    },
+    authorityType: {
+      type: DataTypes.ENUM(...Object.values(AuthorityType)),
+      defaultValue: AuthorityType.MOTOR_CARRIER,
+      allowNull: false,
+      comment: 'What type of authority is being sold (motor carrier, broker, both, or freight forwarder)',
     },
     highwaySetup: {
       type: DataTypes.BOOLEAN,
