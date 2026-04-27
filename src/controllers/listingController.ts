@@ -42,6 +42,7 @@ export const getListings = asyncHandler(async (req: AuthRequest, res: Response) 
     state: req.query.state as string,
     safetyRating: req.query.safetyRating as string,
     amazonStatus: req.query.amazonStatus as string,
+    authorityType: req.query.authorityType as string,
     verified: parseBooleanParam(req.query.verified as string),
     premium: parseBooleanParam(req.query.premium as string),
     vip: parseBooleanParam(req.query.vip as string),
