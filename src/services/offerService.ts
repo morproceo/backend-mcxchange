@@ -16,6 +16,8 @@ import { CreateOfferData } from '../types';
 import { calculateDeposit, calculatePlatformFee } from '../utils/helpers';
 import { addDays } from 'date-fns';
 import { adminNotificationService } from './adminNotificationService';
+import { emailService } from './emailService';
+import { config } from '../config';
 import logger from '../utils/logger';
 
 class OfferService {
@@ -311,6 +313,41 @@ class OfferService {
       }).catch(err => {
         logger.error('Failed to send admin notification for transaction', err);
       });
+
+      // Send "offer accepted" emails to both parties (best effort)
+      try {
+        const seller = await User.findByPk(offer.sellerId, { attributes: ['email', 'name'] });
+        const buyerEmail = offer.buyer?.email;
+        const buyerName = offer.buyer?.name || 'Buyer';
+        const sellerName = seller?.name || 'Seller';
+        const mcNumber = offer.listing?.mcNumber || 'N/A';
+        const listingTitle = offer.listing?.title || '';
+
+        if (buyerEmail) {
+          await emailService.sendOfferAccepted(buyerEmail, {
+            buyerName,
+            sellerName,
+            mcNumber,
+            listingTitle,
+            offerAmount: buyerPrice,
+            status: 'accepted',
+            actionUrl: `${config.frontendUrl}/transaction/${transaction.id}`,
+          });
+        }
+        if (seller?.email) {
+          await emailService.sendOfferAccepted(seller.email, {
+            buyerName,
+            sellerName,
+            mcNumber,
+            listingTitle,
+            offerAmount: sellerPrice,
+            status: 'accepted',
+            actionUrl: `${config.frontendUrl}/transaction/${transaction.id}`,
+          });
+        }
+      } catch (err) {
+        logger.error('Failed to send offer accepted emails', { offerId, err });
+      }
 
       return { offer, transaction };
     } catch (error) {

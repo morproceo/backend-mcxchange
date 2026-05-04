@@ -4,7 +4,7 @@ import { notificationService } from '../services/notificationService';
 import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { parseIntParam, parseBooleanParam } from '../utils/helpers';
-import { Message, Transaction, TransactionStatus, UserRole, Consultation, ConsultationStatus } from '../models';
+import { Message, Transaction, TransactionStatus, UserRole, Consultation, ConsultationStatus, Offer, OfferStatus } from '../models';
 
 // Get notifications
 export const getNotifications = asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -178,8 +178,13 @@ export const getNavBadgeCounts = asyncHandler(async (req: AuthRequest, res: Resp
     ? await Consultation.count({ where: { status: ConsultationStatus.PAID } })
     : 0;
 
+  // Offers awaiting admin review (admin-only)
+  const pendingAdminOffers = role === UserRole.ADMIN
+    ? await Offer.count({ where: { status: OfferStatus.PENDING_ADMIN } })
+    : 0;
+
   res.json({
     success: true,
-    data: { unreadMessages, newTransactions, activeClosings, paidConsultations },
+    data: { unreadMessages, newTransactions, activeClosings, paidConsultations, pendingAdminOffers },
   });
 });

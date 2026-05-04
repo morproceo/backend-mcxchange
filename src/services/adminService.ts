@@ -1582,6 +1582,11 @@ class AdminService {
           as: 'buyer',
           attributes: ['id', 'name', 'email'],
         },
+        {
+          model: User,
+          as: 'seller',
+          attributes: ['id', 'name', 'email'],
+        },
       ],
     });
 
@@ -1631,6 +1636,25 @@ class AdminService {
       link: `/seller/offers`,
       metadata: JSON.stringify({ offerId: offer.id, listingId: listing?.id }),
     });
+
+    // Send email to seller (best effort — don't fail the operation if SMTP fails)
+    const seller = (offer as any).seller;
+    const buyer = (offer as any).buyer;
+    if (seller?.email) {
+      try {
+        await emailService.sendOfferNotification(seller.email, {
+          sellerName: seller.name || 'Seller',
+          buyerName: buyer?.name || 'Buyer',
+          mcNumber: listing?.mcNumber || 'N/A',
+          listingTitle: listing?.title || '',
+          offerAmount: sellerAmount,
+          message: messageToSeller,
+          offerUrl: `${config.frontendUrl}/seller/offers`,
+        });
+      } catch (err) {
+        logger.error('Failed to send offer notification email to seller', { offerId, err });
+      }
+    }
 
     return offer;
   }
