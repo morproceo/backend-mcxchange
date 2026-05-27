@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Op } from 'sequelize';
+import { Op, fn, col } from 'sequelize';
 import {
   ManagedCompany, ComplianceDocument, Driver, DriverDocument,
   ComplianceDocumentKind, DriverStatus, DriverDocumentKind, UserRole,
@@ -55,13 +55,70 @@ async function findOwnedDriverDocument(userId: string, id: string) {
 // ==================== COMPANIES ====================
 
 // GET /api/compliance/companies
+// Returns each managed company with a summary snapshot (operating status, safety
+// rating, chameleon/health signals, MC docket, days since last MCS-150) plus a
+// count of unacknowledged carrier_change_events — everything the list table needs
+// in one round-trip.
 export async function listCompanies(req: AuthedRequest, res: Response) {
   const userId = req.user!.id;
   const companies = await ManagedCompany.findAll({
     where: { userId },
     order: [['createdAt', 'DESC']],
+    include: [{
+      model: CarrierSnapshot,
+      as: 'snapshot',
+      required: false,
+      attributes: [
+        'operatingStatus', 'safetyRating', 'chameleonScore', 'chameleonRiskLevel',
+        'mcDocket', 'lastFetchedAt', 'payloadJson',
+      ],
+    }],
   });
-  res.json({ success: true, data: companies });
+
+  const ids = companies.map(c => c.id);
+  const alertRows = ids.length === 0 ? [] : await CarrierChangeEvent.findAll({
+    where: { managedCompanyId: { [Op.in]: ids }, acknowledged: false },
+    attributes: ['managedCompanyId', [fn('COUNT', col('id')), 'count']],
+    group: ['managedCompanyId'],
+    raw: true,
+  });
+  const alertCount = new Map<string, number>(
+    (alertRows as any[]).map(r => [r.managedCompanyId, Number(r.count)])
+  );
+
+  const enriched = companies.map(c => {
+    const snap = (c as any).snapshot;
+    const payload = snap?.payloadJson;
+    const mcs150Date =
+      payload?.documents?.mcs150?.date ||
+      payload?.profile?.mcs_150_date ||
+      payload?.profile?.mcs150FormDate ||
+      null;
+    const mcs150DaysAgo = mcs150Date
+      ? Math.max(0, Math.floor((Date.now() - new Date(mcs150Date).getTime()) / 86_400_000))
+      : null;
+    return {
+      id: c.id,
+      userId: c.userId,
+      dotNumber: c.dotNumber,
+      label: c.label,
+      notes: c.notes,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+      mcDocket: snap?.mcDocket || null,
+      snapshot: snap ? {
+        operatingStatus: snap.operatingStatus,
+        safetyRating: snap.safetyRating,
+        chameleonScore: snap.chameleonScore,
+        chameleonRiskLevel: snap.chameleonRiskLevel,
+        lastFetchedAt: snap.lastFetchedAt,
+        mcs150DaysAgo,
+      } : null,
+      alertsCount: alertCount.get(c.id) ?? 0,
+    };
+  });
+
+  res.json({ success: true, data: enriched });
 }
 
 // POST /api/compliance/companies — body: { dotNumber, label?, notes? }
