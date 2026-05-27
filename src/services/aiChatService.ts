@@ -1,3 +1,9 @@
+/**
+ * @deprecated Use the agent platform instead — `BaseAgent.chatWithTools` in
+ * `src/agents/core/BaseAgent.ts`, wired through `src/agents/eva/EvaAgent.ts`.
+ * The legacy `/api/chat/*` routes return 410 Gone. Delete this file after one
+ * release window once no callers remain.
+ */
 import OpenAI from 'openai';
 import logger from '../utils/logger';
 

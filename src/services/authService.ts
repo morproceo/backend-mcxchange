@@ -75,6 +75,12 @@ class AuthService {
     // Hash password
     const hashedPassword = await bcrypt.hash(data.password, config.security.bcryptRounds);
 
+    // Compliance managers get a 14-day trial by default (Phase 1 paywall placeholder).
+    const trialEndsAt =
+      data.role === UserRole.COMPLIANCE_MANAGER
+        ? new Date(Date.now() + 14 * 86_400_000)
+        : undefined;
+
     // Create user
     const user = await User.create({
       email: data.email.toLowerCase(),
@@ -88,6 +94,7 @@ class AuthService {
       totalCredits: data.role === UserRole.BUYER ? 0 : 0,
       usedCredits: 0,
       emailVerified: false,
+      trialEndsAt,
     });
 
     // Create Stripe customer for the user (async, don't block registration)

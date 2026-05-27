@@ -90,6 +90,25 @@ export const config = {
     apiKey: process.env.MORPRO_CARRIER_API_KEY || '',
   },
 
+  // MorPro LINQ (data source for Leads tool)
+  morproLinq: {
+    baseUrl: process.env.MORPRO_LINQ_API_URL || 'https://api.morprolinq.com',
+    apiKey: process.env.MORPRO_LINQ_API_KEY || '',
+  },
+
+  // AI Agent platform
+  agents: {
+    enableWorker: process.env.ENABLE_AGENT_WORKER === 'true',
+    workerIntervalMs: parseInt(process.env.AGENT_WORKER_INTERVAL_MS || '5000', 10),
+    openaiApiKey: process.env.OPENAI_API_KEY || '',
+    defaultChatModel: process.env.AGENT_CHAT_MODEL || 'gpt-4o',
+    defaultReasoningModel: process.env.AGENT_REASONING_MODEL || 'gpt-4o-mini',
+    dailyTokenBudgetUser: parseInt(process.env.AGENT_DAILY_TOKEN_BUDGET_USER || '200000', 10),
+    dailyTokenBudgetPlatform: parseInt(process.env.AGENT_DAILY_TOKEN_BUDGET_PLATFORM || '2000000', 10),
+    maxChatIterations: parseInt(process.env.AGENT_MAX_CHAT_ITERATIONS || '6', 10),
+    toolResultMaxChars: parseInt(process.env.AGENT_TOOL_RESULT_MAX_CHARS || '12000', 10),
+  },
+
   // FMCSA
   fmcsa: {
     apiKey: process.env.FMCSA_API_KEY || '',
@@ -239,6 +258,10 @@ export function validateConfig(): void {
 
   if (!process.env.MORPRO_CARRIER_API_KEY) {
     warnings.push('MORPRO_CARRIER_API_KEY not set - MorPro requests will go unauthenticated (works today, will break when MorPro enforces auth)');
+  }
+
+  if (!process.env.MORPRO_LINQ_API_KEY) {
+    warnings.push('MORPRO_LINQ_API_KEY not set - Leads tool will not be able to query LINQ');
   }
 
   if (!process.env.FMCSA_API_KEY) {

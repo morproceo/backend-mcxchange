@@ -6,7 +6,46 @@ import sequelize from '../config/database';
 export enum UserRole {
   BUYER = 'BUYER',
   SELLER = 'SELLER',
-  ADMIN = 'ADMIN'
+  ADMIN = 'ADMIN',
+  COMPLIANCE_MANAGER = 'COMPLIANCE_MANAGER'
+}
+
+// Compliance module — see Block G
+export enum ComplianceDocumentKind {
+  COI = 'COI',
+  AUTHORITY = 'AUTHORITY',
+  MCS150 = 'MCS150',
+  IFTA = 'IFTA',
+  IRP = 'IRP',
+  UCR = 'UCR',
+  DRUG_PROGRAM = 'DRUG_PROGRAM',
+  BOC3 = 'BOC3',
+  OTHER = 'OTHER',
+}
+
+export enum DriverStatus {
+  ACTIVE = 'ACTIVE',
+  INACTIVE = 'INACTIVE',
+  ONBOARDING = 'ONBOARDING',
+  TERMINATED = 'TERMINATED',
+}
+
+export enum DriverDocumentKind {
+  MEDICAL_CARD = 'MEDICAL_CARD',
+  DOT_PHYSICAL = 'DOT_PHYSICAL',
+  MVR = 'MVR',
+  DRUG_TEST = 'DRUG_TEST',
+  ROAD_TEST = 'ROAD_TEST',
+  EMPLOYMENT_APP = 'EMPLOYMENT_APP',
+  BACKGROUND_CHECK = 'BACKGROUND_CHECK',
+  OTHER = 'OTHER',
+}
+
+// Compliance "pulse" — carrier snapshot change severity
+export enum CarrierChangeSeverity {
+  INFO = 'INFO',
+  WARN = 'WARN',
+  CRITICAL = 'CRITICAL',
 }
 
 export enum UserStatus {
@@ -164,7 +203,8 @@ export enum NotificationType {
   REVIEW = 'REVIEW',
   TRANSACTION = 'TRANSACTION',
   SYSTEM = 'SYSTEM',
-  PAYMENT = 'PAYMENT'
+  PAYMENT = 'PAYMENT',
+  COMPLIANCE = 'COMPLIANCE'
 }
 
 export enum PremiumRequestStatus {
@@ -239,11 +279,12 @@ interface UserAttributes {
   carrierPulseStripeSubId?: string;
   promoAccessType?: string;
   promoAccessExpiresAt?: Date;
+  trialEndsAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'phone' | 'avatar' | 'status' | 'verified' | 'verifiedAt' | 'trustScore' | 'memberSince' | 'lastLoginAt' | 'companyName' | 'companyAddress' | 'city' | 'state' | 'zipCode' | 'ein' | 'mcNumber' | 'dotNumber' | 'sellerVerified' | 'sellerVerifiedAt' | 'totalCredits' | 'usedCredits' | 'stripeCustomerId' | 'stripeAccountId' | 'emailVerified' | 'identityVerified' | 'identityVerifiedAt' | 'stripeVerificationSessionId' | 'identityVerificationStatus' | 'carrierPulseAccess' | 'carrierPulseStripeSubId' | 'promoAccessType' | 'promoAccessExpiresAt' | 'createdAt' | 'updatedAt'> {}
+interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'phone' | 'avatar' | 'status' | 'verified' | 'verifiedAt' | 'trustScore' | 'memberSince' | 'lastLoginAt' | 'companyName' | 'companyAddress' | 'city' | 'state' | 'zipCode' | 'ein' | 'mcNumber' | 'dotNumber' | 'sellerVerified' | 'sellerVerifiedAt' | 'totalCredits' | 'usedCredits' | 'stripeCustomerId' | 'stripeAccountId' | 'emailVerified' | 'identityVerified' | 'identityVerifiedAt' | 'stripeVerificationSessionId' | 'identityVerificationStatus' | 'carrierPulseAccess' | 'carrierPulseStripeSubId' | 'promoAccessType' | 'promoAccessExpiresAt' | 'trialEndsAt' | 'createdAt' | 'updatedAt'> {}
 
 // ==================== USER MODEL ====================
 
@@ -284,6 +325,7 @@ export class User extends Model<UserAttributes, UserCreationAttributes> implemen
   declare carrierPulseStripeSubId: string | undefined;
   declare promoAccessType: string | undefined;
   declare promoAccessExpiresAt: Date | undefined;
+  declare trialEndsAt: Date | undefined; // Compliance Manager 14-day trial; null for non-trial accounts
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
 
@@ -439,6 +481,10 @@ User.init(
       allowNull: true,
     },
     promoAccessExpiresAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    trialEndsAt: {
       type: DataTypes.DATE,
       allowNull: true,
     },
@@ -2962,6 +3008,656 @@ TruckPhoto.init(
   }
 );
 
+// ==================== LEAD MODELS (LINQ-powered admin tool) ====================
+
+export enum LeadStatus {
+  NEW = 'NEW',
+  CONTACTED = 'CONTACTED',
+  INTERESTED = 'INTERESTED',
+  NOT_INTERESTED = 'NOT_INTERESTED',
+  CALLBACK = 'CALLBACK',
+  WON = 'WON',
+  DEAD = 'DEAD',
+}
+
+export class Lead extends Model {
+  declare id: string;
+  declare dotNumber: string;
+  declare assignedToUserId: string;
+  declare createdByUserId: string;
+  declare status: LeadStatus;
+  declare notes?: string;
+  declare lastContactedAt?: Date;
+  declare carrierNameSnapshot?: string;
+  declare phoneSnapshot?: string;
+  declare emailSnapshot?: string;
+  declare insuranceCancellationSnapshot?: Date;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+Lead.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    dotNumber: { type: DataTypes.STRING(20), allowNull: false },
+    assignedToUserId: { type: DataTypes.UUID, allowNull: false },
+    createdByUserId: { type: DataTypes.UUID, allowNull: false },
+    status: {
+      type: DataTypes.ENUM(...Object.values(LeadStatus)),
+      allowNull: false,
+      defaultValue: LeadStatus.NEW,
+    },
+    notes: { type: DataTypes.TEXT, allowNull: true },
+    lastContactedAt: { type: DataTypes.DATE, allowNull: true },
+    carrierNameSnapshot: { type: DataTypes.STRING(255), allowNull: true },
+    phoneSnapshot: { type: DataTypes.STRING(50), allowNull: true },
+    emailSnapshot: { type: DataTypes.STRING(255), allowNull: true },
+    insuranceCancellationSnapshot: { type: DataTypes.DATEONLY, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'leads',
+    indexes: [
+      { fields: ['assignedToUserId'] },
+      { fields: ['status'] },
+      { fields: ['dotNumber'] },
+      { unique: true, fields: ['assignedToUserId', 'dotNumber'] },
+    ],
+  }
+);
+
+// LinqCarrierSnapshot was removed: Domilea no longer mirrors LINQ.
+// Live LINQ search/detail powers everything via morproLinqService.
+// The denormalized contact + cancellation snapshot now lives directly on the Lead row.
+// The empty `linq_carrier_snapshots` table on JawsDB will be dropped in a follow-up migration.
+
+// ==================== COMPLIANCE MODULE ====================
+// Block G: compliance managers track multiple carriers, their documents, drivers,
+// and driver documents. All data is owned by the compliance_manager user.
+
+export class ManagedCompany extends Model {
+  declare id: string;
+  declare userId: string;
+  declare dotNumber: string;
+  declare label?: string;
+  declare notes?: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+ManagedCompany.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    userId: { type: DataTypes.UUID, allowNull: false },
+    dotNumber: { type: DataTypes.STRING(20), allowNull: false },
+    label: { type: DataTypes.STRING(255), allowNull: true },
+    notes: { type: DataTypes.TEXT, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'managed_companies',
+    indexes: [
+      { unique: true, fields: ['userId', 'dotNumber'] },
+      { fields: ['userId'] },
+    ],
+  }
+);
+
+export class ComplianceDocument extends Model {
+  declare id: string;
+  declare managedCompanyId: string;
+  declare kind: ComplianceDocumentKind;
+  declare title: string;
+  declare expiresOn?: Date | string;
+  declare notes?: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+ComplianceDocument.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    managedCompanyId: { type: DataTypes.UUID, allowNull: false },
+    kind: { type: DataTypes.ENUM(...Object.values(ComplianceDocumentKind)), allowNull: false },
+    title: { type: DataTypes.STRING(255), allowNull: false },
+    expiresOn: { type: DataTypes.DATEONLY, allowNull: true },
+    notes: { type: DataTypes.TEXT, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'compliance_documents',
+    indexes: [
+      { fields: ['managedCompanyId', 'expiresOn'] },
+      { fields: ['kind'] },
+    ],
+  }
+);
+
+export class Driver extends Model {
+  declare id: string;
+  declare managedCompanyId: string;
+  declare fullName: string;
+  declare cdlNumber?: string;
+  declare cdlState?: string;
+  declare cdlExpiresOn?: Date | string;
+  declare hireDate?: Date | string;
+  declare status: DriverStatus;
+  declare notes?: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+Driver.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    managedCompanyId: { type: DataTypes.UUID, allowNull: false },
+    fullName: { type: DataTypes.STRING(255), allowNull: false },
+    cdlNumber: { type: DataTypes.STRING(64), allowNull: true },
+    cdlState: { type: DataTypes.STRING(2), allowNull: true },
+    cdlExpiresOn: { type: DataTypes.DATEONLY, allowNull: true },
+    hireDate: { type: DataTypes.DATEONLY, allowNull: true },
+    status: {
+      type: DataTypes.ENUM(...Object.values(DriverStatus)),
+      allowNull: false,
+      defaultValue: DriverStatus.ACTIVE,
+    },
+    notes: { type: DataTypes.TEXT, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'drivers',
+    indexes: [
+      { fields: ['managedCompanyId', 'status'] },
+      { fields: ['cdlExpiresOn'] },
+    ],
+  }
+);
+
+export class DriverDocument extends Model {
+  declare id: string;
+  declare driverId: string;
+  declare kind: DriverDocumentKind;
+  declare title: string;
+  declare expiresOn?: Date | string;
+  declare notes?: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+DriverDocument.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    driverId: { type: DataTypes.UUID, allowNull: false },
+    kind: { type: DataTypes.ENUM(...Object.values(DriverDocumentKind)), allowNull: false },
+    title: { type: DataTypes.STRING(255), allowNull: false },
+    expiresOn: { type: DataTypes.DATEONLY, allowNull: true },
+    notes: { type: DataTypes.TEXT, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'driver_documents',
+    indexes: [
+      { fields: ['driverId', 'expiresOn'] },
+      { fields: ['kind'] },
+    ],
+  }
+);
+
+// Carrier snapshot — cached LINQ /report for one managed company.
+// Mutable: overwritten on every refresh. The diff log lives in carrier_change_events.
+export class CarrierSnapshot extends Model {
+  declare managedCompanyId: string;     // PK
+  declare lastFetchedAt: Date;
+  declare payloadJson: any;             // full LINQ /report response
+  // Extracted hot scalars for fast list-page rendering without parsing JSON
+  declare legalName?: string;
+  declare dbaName?: string;
+  declare mcDocket?: string;
+  declare operatingStatus?: string;
+  declare safetyRating?: string;
+  declare powerUnits?: number;
+  declare totalDrivers?: number;
+  declare state?: string;
+  declare city?: string;
+  declare phone?: string;
+  declare email?: string;
+  declare earliestCancellationDate?: Date | string;
+  declare totalActiveCoverage?: number;
+  declare chameleonRiskLevel?: string;
+  declare chameleonScore?: number;
+  declare crashes24mo?: number;
+  declare inspections24mo?: number;
+  declare driverOosRate?: number;
+  declare vehicleOosRate?: number;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+CarrierSnapshot.init(
+  {
+    managedCompanyId: { type: DataTypes.UUID, primaryKey: true },
+    lastFetchedAt: { type: DataTypes.DATE, allowNull: false },
+    payloadJson: { type: DataTypes.JSON, allowNull: false },
+    legalName: { type: DataTypes.STRING(255), allowNull: true },
+    dbaName: { type: DataTypes.STRING(255), allowNull: true },
+    mcDocket: { type: DataTypes.STRING(32), allowNull: true },
+    operatingStatus: { type: DataTypes.STRING(32), allowNull: true },
+    safetyRating: { type: DataTypes.STRING(32), allowNull: true },
+    powerUnits: { type: DataTypes.INTEGER, allowNull: true },
+    totalDrivers: { type: DataTypes.INTEGER, allowNull: true },
+    state: { type: DataTypes.STRING(2), allowNull: true },
+    city: { type: DataTypes.STRING(100), allowNull: true },
+    phone: { type: DataTypes.STRING(50), allowNull: true },
+    email: { type: DataTypes.STRING(255), allowNull: true },
+    earliestCancellationDate: { type: DataTypes.DATEONLY, allowNull: true },
+    totalActiveCoverage: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
+    chameleonRiskLevel: { type: DataTypes.STRING(16), allowNull: true },
+    chameleonScore: { type: DataTypes.INTEGER, allowNull: true },
+    crashes24mo: { type: DataTypes.INTEGER, allowNull: true },
+    inspections24mo: { type: DataTypes.INTEGER, allowNull: true },
+    driverOosRate: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
+    vehicleOosRate: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'carrier_snapshots',
+    indexes: [
+      { fields: ['operatingStatus'] },
+      { fields: ['safetyRating'] },
+      { fields: ['earliestCancellationDate'] },
+    ],
+  }
+);
+
+// Append-only audit log of detected changes between successive snapshots.
+// Powers the "Pulse" feed and feeds Dia's alert generation in Phase 2.
+export class CarrierChangeEvent extends Model {
+  declare id: string;
+  declare managedCompanyId: string;
+  declare field: string;                // dot-path like "safety.basics.VEHICLE_MAINTENANCE.measure"
+  declare oldValue?: any;
+  declare newValue?: any;
+  declare severity: CarrierChangeSeverity;
+  declare description?: string;
+  declare acknowledged: boolean;
+  declare acknowledgedAt?: Date;
+  declare detectedAt: Date;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+CarrierChangeEvent.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    managedCompanyId: { type: DataTypes.UUID, allowNull: false },
+    field: { type: DataTypes.STRING(120), allowNull: false },
+    oldValue: { type: DataTypes.JSON, allowNull: true },
+    newValue: { type: DataTypes.JSON, allowNull: true },
+    severity: { type: DataTypes.ENUM(...Object.values(CarrierChangeSeverity)), allowNull: false, defaultValue: CarrierChangeSeverity.INFO },
+    description: { type: DataTypes.STRING(500), allowNull: true },
+    acknowledged: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    acknowledgedAt: { type: DataTypes.DATE, allowNull: true },
+    detectedAt: { type: DataTypes.DATE, allowNull: false },
+  },
+  {
+    sequelize,
+    tableName: 'carrier_change_events',
+    indexes: [
+      { fields: ['managedCompanyId', 'detectedAt'] },
+      { fields: ['severity', 'acknowledged'] },
+    ],
+  }
+);
+
+// ==================== AGENT FRAMEWORK ====================
+
+export enum AgentCategory {
+  OPERATIONS = 'OPERATIONS',
+  INSIGHTS = 'INSIGHTS',
+  COMMS = 'COMMS',
+  ORCHESTRATOR = 'ORCHESTRATOR',
+}
+
+export enum UserAgentStatus {
+  ACTIVE = 'ACTIVE',
+  PAUSED = 'PAUSED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum InferenceStatus {
+  SUCCESS = 'SUCCESS',
+  ERROR = 'ERROR',
+  TIMEOUT = 'TIMEOUT',
+}
+
+export enum ActionStatus {
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+}
+
+export enum PolicyScope {
+  USER = 'user',
+  PLATFORM = 'platform',
+}
+
+export enum JobStatus {
+  PENDING = 'PENDING',
+  RUNNING = 'RUNNING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum AgentMessageRole {
+  USER = 'USER',
+  ASSISTANT = 'ASSISTANT',
+}
+
+export class AgentCatalog extends Model {
+  declare slug: string;
+  declare name: string;
+  declare description: string;
+  declare category: AgentCategory;
+  declare monthlyPrice?: number;
+  declare stripeProductId?: string;
+  declare stripePriceIdMonthly?: string;
+  declare isActive: boolean;
+  declare isAdminOnly: boolean;
+  declare features?: Record<string, unknown>;
+  declare configSchema?: Record<string, unknown>;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+AgentCatalog.init(
+  {
+    slug: { type: DataTypes.STRING(50), primaryKey: true },
+    name: { type: DataTypes.STRING(100), allowNull: false },
+    description: { type: DataTypes.TEXT, allowNull: false },
+    category: { type: DataTypes.ENUM(...Object.values(AgentCategory)), allowNull: false },
+    monthlyPrice: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
+    stripeProductId: { type: DataTypes.STRING(255), allowNull: true },
+    stripePriceIdMonthly: { type: DataTypes.STRING(255), allowNull: true },
+    isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
+    isAdminOnly: { type: DataTypes.BOOLEAN, defaultValue: false },
+    features: { type: DataTypes.JSON, allowNull: true },
+    configSchema: { type: DataTypes.JSON, allowNull: true },
+  },
+  { sequelize, tableName: 'agent_catalog' }
+);
+
+export class UserAgent extends Model {
+  declare id: string;
+  declare userId: string;
+  declare agentSlug: string;
+  declare status: UserAgentStatus;
+  declare subscriptionStartedAt?: Date;
+  declare subscriptionCancelledAt?: Date;
+  declare config?: Record<string, unknown>;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+UserAgent.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    userId: { type: DataTypes.UUID, allowNull: false },
+    agentSlug: { type: DataTypes.STRING(50), allowNull: false },
+    status: {
+      type: DataTypes.ENUM(...Object.values(UserAgentStatus)),
+      allowNull: false,
+      defaultValue: UserAgentStatus.ACTIVE,
+    },
+    subscriptionStartedAt: { type: DataTypes.DATE, allowNull: true },
+    subscriptionCancelledAt: { type: DataTypes.DATE, allowNull: true },
+    config: { type: DataTypes.JSON, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'user_agents',
+    indexes: [
+      { unique: true, fields: ['userId', 'agentSlug'] },
+      { fields: ['status'] },
+    ],
+  }
+);
+
+export class AgentInference extends Model {
+  declare id: string;
+  declare userId?: string;
+  declare agentSlug: string;
+  declare model: string;
+  declare inputTokens?: number;
+  declare outputTokens?: number;
+  declare latencyMs?: number;
+  declare promptType?: string;
+  declare status: InferenceStatus;
+  declare metadata?: Record<string, unknown>;
+  declare errorMessage?: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+AgentInference.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    userId: { type: DataTypes.UUID, allowNull: true },
+    agentSlug: { type: DataTypes.STRING(50), allowNull: false },
+    model: { type: DataTypes.STRING(100), allowNull: false },
+    inputTokens: { type: DataTypes.INTEGER, allowNull: true },
+    outputTokens: { type: DataTypes.INTEGER, allowNull: true },
+    latencyMs: { type: DataTypes.INTEGER, allowNull: true },
+    promptType: { type: DataTypes.STRING(50), allowNull: true },
+    status: { type: DataTypes.ENUM(...Object.values(InferenceStatus)), allowNull: false },
+    metadata: { type: DataTypes.JSON, allowNull: true },
+    errorMessage: { type: DataTypes.TEXT, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'agent_inferences',
+    indexes: [
+      { fields: ['userId'] },
+      { fields: ['agentSlug', 'createdAt'] },
+      { fields: ['status'] },
+    ],
+  }
+);
+
+export class AgentAction extends Model {
+  declare id: string;
+  declare userId?: string;
+  declare agentSlug: string;
+  declare actionType: string;
+  declare targetType?: string;
+  declare targetId?: string;
+  declare inputData?: Record<string, unknown>;
+  declare outputData?: Record<string, unknown>;
+  declare status: ActionStatus;
+  declare triggeredBy?: string;
+  declare inferenceId?: string;
+  declare errorMessage?: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+AgentAction.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    userId: { type: DataTypes.UUID, allowNull: true },
+    agentSlug: { type: DataTypes.STRING(50), allowNull: false },
+    actionType: { type: DataTypes.STRING(80), allowNull: false },
+    targetType: { type: DataTypes.STRING(50), allowNull: true },
+    targetId: { type: DataTypes.UUID, allowNull: true },
+    inputData: { type: DataTypes.JSON, allowNull: true },
+    outputData: { type: DataTypes.JSON, allowNull: true },
+    status: {
+      type: DataTypes.ENUM(...Object.values(ActionStatus)),
+      allowNull: false,
+      defaultValue: ActionStatus.COMPLETED,
+    },
+    triggeredBy: { type: DataTypes.STRING(80), allowNull: true },
+    inferenceId: { type: DataTypes.UUID, allowNull: true },
+    errorMessage: { type: DataTypes.TEXT, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'agent_actions',
+    indexes: [
+      { fields: ['userId'] },
+      { fields: ['agentSlug', 'createdAt'] },
+      { fields: ['targetType', 'targetId'] },
+      { fields: ['status'] },
+    ],
+  }
+);
+
+export class AgentPolicy extends Model {
+  declare id: string;
+  declare scope: PolicyScope;
+  declare userId?: string;
+  declare agentSlug: string;
+  declare key: string;
+  declare value: unknown;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+AgentPolicy.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    scope: {
+      type: DataTypes.ENUM(...Object.values(PolicyScope)),
+      allowNull: false,
+      defaultValue: PolicyScope.USER,
+    },
+    userId: { type: DataTypes.UUID, allowNull: true },
+    agentSlug: { type: DataTypes.STRING(50), allowNull: false },
+    key: { type: DataTypes.STRING(80), allowNull: false },
+    value: { type: DataTypes.JSON, allowNull: false },
+  },
+  {
+    sequelize,
+    tableName: 'agent_policies',
+    indexes: [{ unique: true, fields: ['scope', 'userId', 'agentSlug', 'key'] }],
+  }
+);
+
+export class AgentJob extends Model {
+  declare id: string;
+  declare userId?: string;
+  declare agentSlug: string;
+  declare taskName: string;
+  declare inputData?: Record<string, unknown>;
+  declare outputData?: Record<string, unknown>;
+  declare status: JobStatus;
+  declare priority: number;
+  declare scheduledFor?: Date;
+  declare claimedBy?: string;
+  declare startedAt?: Date;
+  declare completedAt?: Date;
+  declare errorMessage?: string;
+  declare targetType?: string;
+  declare targetId?: string;
+  declare triggeredBy?: string;
+  declare triggeredByUserId?: string;
+  declare actionId?: string;
+  declare retryCount: number;
+  declare maxRetries: number;
+  declare lastErrorAt?: Date;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+AgentJob.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    userId: { type: DataTypes.UUID, allowNull: true },
+    agentSlug: { type: DataTypes.STRING(50), allowNull: false },
+    taskName: { type: DataTypes.STRING(80), allowNull: false },
+    inputData: { type: DataTypes.JSON, allowNull: true },
+    outputData: { type: DataTypes.JSON, allowNull: true },
+    status: {
+      type: DataTypes.ENUM(...Object.values(JobStatus)),
+      allowNull: false,
+      defaultValue: JobStatus.PENDING,
+    },
+    priority: { type: DataTypes.INTEGER, defaultValue: 5 },
+    scheduledFor: { type: DataTypes.DATE, allowNull: true },
+    claimedBy: { type: DataTypes.STRING(64), allowNull: true },
+    startedAt: { type: DataTypes.DATE, allowNull: true },
+    completedAt: { type: DataTypes.DATE, allowNull: true },
+    errorMessage: { type: DataTypes.TEXT, allowNull: true },
+    targetType: { type: DataTypes.STRING(50), allowNull: true },
+    targetId: { type: DataTypes.UUID, allowNull: true },
+    triggeredBy: { type: DataTypes.STRING(80), allowNull: true },
+    triggeredByUserId: { type: DataTypes.UUID, allowNull: true },
+    actionId: { type: DataTypes.UUID, allowNull: true },
+    retryCount: { type: DataTypes.INTEGER, defaultValue: 0 },
+    maxRetries: { type: DataTypes.INTEGER, defaultValue: 3 },
+    lastErrorAt: { type: DataTypes.DATE, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'agent_jobs',
+    indexes: [
+      { fields: ['status', 'scheduledFor'] },
+      { fields: ['userId', 'agentSlug', 'taskName', 'targetType', 'targetId'] },
+      { fields: ['agentSlug', 'createdAt'] },
+    ],
+  }
+);
+
+export class AgentConversation extends Model {
+  declare id: string;
+  declare userId: string;
+  declare agentSlug: string;
+  declare title?: string;
+  declare lastMessageAt?: Date;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+AgentConversation.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    userId: { type: DataTypes.UUID, allowNull: false },
+    agentSlug: { type: DataTypes.STRING(50), allowNull: false },
+    title: { type: DataTypes.STRING(255), allowNull: true },
+    lastMessageAt: { type: DataTypes.DATE, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'agent_conversations',
+    indexes: [{ fields: ['userId', 'agentSlug', 'lastMessageAt'] }],
+  }
+);
+
+export class AgentMessage extends Model {
+  declare id: string;
+  declare conversationId: string;
+  declare role: AgentMessageRole;
+  declare content: string;
+  declare steps?: unknown;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+AgentMessage.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    conversationId: { type: DataTypes.UUID, allowNull: false },
+    role: { type: DataTypes.ENUM(...Object.values(AgentMessageRole)), allowNull: false },
+    content: { type: DataTypes.TEXT('long'), allowNull: false },
+    steps: { type: DataTypes.JSON, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'agent_messages',
+    indexes: [{ fields: ['conversationId', 'createdAt'] }],
+  }
+);
+
 // ==================== ASSOCIATIONS ====================
 
 // User associations
@@ -3093,6 +3789,42 @@ User.hasMany(AccountDispute, { foreignKey: 'userId', as: 'accountDisputes' });
 UserTermsAcceptance.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 User.hasMany(UserTermsAcceptance, { foreignKey: 'userId', as: 'termsAcceptances' });
 
+// Lead associations
+Lead.belongsTo(User, { foreignKey: 'assignedToUserId', as: 'assignee' });
+Lead.belongsTo(User, { foreignKey: 'createdByUserId', as: 'creator' });
+User.hasMany(Lead, { foreignKey: 'assignedToUserId', as: 'assignedLeads' });
+
+// Compliance associations
+ManagedCompany.belongsTo(User, { foreignKey: 'userId', as: 'owner' });
+User.hasMany(ManagedCompany, { foreignKey: 'userId', as: 'managedCompanies' });
+ManagedCompany.hasMany(ComplianceDocument, { foreignKey: 'managedCompanyId', as: 'documents', onDelete: 'CASCADE' });
+ComplianceDocument.belongsTo(ManagedCompany, { foreignKey: 'managedCompanyId', as: 'company' });
+ManagedCompany.hasMany(Driver, { foreignKey: 'managedCompanyId', as: 'drivers', onDelete: 'CASCADE' });
+Driver.belongsTo(ManagedCompany, { foreignKey: 'managedCompanyId', as: 'company' });
+Driver.hasMany(DriverDocument, { foreignKey: 'driverId', as: 'documents', onDelete: 'CASCADE' });
+DriverDocument.belongsTo(Driver, { foreignKey: 'driverId', as: 'driver' });
+
+// Carrier snapshot / pulse associations
+ManagedCompany.hasOne(CarrierSnapshot, { foreignKey: 'managedCompanyId', as: 'snapshot', onDelete: 'CASCADE' });
+CarrierSnapshot.belongsTo(ManagedCompany, { foreignKey: 'managedCompanyId', as: 'company' });
+ManagedCompany.hasMany(CarrierChangeEvent, { foreignKey: 'managedCompanyId', as: 'changes', onDelete: 'CASCADE' });
+CarrierChangeEvent.belongsTo(ManagedCompany, { foreignKey: 'managedCompanyId', as: 'company' });
+
+// Agent associations
+UserAgent.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+UserAgent.belongsTo(AgentCatalog, { foreignKey: 'agentSlug', targetKey: 'slug', as: 'catalogEntry' });
+User.hasMany(UserAgent, { foreignKey: 'userId', as: 'hiredAgents' });
+AgentInference.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+AgentAction.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+AgentAction.belongsTo(AgentInference, { foreignKey: 'inferenceId', as: 'inference' });
+AgentPolicy.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+AgentJob.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+AgentJob.belongsTo(User, { foreignKey: 'triggeredByUserId', as: 'triggeringUser' });
+AgentJob.belongsTo(AgentAction, { foreignKey: 'actionId', as: 'action' });
+AgentConversation.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+AgentConversation.hasMany(AgentMessage, { foreignKey: 'conversationId', as: 'messages' });
+AgentMessage.belongsTo(AgentConversation, { foreignKey: 'conversationId', as: 'conversation' });
+
 // Export all models
 export {
   sequelize,
@@ -3130,5 +3862,14 @@ export default {
   ProcessedWebhookEvent,
   UserTermsAcceptance,
   PdfPurchase,
+  Lead,
+  AgentCatalog,
+  UserAgent,
+  AgentInference,
+  AgentAction,
+  AgentPolicy,
+  AgentJob,
+  AgentConversation,
+  AgentMessage,
   sequelize,
 };

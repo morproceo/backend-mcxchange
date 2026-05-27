@@ -164,6 +164,9 @@ export const buyerOnly = authorize(UserRole.BUYER, UserRole.ADMIN);
 // Admin only middleware
 export const adminOnly = authorize(UserRole.ADMIN);
 
+// Compliance manager only middleware (admins also pass — they can support users)
+export const complianceManagerOnly = authorize(UserRole.COMPLIANCE_MANAGER, UserRole.ADMIN);
+
 // Require active subscription for buyers
 export const requireSubscription = async (
   req: AuthRequest,

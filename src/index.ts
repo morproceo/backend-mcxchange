@@ -20,6 +20,13 @@ import { globalLimiter, initializeRateLimiters } from './middleware/rateLimiter'
 import logger from './utils/logger';
 import { authService } from './services/authService';
 import { expireOverdueBundleAccess } from './services/buyerGuideService';
+import './agents'; // triggers AgentRegistry.register(...) side effects
+import { startAgentWorker } from './workers/agentJobs.worker';
+import { seedAgentCatalog } from './services/agentRegistration.service';
+import { registerScoutTasks } from './agents/scout/registerTasks';
+import { installScoutHooks } from './agents/scout/hooks';
+import { armScoutDigests } from './agents/scout/tasks/weeklyLeadDigest';
+import { installDiaHooks } from './agents/dia/hooks';
 
 // ============================================
 // Setup Global Error Handlers
@@ -174,6 +181,33 @@ const startServer = async () => {
     // Initialize WebSocket server
     logger.info('Initializing WebSocket server...');
     initializeWebSocket(httpServer);
+
+    // Seed the agent catalog (idempotent)
+    try {
+      await seedAgentCatalog();
+    } catch (err) {
+      logger.warn('Agent catalog seed failed (continuing)', { error: (err as Error).message });
+    }
+
+    // Register Scout's heavy tasks (kept out of the agent module to avoid circular imports)
+    registerScoutTasks();
+
+    // Install Scout reactive hooks (Lead.afterCreate → enrich_lead)
+    installScoutHooks();
+
+    // Install Dia reactive hooks (ComplianceDocument/DriverDocument.afterCreate → expiry alerts)
+    installDiaHooks();
+
+    // Arm the weekly digest for every active admin (idempotent — won't double-enqueue)
+    try {
+      const armed = await armScoutDigests();
+      logger.info(`Scout digests armed: ${armed.armed} of ${armed.checked} admins`);
+    } catch (err) {
+      logger.warn('armScoutDigests failed (continuing)', { error: (err as Error).message });
+    }
+
+    // Start the agent worker if enabled
+    startAgentWorker();
 
     // Schedule token cleanup (every hour)
     setInterval(async () => {

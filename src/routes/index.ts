@@ -29,6 +29,9 @@ import fuelProgramRoutes from './fuelProgramRoutes';
 import carrierDataRoutes from './carrierDataRoutes';
 import truckRoutes from './truckRoutes';
 import guideRoutes from './guideRoutes';
+import leadsRoutes from './leadsRoutes';
+import agentsRoutes from './agentsRoutes';
+import complianceRoutes from './complianceRoutes';
 import { sequelize } from '../models';
 import { isRedisHealthy } from '../config/redis';
 import { config, getPublicConfig } from '../config';
@@ -223,6 +226,9 @@ router.use('/recruiting-services', recruitingServicesRoutes);
 router.use('/fuel-program', fuelProgramRoutes);
 router.use('/carrier-data', carrierDataRoutes);
 router.use('/guide', guideRoutes);
+router.use('/admin/leads', leadsRoutes);
+router.use('/agents', agentsRoutes);
+router.use('/compliance', complianceRoutes);
 // Truck routes live at root because they span /listings/:id/trucks and /trucks/:id
 router.use('/', truckRoutes);
 
