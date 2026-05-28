@@ -6,6 +6,21 @@ import { User, UserRole, Subscription, SubscriptionPlan } from '../models';
 import { hasActiveBundlePromo } from '../utils/bundlePromo';
 import { getLeadGeneratorAccess, LeadGeneratorTier } from '../services/entitlementService';
 
+// Pick the role the current session should run as. Honors the JWT's role claim
+// (which can differ from the primary role when a buyer toggled to compliance,
+// or vice-versa) but falls back to the stored primary role if access was
+// revoked since the token was issued.
+function resolveSessionRole(
+  claimedRole: UserRole | undefined,
+  user: { role: UserRole; carrierPulseAccess?: boolean }
+): UserRole {
+  if (!claimedRole || claimedRole === user.role) return user.role;
+  if (claimedRole === UserRole.COMPLIANCE_MANAGER && user.carrierPulseAccess) {
+    return UserRole.COMPLIANCE_MANAGER;
+  }
+  return user.role;
+}
+
 // Verify JWT token
 export const authenticate = async (
   req: AuthRequest,
@@ -37,7 +52,7 @@ export const authenticate = async (
 
     // Verify user still exists and is active
     const user = await User.findByPk(decoded.id, {
-      attributes: ['id', 'email', 'role', 'name', 'status', 'stripeCustomerId', 'identityVerified'],
+      attributes: ['id', 'email', 'role', 'name', 'status', 'stripeCustomerId', 'identityVerified', 'carrierPulseAccess'],
     });
 
     if (!user) {
@@ -56,10 +71,15 @@ export const authenticate = async (
       return;
     }
 
+    // Honor the role claim on the JWT (set at login/switch-role time) when the
+    // user still has access to that role. Otherwise fall back to the stored
+    // primary role — handles e.g. compliance subscription cancellation.
+    const sessionRole = resolveSessionRole(decoded.role, user);
+
     req.user = {
       id: user.id,
       email: user.email,
-      role: user.role,
+      role: sessionRole,
       name: user.name,
       stripeCustomerId: user.stripeCustomerId,
       identityVerified: user.identityVerified,
@@ -137,14 +157,14 @@ export const optionalAuth = async (
     const decoded = jwt.verify(token, config.jwt.secret) as JWTPayload;
 
     const user = await User.findByPk(decoded.id, {
-      attributes: ['id', 'email', 'role', 'name', 'status'],
+      attributes: ['id', 'email', 'role', 'name', 'status', 'carrierPulseAccess'],
     });
 
     if (user && user.status === 'ACTIVE') {
       req.user = {
         id: user.id,
         email: user.email,
-        role: user.role,
+        role: resolveSessionRole(decoded.role, user),
         name: user.name,
       };
     }

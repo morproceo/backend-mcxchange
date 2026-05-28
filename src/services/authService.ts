@@ -33,9 +33,12 @@ interface RegisterData {
   companyName?: string;
 }
 
+type RoleHint = 'buyer' | 'compliance_manager';
+
 interface LoginData {
   email: string;
   password: string;
+  roleHint?: RoleHint;
 }
 
 interface AuthTokens {
@@ -58,6 +61,24 @@ interface UserResponse {
   usedCredits?: number;
   identityVerified: boolean;
   identityVerificationStatus?: string | null;
+  availableRoles: UserRole[];
+}
+
+interface LoginResult {
+  user: UserResponse;
+  tokens: AuthTokens;
+  needsSubscription?: RoleHint;
+}
+
+// Available roles a user can sign in as. A buyer who has carrierPulseAccess
+// can also act as compliance_manager (and vice-versa from compliance side, once
+// they pick up any active buyer-tier subscription — handled elsewhere).
+function computeAvailableRoles(user: { role: UserRole; carrierPulseAccess?: boolean }): UserRole[] {
+  const roles = new Set<UserRole>([user.role]);
+  if (user.carrierPulseAccess) {
+    roles.add(UserRole.COMPLIANCE_MANAGER);
+  }
+  return Array.from(roles);
 }
 
 class AuthService {
@@ -75,12 +96,6 @@ class AuthService {
     // Hash password
     const hashedPassword = await bcrypt.hash(data.password, config.security.bcryptRounds);
 
-    // Compliance managers get a 14-day trial by default (Phase 1 paywall placeholder).
-    const trialEndsAt =
-      data.role === UserRole.COMPLIANCE_MANAGER
-        ? new Date(Date.now() + 14 * 86_400_000)
-        : undefined;
-
     // Create user
     const user = await User.create({
       email: data.email.toLowerCase(),
@@ -94,7 +109,6 @@ class AuthService {
       totalCredits: data.role === UserRole.BUYER ? 0 : 0,
       usedCredits: 0,
       emailVerified: false,
-      trialEndsAt,
     });
 
     // Create Stripe customer for the user (async, don't block registration)
@@ -136,6 +150,7 @@ class AuthService {
       usedCredits: user.usedCredits,
       identityVerified: user.identityVerified || false,
       identityVerificationStatus: user.identityVerificationStatus || null,
+      availableRoles: computeAvailableRoles(user),
     };
 
     return { user: userResponse, tokens };
@@ -221,7 +236,7 @@ class AuthService {
   }
 
   // Login user
-  async login(data: LoginData): Promise<{ user: UserResponse; tokens: AuthTokens }> {
+  async login(data: LoginData): Promise<LoginResult> {
     // Find user
     const user = await User.findOne({
       where: { email: data.email.toLowerCase() },
@@ -250,15 +265,41 @@ class AuthService {
     // Update last login
     await user.update({ lastLoginAt: new Date() });
 
-    // Generate tokens
-    const tokens = await this.generateTokens(user);
+    // Resolve which role the session should run as.
+    // - No roleHint -> primary role on the user record.
+    // - roleHint present and user has it -> session runs as the hinted role.
+    // - roleHint present but user lacks it -> session falls back to primary
+    //   role and we flag needsSubscription so the frontend can route them to
+    //   the right subscribe page.
+    const availableRoles = computeAvailableRoles(user);
+    let sessionRole: UserRole = user.role;
+    let needsSubscription: RoleHint | undefined;
+
+    if (data.roleHint) {
+      const hintAsRole =
+        data.roleHint === 'buyer' ? UserRole.BUYER : UserRole.COMPLIANCE_MANAGER;
+      if (availableRoles.includes(hintAsRole)) {
+        sessionRole = hintAsRole;
+      } else {
+        needsSubscription = data.roleHint;
+      }
+    }
+
+    // Generate tokens — JWT carries the session role, so the existing
+    // role-based route guards continue to work unchanged.
+    const tokens = await this.generateTokens({
+      id: user.id,
+      email: user.email,
+      role: sessionRole,
+      name: user.name,
+    });
 
     // Return user without password
     const userResponse: UserResponse = {
       id: user.id,
       email: user.email,
       name: user.name,
-      role: user.role,
+      role: sessionRole,
       verified: user.verified,
       emailVerified: (user as any).emailVerified || false,
       trustScore: user.trustScore,
@@ -268,6 +309,53 @@ class AuthService {
       usedCredits: user.usedCredits,
       identityVerified: user.identityVerified || false,
       identityVerificationStatus: user.identityVerificationStatus || null,
+      availableRoles,
+    };
+
+    return { user: userResponse, tokens, ...(needsSubscription ? { needsSubscription } : {}) };
+  }
+
+  // Switch the active role on an existing session. Issues new tokens with the
+  // requested role claim if the user actually has access to it; otherwise the
+  // caller must subscribe first.
+  async switchRole(userId: string, role: RoleHint): Promise<LoginResult> {
+    const user = await User.findByPk(userId);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    const targetRole =
+      role === 'buyer' ? UserRole.BUYER : UserRole.COMPLIANCE_MANAGER;
+    const availableRoles = computeAvailableRoles(user);
+
+    if (!availableRoles.includes(targetRole)) {
+      throw new BadRequestError(
+        `You do not have access to the ${role} role. Please subscribe first.`
+      );
+    }
+
+    const tokens = await this.generateTokens({
+      id: user.id,
+      email: user.email,
+      role: targetRole,
+      name: user.name,
+    });
+
+    const userResponse: UserResponse = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: targetRole,
+      verified: user.verified,
+      emailVerified: (user as any).emailVerified || false,
+      trustScore: user.trustScore,
+      memberSince: user.memberSince,
+      avatar: user.avatar,
+      totalCredits: user.totalCredits,
+      usedCredits: user.usedCredits,
+      identityVerified: user.identityVerified || false,
+      identityVerificationStatus: user.identityVerificationStatus || null,
+      availableRoles,
     };
 
     return { user: userResponse, tokens };
@@ -603,6 +691,7 @@ class AuthService {
       usedCredits: user.usedCredits,
       identityVerified: user.identityVerified || false,
       identityVerificationStatus: user.identityVerificationStatus || null,
+      availableRoles: computeAvailableRoles(user),
     };
   }
 

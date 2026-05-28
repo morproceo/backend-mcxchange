@@ -21,6 +21,16 @@ export const registerValidation = [
 export const loginValidation = [
   body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
   body('password').notEmpty().withMessage('Password is required'),
+  body('roleHint')
+    .optional()
+    .isIn(['buyer', 'compliance_manager'])
+    .withMessage('roleHint must be buyer or compliance_manager'),
+];
+
+export const switchRoleValidation = [
+  body('role')
+    .isIn(['buyer', 'compliance_manager'])
+    .withMessage('role must be buyer or compliance_manager'),
 ];
 
 // Register new user
@@ -45,14 +55,32 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
 
 // Login
 export const login = asyncHandler(async (req: Request, res: Response) => {
-  const { email, password } = req.body;
+  const { email, password, roleHint } = req.body;
 
-  const result = await authService.login({ email, password });
+  const result = await authService.login({ email, password, roleHint });
 
   res.json({
     success: true,
     data: result,
     message: 'Login successful',
+  });
+});
+
+// Switch active role for the current session. Mints a new token pair with the
+// requested role claim if the user actually has access to it.
+export const switchRole = asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!req.user) {
+    res.status(401).json({ success: false, error: 'Not authenticated' });
+    return;
+  }
+
+  const { role } = req.body;
+  const result = await authService.switchRole(req.user.id, role);
+
+  res.json({
+    success: true,
+    data: result,
+    message: 'Role switched',
   });
 });
 

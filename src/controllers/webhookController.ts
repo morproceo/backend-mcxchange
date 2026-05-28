@@ -371,6 +371,28 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Pro
     subscriptionId: subscription.id,
   });
 
+  // Standalone CarrierPulse subscription cancellation — revoke compliance access.
+  // CarrierPulse subs don't have a row in the Subscription table; they're tracked
+  // via User.carrierPulseStripeSubId.
+  const pulseUser = await User.findOne({
+    where: { carrierPulseStripeSubId: subscription.id },
+  });
+  if (pulseUser) {
+    await pulseUser.update({
+      carrierPulseAccess: false,
+      carrierPulseStripeSubId: null as any,
+    });
+    logger.info('CarrierPulse access revoked', { userId: pulseUser.id, subscriptionId: subscription.id });
+
+    await notificationService.create({
+      userId: pulseUser.id,
+      type: 'PAYMENT' as any,
+      title: 'CarrierPulse Cancelled',
+      message: 'Your CarrierPulse subscription has been cancelled. Compliance access has been removed.',
+    });
+    return;
+  }
+
   // Find and update subscription in our database
   const dbSubscription = await Subscription.findOne({
     where: { stripeSubId: subscription.id },

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   register,
   login,
+  switchRole,
   refreshToken,
   logout,
   logoutAll,
@@ -13,6 +14,7 @@ import {
   resendVerificationEmail,
   registerValidation,
   loginValidation,
+  switchRoleValidation,
 } from '../controllers/authController';
 import { authenticate } from '../middleware/auth';
 import validate from '../middleware/validate';
@@ -34,5 +36,6 @@ router.get('/me', authenticate, getCurrentUser);
 router.post('/logout-all', authenticate, logoutAll);
 router.post('/change-password', authenticate, changePassword);
 router.post('/resend-verification', authenticate, resendVerificationEmail);
+router.post('/switch-role', authenticate, validate(switchRoleValidation), switchRole);
 
 export default router;
