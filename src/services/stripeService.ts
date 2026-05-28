@@ -106,6 +106,15 @@ export const SUBSCRIPTION_PRICE_IDS = {
   carrier_pulse: {
     monthly: process.env.STRIPE_PRICE_CARRIER_PULSE || '',
   },
+  // Lead Generator — standalone product, two tiers (Buyer $99/mo, Broker $499/mo).
+  // Buyer tier: basic filters + individual saves, no bulk export.
+  // Broker tier: advanced filters + bulk CSV download.
+  lead_generator_buyer: {
+    monthly: process.env.STRIPE_PRICE_LEAD_GENERATOR_BUYER_MONTHLY || '',
+  },
+  lead_generator_broker: {
+    monthly: process.env.STRIPE_PRICE_LEAD_GENERATOR_BROKER_MONTHLY || '',
+  },
 };
 
 class StripeService {
@@ -1929,9 +1938,13 @@ class StripeService {
    * Get price ID for a subscription plan
    */
   getPriceId(
-    plan: 'starter' | 'premium' | 'enterprise',
+    plan: 'starter' | 'premium' | 'enterprise' | 'lead_generator_buyer' | 'lead_generator_broker',
     interval: 'monthly' | 'yearly'
   ): string {
+    if (plan === 'lead_generator_buyer' || plan === 'lead_generator_broker') {
+      // LG tiers are monthly-only at launch; ignore the interval arg.
+      return SUBSCRIPTION_PRICE_IDS[plan].monthly;
+    }
     return SUBSCRIPTION_PRICE_IDS[plan][interval];
   }
 

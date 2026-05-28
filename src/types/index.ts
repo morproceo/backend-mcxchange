@@ -13,6 +13,9 @@ export interface AuthRequest extends Request {
     promoAccessType?: string | null;
     promoAccessExpiresAt?: Date | null;
   };
+  // Populated by requireLeadGeneratorAccess so downstream handlers can branch
+  // on tier (e.g., silently strip advanced filters for BUYER tier).
+  leadGenTier?: 'BUYER' | 'BROKER' | 'ADMIN';
 }
 
 // API Response types
@@ -247,6 +250,24 @@ export const SUBSCRIPTION_PLANS = {
     priceYearly: 767.99,
     stripePriceIdMonthly: process.env.STRIPE_PRICE_ENTERPRISE_MONTHLY || '',
     stripePriceIdYearly: process.env.STRIPE_PRICE_ENTERPRISE_YEARLY || '',
+  },
+  // Lead Generator — standalone product, monthly only, 0 marketplace credits
+  // (the value is the tool itself, not listing unlock credits).
+  LEAD_GENERATOR_BUYER: {
+    name: 'Lead Generator — Buyer',
+    credits: 0,
+    priceMonthly: 99,
+    priceYearly: 99,
+    stripePriceIdMonthly: process.env.STRIPE_PRICE_LEAD_GENERATOR_BUYER_MONTHLY || '',
+    stripePriceIdYearly: '',
+  },
+  LEAD_GENERATOR_BROKER: {
+    name: 'Lead Generator — Broker',
+    credits: 0,
+    priceMonthly: 499,
+    priceYearly: 499,
+    stripePriceIdMonthly: process.env.STRIPE_PRICE_LEAD_GENERATOR_BROKER_MONTHLY || '',
+    stripePriceIdYearly: '',
   },
 };
 

@@ -187,6 +187,42 @@ export async function recordFreePull(
   }
 }
 
+export type LeadGeneratorTier = 'BUYER' | 'BROKER' | 'ADMIN' | null;
+
+export interface LeadGeneratorAccess {
+  hasAccess: boolean;
+  tier: LeadGeneratorTier;
+}
+
+/**
+ * Resolves a user's Lead Generator product access. Admin trumps everything;
+ * BROKER plan grants advanced filters + unlimited CSV export; BUYER plan and
+ * VIP_ACCESS grant the basic view.
+ */
+export async function getLeadGeneratorAccess(
+  userId: string,
+  opts: { isAdmin?: boolean } = {}
+): Promise<LeadGeneratorAccess> {
+  if (opts.isAdmin) {
+    return { hasAccess: true, tier: 'ADMIN' };
+  }
+
+  const subscription = await Subscription.findOne({ where: { userId } });
+  const subActive = subscription?.status === SubscriptionStatus.ACTIVE;
+  const plan = subscription?.plan as SubscriptionPlan | undefined;
+
+  if (subActive && plan === SubscriptionPlan.LEAD_GENERATOR_BROKER) {
+    return { hasAccess: true, tier: 'BROKER' };
+  }
+  if (
+    subActive &&
+    (plan === SubscriptionPlan.LEAD_GENERATOR_BUYER || plan === SubscriptionPlan.VIP_ACCESS)
+  ) {
+    return { hasAccess: true, tier: 'BUYER' };
+  }
+  return { hasAccess: false, tier: null };
+}
+
 /**
  * Public-friendly shape for API responses. Converts Infinity to null so it
  * serializes cleanly through JSON.

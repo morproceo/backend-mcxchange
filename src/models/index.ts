@@ -177,7 +177,9 @@ export enum SubscriptionPlan {
   PROFESSIONAL = 'PROFESSIONAL',
   PREMIUM = 'PREMIUM',
   ENTERPRISE = 'ENTERPRISE',
-  VIP_ACCESS = 'VIP_ACCESS'
+  VIP_ACCESS = 'VIP_ACCESS',
+  LEAD_GENERATOR_BUYER = 'LEAD_GENERATOR_BUYER',
+  LEAD_GENERATOR_BROKER = 'LEAD_GENERATOR_BROKER'
 }
 
 export enum SubscriptionStatus {
@@ -3071,6 +3073,39 @@ Lead.init(
 // The denormalized contact + cancellation snapshot now lives directly on the Lead row.
 // The empty `linq_carrier_snapshots` table on JawsDB will be dropped in a follow-up migration.
 
+// Lead Generator product (separate from the admin Lead CRM above).
+// Each row is a carrier a paying buyer/broker has saved into their personal Lead Generator list.
+export class LeadGeneratorSave extends Model {
+  declare id: string;
+  declare userId: string;
+  declare dotNumber: string;
+  declare carrierName?: string;
+  declare carrierStateCode?: string;
+  declare notes?: string;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
+}
+
+LeadGeneratorSave.init(
+  {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    userId: { type: DataTypes.UUID, allowNull: false },
+    dotNumber: { type: DataTypes.STRING(20), allowNull: false },
+    carrierName: { type: DataTypes.STRING(255), allowNull: true },
+    carrierStateCode: { type: DataTypes.STRING(2), allowNull: true },
+    notes: { type: DataTypes.TEXT, allowNull: true },
+  },
+  {
+    sequelize,
+    tableName: 'lead_generator_saves',
+    indexes: [
+      { fields: ['userId', 'createdAt'] },
+      { fields: ['dotNumber'] },
+      { unique: true, fields: ['userId', 'dotNumber'] },
+    ],
+  }
+);
+
 // ==================== COMPLIANCE MODULE ====================
 // Block G: compliance managers track multiple carriers, their documents, drivers,
 // and driver documents. All data is owned by the compliance_manager user.
@@ -3793,6 +3828,10 @@ User.hasMany(UserTermsAcceptance, { foreignKey: 'userId', as: 'termsAcceptances'
 Lead.belongsTo(User, { foreignKey: 'assignedToUserId', as: 'assignee' });
 Lead.belongsTo(User, { foreignKey: 'createdByUserId', as: 'creator' });
 User.hasMany(Lead, { foreignKey: 'assignedToUserId', as: 'assignedLeads' });
+
+// Lead Generator (product) saves — separate from the admin Lead CRM above
+LeadGeneratorSave.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+User.hasMany(LeadGeneratorSave, { foreignKey: 'userId', as: 'leadGeneratorSaves' });
 
 // Compliance associations
 ManagedCompany.belongsTo(User, { foreignKey: 'userId', as: 'owner' });

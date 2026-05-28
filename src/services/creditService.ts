@@ -159,8 +159,15 @@ class CreditService {
    */
   async getSubscriptionPlans() {
     const plans = await pricingConfigService.getSubscriptionPlans();
+    const keys = [
+      'STARTER',
+      'PREMIUM',
+      'ENTERPRISE',
+      'VIP_ACCESS',
+      'LEAD_GENERATOR_BUYER',
+      'LEAD_GENERATOR_BROKER',
+    ];
     return plans.map((plan, index) => {
-      const keys = ['STARTER', 'PREMIUM', 'ENTERPRISE', 'VIP_ACCESS'];
       return {
         id: keys[index],
         name: plan.name,
@@ -204,7 +211,7 @@ class CreditService {
         features: ['10 listing unlock credits per month', 'EVA AI Assistant', 'CarrierPulse included'],
       };
     }
-    const planKey = plan as 'STARTER' | 'PREMIUM' | 'ENTERPRISE' | 'VIP_ACCESS';
+    const planKey = plan as 'STARTER' | 'PREMIUM' | 'ENTERPRISE' | 'VIP_ACCESS' | 'LEAD_GENERATOR_BUYER' | 'LEAD_GENERATOR_BROKER';
     return pricingConfigService.getSubscriptionPlan(planKey);
   }
 

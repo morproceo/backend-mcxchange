@@ -34,6 +34,8 @@ export interface PricingConfig {
     premium: SubscriptionPlanConfig;
     enterprise: SubscriptionPlanConfig;
     vip_access: SubscriptionPlanConfig;
+    lead_generator_buyer: SubscriptionPlanConfig;
+    lead_generator_broker: SubscriptionPlanConfig;
   };
   platformFees: PlatformFeesConfig;
   creditPacks: CreditPack[];
@@ -104,6 +106,34 @@ const DEFAULT_PRICING: PricingConfig = {
         '1-on-1 consultation call',
         'AI+ Reports included',
         'Not a subscription — one-time pass',
+      ],
+    },
+    lead_generator_buyer: {
+      name: 'Lead Generator — Buyer',
+      credits: 0,
+      priceMonthly: 99,
+      priceYearly: 99,
+      stripePriceIdMonthly: process.env.STRIPE_PRICE_LEAD_GENERATOR_BUYER_MONTHLY || '',
+      stripePriceIdYearly: '',
+      features: [
+        'Carrier search with core filters (state, fleet size, insurance expiry, authority status, safety rating)',
+        'Save carriers to your personal Lead Generator list',
+        'View saved leads anytime with private notes',
+        'Best for buyers prospecting acquisition targets',
+      ],
+    },
+    lead_generator_broker: {
+      name: 'Lead Generator — Broker',
+      credits: 0,
+      priceMonthly: 499,
+      priceYearly: 499,
+      stripePriceIdMonthly: process.env.STRIPE_PRICE_LEAD_GENERATOR_BROKER_MONTHLY || '',
+      stripePriceIdYearly: '',
+      features: [
+        'Everything in the Buyer tier',
+        'Advanced filters: power-units range, authority age, cargo type, multi-state',
+        'Bulk select and CSV download of every matching carrier',
+        'Best for brokers, marketers, and service sellers needing leads in volume',
       ],
     },
   },
@@ -186,15 +216,17 @@ class PricingConfigService {
       config.subscriptionPlans.premium,
       config.subscriptionPlans.enterprise,
       config.subscriptionPlans.vip_access,
+      config.subscriptionPlans.lead_generator_buyer,
+      config.subscriptionPlans.lead_generator_broker,
     ];
   }
 
   /**
    * Get a specific subscription plan by key
    */
-  async getSubscriptionPlan(planKey: 'STARTER' | 'PREMIUM' | 'ENTERPRISE' | 'VIP_ACCESS'): Promise<SubscriptionPlanConfig> {
+  async getSubscriptionPlan(planKey: 'STARTER' | 'PREMIUM' | 'ENTERPRISE' | 'VIP_ACCESS' | 'LEAD_GENERATOR_BUYER' | 'LEAD_GENERATOR_BROKER'): Promise<SubscriptionPlanConfig> {
     const config = await this.getPricingConfig();
-    const key = planKey.toLowerCase() as 'starter' | 'premium' | 'enterprise' | 'vip_access';
+    const key = planKey.toLowerCase() as 'starter' | 'premium' | 'enterprise' | 'vip_access' | 'lead_generator_buyer' | 'lead_generator_broker';
     return config.subscriptionPlans[key];
   }
 
@@ -295,6 +327,24 @@ class PricingConfigService {
           stripePriceIdMonthly: settingsMap['vip_access_stripe_monthly'] || DEFAULT_PRICING.subscriptionPlans.vip_access.stripePriceIdMonthly,
           stripePriceIdYearly: settingsMap['vip_access_stripe_yearly'] || DEFAULT_PRICING.subscriptionPlans.vip_access.stripePriceIdYearly,
           features: this.parseJson(settingsMap['vip_access_features'], DEFAULT_PRICING.subscriptionPlans.vip_access.features),
+        },
+        lead_generator_buyer: {
+          name: DEFAULT_PRICING.subscriptionPlans.lead_generator_buyer.name,
+          credits: this.parseNumber(settingsMap['lead_generator_buyer_credits'], DEFAULT_PRICING.subscriptionPlans.lead_generator_buyer.credits),
+          priceMonthly: this.parseNumber(settingsMap['lead_generator_buyer_price_monthly'], DEFAULT_PRICING.subscriptionPlans.lead_generator_buyer.priceMonthly),
+          priceYearly: this.parseNumber(settingsMap['lead_generator_buyer_price_yearly'], DEFAULT_PRICING.subscriptionPlans.lead_generator_buyer.priceYearly),
+          stripePriceIdMonthly: settingsMap['lead_generator_buyer_stripe_monthly'] || DEFAULT_PRICING.subscriptionPlans.lead_generator_buyer.stripePriceIdMonthly,
+          stripePriceIdYearly: settingsMap['lead_generator_buyer_stripe_yearly'] || DEFAULT_PRICING.subscriptionPlans.lead_generator_buyer.stripePriceIdYearly,
+          features: this.parseJson(settingsMap['lead_generator_buyer_features'], DEFAULT_PRICING.subscriptionPlans.lead_generator_buyer.features),
+        },
+        lead_generator_broker: {
+          name: DEFAULT_PRICING.subscriptionPlans.lead_generator_broker.name,
+          credits: this.parseNumber(settingsMap['lead_generator_broker_credits'], DEFAULT_PRICING.subscriptionPlans.lead_generator_broker.credits),
+          priceMonthly: this.parseNumber(settingsMap['lead_generator_broker_price_monthly'], DEFAULT_PRICING.subscriptionPlans.lead_generator_broker.priceMonthly),
+          priceYearly: this.parseNumber(settingsMap['lead_generator_broker_price_yearly'], DEFAULT_PRICING.subscriptionPlans.lead_generator_broker.priceYearly),
+          stripePriceIdMonthly: settingsMap['lead_generator_broker_stripe_monthly'] || DEFAULT_PRICING.subscriptionPlans.lead_generator_broker.stripePriceIdMonthly,
+          stripePriceIdYearly: settingsMap['lead_generator_broker_stripe_yearly'] || DEFAULT_PRICING.subscriptionPlans.lead_generator_broker.stripePriceIdYearly,
+          features: this.parseJson(settingsMap['lead_generator_broker_features'], DEFAULT_PRICING.subscriptionPlans.lead_generator_broker.features),
         },
       },
       platformFees: {

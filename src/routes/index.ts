@@ -30,6 +30,7 @@ import carrierDataRoutes from './carrierDataRoutes';
 import truckRoutes from './truckRoutes';
 import guideRoutes from './guideRoutes';
 import leadsRoutes from './leadsRoutes';
+import leadGeneratorRoutes from './leadGeneratorRoutes';
 import agentsRoutes from './agentsRoutes';
 import complianceRoutes from './complianceRoutes';
 import { sequelize } from '../models';
@@ -227,6 +228,7 @@ router.use('/fuel-program', fuelProgramRoutes);
 router.use('/carrier-data', carrierDataRoutes);
 router.use('/guide', guideRoutes);
 router.use('/admin/leads', leadsRoutes);
+router.use('/lead-generator', leadGeneratorRoutes);
 router.use('/agents', agentsRoutes);
 router.use('/compliance', complianceRoutes);
 // Truck routes live at root because they span /listings/:id/trucks and /trucks/:id

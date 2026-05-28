@@ -4,6 +4,7 @@ import { config } from '../config';
 import { AuthRequest, JWTPayload } from '../types';
 import { User, UserRole, Subscription, SubscriptionPlan } from '../models';
 import { hasActiveBundlePromo } from '../utils/bundlePromo';
+import { getLeadGeneratorAccess, LeadGeneratorTier } from '../services/entitlementService';
 
 // Verify JWT token
 export const authenticate = async (
@@ -370,6 +371,78 @@ export const requireEnterpriseSubscription = async (
     res.status(500).json({
       success: false,
       error: 'Error checking subscription status.',
+    });
+  }
+};
+
+// Require active Lead Generator access (BUYER, BROKER, VIP, or admin).
+// Populates req.leadGenTier so handlers can gate broker-only features.
+export const requireLeadGeneratorAccess = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Not authenticated.' });
+      return;
+    }
+
+    const access = await getLeadGeneratorAccess(req.user.id, {
+      isAdmin: req.user.role === UserRole.ADMIN,
+    });
+
+    if (!access.hasAccess || !access.tier) {
+      res.status(403).json({
+        success: false,
+        error: 'Lead Generator subscription required.',
+        code: 'LEAD_GENERATOR_REQUIRED',
+      });
+      return;
+    }
+
+    req.leadGenTier = access.tier as Exclude<LeadGeneratorTier, null>;
+    next();
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Error checking Lead Generator access.',
+    });
+  }
+};
+
+// Same as requireLeadGeneratorAccess but additionally requires BROKER tier
+// (or ADMIN). Used for advanced filters and bulk CSV export.
+export const requireLeadGeneratorBroker = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, error: 'Not authenticated.' });
+      return;
+    }
+
+    const access = await getLeadGeneratorAccess(req.user.id, {
+      isAdmin: req.user.role === UserRole.ADMIN,
+    });
+
+    if (!access.hasAccess || (access.tier !== 'BROKER' && access.tier !== 'ADMIN')) {
+      res.status(403).json({
+        success: false,
+        error: 'Lead Generator Broker tier required.',
+        code: 'LEAD_GENERATOR_BROKER_REQUIRED',
+      });
+      return;
+    }
+
+    req.leadGenTier = access.tier as Exclude<LeadGeneratorTier, null>;
+    next();
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Error checking Lead Generator Broker access.',
     });
   }
 };
