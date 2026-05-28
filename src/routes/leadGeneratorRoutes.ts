@@ -7,6 +7,7 @@ import {
 } from '../middleware/auth';
 import {
   searchCarriers,
+  getCarrierContact,
   listSaves,
   createSave,
   deleteSave,
@@ -20,6 +21,9 @@ router.use(authenticate);
 
 // Carrier search — any LG tier (or admin)
 router.get('/search', requireLeadGeneratorAccess, searchCarriers);
+
+// Carrier contact (phone/email) for click-to-call — any LG tier (or admin)
+router.get('/carrier/:dot/contact', requireLeadGeneratorAccess, getCarrierContact);
 
 // CSV export — broker/admin only
 router.get('/export.csv', requireLeadGeneratorBroker, exportCsv);

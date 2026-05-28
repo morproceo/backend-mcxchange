@@ -200,11 +200,18 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
     isYearly ? 'yearly' : 'monthly'
   );
 
+  // Lead Generator buyers land on the tool itself after activation;
+  // other plans land on the generic subscription page.
+  const isLeadGen = plan === 'lead_generator_buyer' || plan === 'lead_generator_broker';
+  const successUrl = isLeadGen
+    ? `${frontendUrl}/buyer/subscription?success=true&tool=lead_generator`
+    : `${frontendUrl}/buyer/subscription?success=true`;
+
   // Create checkout session
   const result = await stripeService.createCheckoutSession({
     customerId: customer.id,
     priceId,
-    successUrl: `${frontendUrl}/buyer/subscription?success=true`,
+    successUrl,
     cancelUrl: `${frontendUrl}/buyer/subscription?canceled=true`,
     metadata: {
       userId: req.user.id,

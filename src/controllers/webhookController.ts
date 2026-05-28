@@ -17,6 +17,7 @@ import {
   PaymentStatus,
   PaymentType,
   SubscriptionPlan,
+  SubscriptionStatus,
   TransactionStatus,
   ListingStatus,
   NotificationType,
@@ -24,6 +25,7 @@ import {
   CreditTransaction,
   CreditTransactionType,
 } from '../models';
+import { SUBSCRIPTION_PLANS } from '../types';
 import logger, { logError } from '../utils/logger';
 import { config } from '../config';
 
@@ -312,22 +314,87 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription): Pro
     return;
   }
 
-  // Update or create subscription record in our database
-  const plan = subscription.metadata?.plan as SubscriptionPlan || SubscriptionPlan.STARTER;
+  // Normalize plan: Stripe metadata is lowercase ('lead_generator_buyer'),
+  // DB ENUM is uppercase. Grandfathered PROFESSIONAL maps to PREMIUM.
+  let planRaw = (subscription.metadata?.plan || 'starter').toUpperCase();
+  if (planRaw === 'PROFESSIONAL') planRaw = 'PREMIUM';
+  const plan = planRaw as SubscriptionPlan;
+  const planDetails = SUBSCRIPTION_PLANS[plan as keyof typeof SUBSCRIPTION_PLANS];
+  if (!planDetails) {
+    logger.error('Unknown plan in subscription metadata, skipping upsert', {
+      userId,
+      planRaw,
+      subscriptionId: subscription.id,
+    });
+    return;
+  }
 
-  await Subscription.upsert({
-    userId,
-    stripeSubId: subscription.id,
-    stripeCustomerId: subscription.customer as string,
-    plan,
-    status: subscription.status,
-    currentPeriodStart: new Date((subscription as any).current_period_start * 1000),
-    currentPeriodEnd: new Date((subscription as any).current_period_end * 1000),
-    cancelAtPeriodEnd: subscription.cancel_at_period_end,
-  });
+  const isYearly = subscription.metadata?.isYearly === 'true';
+  const periodEnd = (subscription as any).current_period_end;
+  const renewalDate = periodEnd && typeof periodEnd === 'number'
+    ? new Date(periodEnd * 1000)
+    : new Date(Date.now() + (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000);
 
-  // Grant initial credits
-  await creditService.grantSubscriptionCredits(userId, plan);
+  // Map Stripe lifecycle status ('active' / 'canceled' / 'past_due' / ...) to
+  // our internal SubscriptionStatus ENUM (uppercase).
+  const dbStatus = mapStripeStatus(subscription.status);
+
+  const existing = await Subscription.findOne({ where: { userId } });
+  if (existing) {
+    await existing.update({
+      plan,
+      status: dbStatus,
+      priceMonthly: planDetails.priceMonthly,
+      priceYearly: planDetails.priceYearly,
+      isYearly,
+      creditsPerMonth: planDetails.credits,
+      creditsRemaining: planDetails.credits,
+      startDate: new Date(),
+      renewalDate,
+      stripeSubId: subscription.id,
+      stripeCustomerId: subscription.customer as string,
+      cancelledAt: null,
+    });
+  } else {
+    await Subscription.create({
+      userId,
+      plan,
+      status: dbStatus,
+      priceMonthly: planDetails.priceMonthly,
+      priceYearly: planDetails.priceYearly,
+      isYearly,
+      creditsPerMonth: planDetails.credits,
+      creditsRemaining: planDetails.credits,
+      renewalDate,
+      stripeSubId: subscription.id,
+      stripeCustomerId: subscription.customer as string,
+    } as any);
+  }
+
+  // Grant initial credits (no-op for 0-credit tool plans like Lead Generator).
+  if (planDetails.credits > 0) {
+    await creditService.grantSubscriptionCredits(userId, plan);
+  }
+}
+
+// Map Stripe subscription.status to our internal SubscriptionStatus ENUM.
+function mapStripeStatus(status: string): SubscriptionStatus {
+  switch (status) {
+    case 'active':
+    case 'trialing':
+      return SubscriptionStatus.ACTIVE;
+    case 'past_due':
+    case 'unpaid':
+      return SubscriptionStatus.PAST_DUE;
+    case 'canceled':
+    case 'incomplete_expired':
+      return SubscriptionStatus.CANCELLED;
+    case 'incomplete':
+    case 'paused':
+      return SubscriptionStatus.PAST_DUE;
+    default:
+      return SubscriptionStatus.ACTIVE;
+  }
 }
 
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Promise<void> {
@@ -349,12 +416,11 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription): Pro
   }
 
   // Update subscription record
+  const periodEnd = (subscription as any).current_period_end;
   await dbSubscription.update({
-    status: subscription.status,
-    currentPeriodStart: new Date((subscription as any).current_period_start * 1000),
-    currentPeriodEnd: new Date((subscription as any).current_period_end * 1000),
-    cancelAtPeriodEnd: subscription.cancel_at_period_end,
-    canceledAt: subscription.canceled_at
+    status: mapStripeStatus(subscription.status),
+    renewalDate: periodEnd && typeof periodEnd === 'number' ? new Date(periodEnd * 1000) : dbSubscription.renewalDate,
+    cancelledAt: subscription.canceled_at
       ? new Date(subscription.canceled_at * 1000)
       : null,
   });
@@ -400,8 +466,8 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Pro
 
   if (dbSubscription) {
     await dbSubscription.update({
-      status: 'canceled',
-      canceledAt: new Date(),
+      status: SubscriptionStatus.CANCELLED,
+      cancelledAt: new Date(),
     });
 
     // Notify user

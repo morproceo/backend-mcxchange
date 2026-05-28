@@ -107,6 +107,35 @@ export async function searchCarriers(req: AuthRequest, res: Response) {
   });
 }
 
+// GET /api/lead-generator/carrier/:dot/contact — phone/email for one carrier.
+// Available to ANY Lead Generator tier (Buyer + Broker) so subscribers can call
+// a lead directly. Phone is NOT in the search response (kept light for speed);
+// it lives on the per-carrier LINQ detail record, so we fetch it on demand here.
+export async function getCarrierContact(req: AuthRequest, res: Response) {
+  const dot = String(req.params.dot || '').trim();
+  if (!dot) {
+    return res.status(400).json({ success: false, error: 'dot is required' });
+  }
+
+  if (!morproLinqService.isConfigured()) {
+    return res.status(502).json({ success: false, error: 'Carrier data unavailable' });
+  }
+
+  const carrier = (await morproLinqService.getCarrier(dot)) as any;
+  if (!carrier) {
+    return res.status(404).json({ success: false, error: 'Carrier not found' });
+  }
+
+  res.json({
+    success: true,
+    data: {
+      dotNumber: dot,
+      phone: carrier.phone || carrier.cell_phone || null,
+      email: carrier.email || null,
+    },
+  });
+}
+
 // GET /api/lead-generator/saves — current user's own saves
 export async function listSaves(req: AuthRequest, res: Response) {
   if (!req.user) return res.status(401).json({ success: false, error: 'Not authenticated.' });
