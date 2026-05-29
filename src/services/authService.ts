@@ -33,7 +33,7 @@ interface RegisterData {
   companyName?: string;
 }
 
-type RoleHint = 'buyer' | 'compliance_manager';
+type RoleHint = 'buyer' | 'seller' | 'compliance_manager';
 
 interface LoginData {
   email: string;
@@ -277,10 +277,15 @@ class AuthService {
 
     if (data.roleHint) {
       const hintAsRole =
-        data.roleHint === 'buyer' ? UserRole.BUYER : UserRole.COMPLIANCE_MANAGER;
+        data.roleHint === 'buyer' ? UserRole.BUYER
+        : data.roleHint === 'seller' ? UserRole.SELLER
+        : UserRole.COMPLIANCE_MANAGER;
       if (availableRoles.includes(hintAsRole)) {
         sessionRole = hintAsRole;
-      } else {
+      } else if (data.roleHint !== 'seller') {
+        // buyer/compliance can be acquired via subscription, so route the user
+        // to subscribe. Seller is not acquired that way — fall back to the
+        // account's primary role instead of flagging needsSubscription.
         needsSubscription = data.roleHint;
       }
     }

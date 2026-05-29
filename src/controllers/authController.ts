@@ -23,8 +23,8 @@ export const loginValidation = [
   body('password').notEmpty().withMessage('Password is required'),
   body('roleHint')
     .optional()
-    .isIn(['buyer', 'compliance_manager'])
-    .withMessage('roleHint must be buyer or compliance_manager'),
+    .isIn(['buyer', 'seller', 'compliance_manager'])
+    .withMessage('roleHint must be buyer, seller, or compliance_manager'),
 ];
 
 export const switchRoleValidation = [
