@@ -37,15 +37,20 @@ import { authenticate, buyerOnly, requireSubscription, requireProfessionalSubscr
 
 const router = Router();
 
-// All buyer routes require authentication and buyer role
+// All routes require authentication.
 router.use(authenticate);
-router.use(buyerOnly);
 
-// Subscription routes - no subscription required (so users can subscribe)
+// Subscription routes — authenticated users of ANY role may read/purchase/cancel
+// their subscription. This lets non-buyers (e.g. sellers) subscribe to cross-role
+// products like Lead Generator. Plan-level role enforcement (buyer-marketplace
+// plans stay buyer/admin only) lives in createSubscriptionCheckout.
 router.get('/subscription', getSubscription);
 router.post('/subscription/checkout', createSubscriptionCheckout);
 router.post('/subscription/cancel', cancelSubscription);
 router.post('/subscription/verify', verifySubscription);
+
+// Everything below requires buyer (or admin) role.
+router.use(buyerOnly);
 
 // Dashboard - no subscription required (shows subscription status)
 router.get('/dashboard', getDashboardStats);

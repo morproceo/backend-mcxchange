@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { buyerService } from '../services/buyerService';
 import { stripeService } from '../services/stripeService';
 import { creditsafeService } from '../services/creditsafeService';
-import { asyncHandler, BadRequestError } from '../middleware/errorHandler';
+import { asyncHandler, BadRequestError, ForbiddenError } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { parseIntParam } from '../utils/helpers';
 import { config } from '../config';
@@ -156,6 +156,14 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
     throw new BadRequestError('Invalid subscription plan');
   }
 
+  // Cross-role products any authenticated user may buy. Buyer-marketplace plans
+  // (starter/premium/enterprise) stay restricted to buyer/admin accounts.
+  const crossRolePlans = ['lead_generator_buyer', 'lead_generator_broker', 'vip_access'];
+  const isBuyerRole = req.user.role === UserRole.BUYER || req.user.role === UserRole.ADMIN;
+  if (!isBuyerRole && !crossRolePlans.includes(plan)) {
+    throw new ForbiddenError('This plan is only available to buyer accounts.');
+  }
+
   // Get or create Stripe customer (validates existing ID and recreates if invalid)
   const customer = await stripeService.getOrCreateCustomer(
     req.user.id,
@@ -202,9 +210,14 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
 
   // Lead Generator buyers land on the tool itself after activation;
   // other plans land on the generic subscription page.
+  // Buyers land on their subscription page (with the dashboard chrome); non-buyer
+  // Lead Generator subscribers land on the role-agnostic landing page, which shows
+  // their access status and an "Open the tool" CTA once the subscription is active.
   const isLeadGen = plan === 'lead_generator_buyer' || plan === 'lead_generator_broker';
   const successUrl = isLeadGen
-    ? `${frontendUrl}/buyer/subscription?success=true&tool=lead_generator`
+    ? (isBuyerRole
+        ? `${frontendUrl}/buyer/subscription?success=true&tool=lead_generator`
+        : `${frontendUrl}/lead-generator?success=true`)
     : `${frontendUrl}/buyer/subscription?success=true`;
 
   // Create checkout session
