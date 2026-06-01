@@ -95,13 +95,15 @@ const DEFAULT_PRICING: PricingConfig = {
     vip_access: {
       name: 'VIP / Deal Access Pass',
       credits: 999,
-      priceMonthly: 399,
-      priceYearly: 399,
+      priceMonthly: 399.99,
+      priceYearly: 399.99,
       stripePriceIdMonthly: process.env.STRIPE_PRICE_VIP_ACCESS_ONETIME || process.env.STRIPE_PRICE_VIP_ACCESS_MONTHLY || '',
       stripePriceIdYearly: process.env.STRIPE_PRICE_VIP_ACCESS_ONETIME || process.env.STRIPE_PRICE_VIP_ACCESS_YEARLY || '',
       features: [
         'Unlimited listing unlocks until purchase',
-        '$399 credited toward your final MC purchase',
+        'CarrierPulse included',
+        '20 company credit reports per month',
+        '$399.99 credited toward your final MC purchase',
         'Admin full support',
         '1-on-1 consultation call',
         'AI+ Reports included',
