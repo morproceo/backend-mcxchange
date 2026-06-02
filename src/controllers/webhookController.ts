@@ -8,6 +8,7 @@ import {
   processPdfPurchase,
   processBundlePurchase,
 } from '../services/buyerGuideService';
+import { fulfillVipPassPurchase } from '../services/vipPassService';
 import {
   User,
   Payment,
@@ -934,6 +935,15 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
     }
   }
 
+  // Handle VIP / Deal Access Pass purchases ($399 one-time, mode: 'payment').
+  // The pass is NOT a recurring Stripe subscription, so customer.subscription.*
+  // events never fire for it — this checkout handler is the only fulfilment hook.
+  // It records an ACTIVE VIP_ACCESS subscription row (which the entitlement +
+  // access gates key off) and grants CarrierPulse access.
+  if (type === 'vip_pass_purchase') {
+    await fulfillVipPassPurchase(session);
+  }
+
   // Buyer's-guide tier detection: metadata.type wins; otherwise fall back to
   // matching the purchased price ID against env vars. This lets Stripe
   // Payment Links work without anyone having to set metadata manually.
@@ -944,6 +954,10 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
     await processBundlePurchase(session);
   }
 }
+
+// fulfillVipPassPurchase now lives in services/vipPassService.ts so the
+// synchronous verify/fulfil fallback (buyerService) can reuse the exact same
+// three-layer (Stripe → Subscription row → credits) logic as this webhook.
 
 /**
  * Returns 'guide_pdf', 'guide_pdf_bundle', or null based on:

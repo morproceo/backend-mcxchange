@@ -22,6 +22,7 @@ import {
 } from '../models';
 import { getPaginationInfo } from '../utils/helpers';
 import { stripeService } from './stripeService';
+import { fulfillVipPassPurchase } from './vipPassService';
 import { NotFoundError, BadRequestError } from '../middleware/errorHandler';
 import { SUBSCRIPTION_PLANS } from '../types';
 import logger from '../utils/logger';
@@ -374,6 +375,20 @@ class BuyerService {
     });
 
     if (stripeSubscriptions.data.length === 0) {
+      // No recurring subscription — but the VIP / Deal Access Pass is a one-time
+      // payment (mode: 'payment'), so it never shows up in subscriptions.list.
+      // Fall back to fulfilling it from the paid checkout session here, mirroring
+      // the webhook, so a VIP buyer isn't stranded when the webhook is delayed or
+      // never lands. Idempotent: skips if an active VIP_ACCESS row already exists.
+      const vipResult = await this.verifyAndFulfillVipPass(buyerId, user.stripeCustomerId);
+      if (vipResult) {
+        return {
+          fulfilled: true,
+          message: 'VIP / Deal Access Pass verified and activated',
+          subscription: await this.getSubscription(buyerId),
+        };
+      }
+
       logger.info('No active Stripe subscription found', { buyerId, customerId: user.stripeCustomerId });
       return { fulfilled: false, message: 'No active subscription found in Stripe' };
     }
@@ -477,6 +492,46 @@ class BuyerService {
       logger.error('Failed to fulfill subscription', { buyerId, error });
       throw error;
     }
+  }
+
+  /**
+   * Synchronous fallback for the VIP / Deal Access Pass. Because the pass is a
+   * one-time payment it never appears in stripe.subscriptions.list, so the normal
+   * verify path can't fulfil it. This finds the user's paid VIP checkout session
+   * and fulfils it the same way the webhook does. Idempotent — returns true if a
+   * VIP_ACCESS row is active for the user afterwards, false if no paid VIP pass
+   * purchase exists for this customer.
+   */
+  private async verifyAndFulfillVipPass(buyerId: string, stripeCustomerId: string): Promise<boolean> {
+    // Webhook may already have landed — treat an existing active VIP row as done.
+    const existing = await Subscription.findOne({ where: { userId: buyerId } });
+    if (
+      existing &&
+      existing.status === SubscriptionStatus.ACTIVE &&
+      existing.plan === SubscriptionPlan.VIP_ACCESS
+    ) {
+      return true;
+    }
+
+    const stripe = stripeService.getStripe();
+    if (!stripe) return false;
+
+    // checkout.sessions.list can't filter by metadata server-side, so pull the
+    // most recent sessions for this customer and match locally.
+    const sessions = await stripe.checkout.sessions.list({
+      customer: stripeCustomerId,
+      limit: 20,
+    });
+
+    const vipSession = sessions.data.find(
+      (s) => s.metadata?.type === 'vip_pass_purchase' && s.payment_status === 'paid'
+    );
+
+    if (!vipSession) {
+      return false;
+    }
+
+    return fulfillVipPassPurchase(vipSession);
   }
 
   // Create a premium request to access a premium listing
