@@ -792,6 +792,7 @@ class StripeService {
         success_url: params.successUrl,
         cancel_url: params.cancelUrl,
         metadata: params.metadata,
+        allow_promotion_codes: true,
         subscription_data: {
           metadata: params.metadata,
         },
