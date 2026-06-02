@@ -113,8 +113,8 @@ const DEFAULT_PRICING: PricingConfig = {
     lead_generator_buyer: {
       name: 'Lead Generator — Buyer',
       credits: 0,
-      priceMonthly: 99,
-      priceYearly: 99,
+      priceMonthly: 49,
+      priceYearly: 49,
       stripePriceIdMonthly: process.env.STRIPE_PRICE_LEAD_GENERATOR_BUYER_MONTHLY || '',
       stripePriceIdYearly: '',
       features: [
@@ -127,8 +127,8 @@ const DEFAULT_PRICING: PricingConfig = {
     lead_generator_broker: {
       name: 'Lead Generator — Broker',
       credits: 0,
-      priceMonthly: 499,
-      priceYearly: 499,
+      priceMonthly: 299,
+      priceYearly: 299,
       stripePriceIdMonthly: process.env.STRIPE_PRICE_LEAD_GENERATOR_BROKER_MONTHLY || '',
       stripePriceIdYearly: '',
       features: [
