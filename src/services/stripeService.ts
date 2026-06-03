@@ -61,6 +61,12 @@ export interface CheckoutSessionParams {
   successUrl: string;
   cancelUrl: string;
   metadata?: Record<string, string>;
+  // Show the "you'll be asked to verify your identity" notice on the Stripe
+  // Checkout page. Only the credit-granting marketplace subscriptions
+  // (starter/premium/enterprise) gate marketplace access behind Stripe Identity.
+  // Tool purchases (Lead Generator, CarrierPulse) don't require verification,
+  // so the notice must NOT appear for them.
+  showVerificationNotice?: boolean;
 }
 
 export interface CheckoutSessionResult {
@@ -796,11 +802,18 @@ class StripeService {
         subscription_data: {
           metadata: params.metadata,
         },
-        custom_text: {
-          submit: {
-            message: 'After subscribing, you\'ll be asked to verify your identity to activate your account. This is a quick, secure process powered by Stripe and helps us maintain a safe marketplace for all users.',
-          },
-        },
+        // Only credit-granting marketplace subscriptions require identity
+        // verification. Tool purchases (Lead Generator, CarrierPulse) skip it,
+        // so the notice is omitted unless explicitly requested.
+        ...(params.showVerificationNotice
+          ? {
+              custom_text: {
+                submit: {
+                  message: 'After subscribing, you\'ll be asked to verify your identity to activate your account. This is a quick, secure process powered by Stripe and helps us maintain a safe marketplace for all users.',
+                },
+              },
+            }
+          : {}),
       });
 
       logger.info('Checkout session created', {
