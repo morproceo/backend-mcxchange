@@ -13,11 +13,17 @@ import {
   deleteSave,
   exportCsv,
   adminListAllSaves,
+  getAccess,
 } from '../controllers/leadGeneratorController';
 
 const router = Router();
 
 router.use(authenticate);
+
+// Access check — authenticated, NOT gated by requireLeadGeneratorAccess so it can
+// return { hasAccess:false } (200) instead of 403, and never touches the external
+// carrier-data provider. The UI uses this to decide whether to show the tool.
+router.get('/access', getAccess);
 
 // Carrier search — any LG tier (or admin)
 router.get('/search', requireLeadGeneratorAccess, searchCarriers);

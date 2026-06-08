@@ -1,8 +1,28 @@
 import { Response } from 'express';
 import { Op } from 'sequelize';
 import { AuthRequest } from '../types';
-import { LeadGeneratorSave, User } from '../models';
+import { LeadGeneratorSave, User, UserRole } from '../models';
 import morproLinqService, { type LinqSearchFilters } from '../services/morproLinqService';
+import { getLeadGeneratorAccess } from '../services/entitlementService';
+
+// GET /api/lead-generator/access — authoritative access check for the UI.
+// Resolves access purely from the user's subscription/entitlement, with NO
+// dependency on the external carrier-data provider. The tool page gates on this
+// so a data-provider outage (which makes /search return 502) can never make a
+// paying subscriber look like they have no access. Always 200 for an
+// authenticated user — { hasAccess:false, tier:null } when they lack a plan.
+export async function getAccess(req: AuthRequest, res: Response) {
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: 'Not authenticated.' });
+  }
+  const access = await getLeadGeneratorAccess(req.user.id, {
+    isAdmin: req.user.role === UserRole.ADMIN,
+  });
+  return res.json({
+    success: true,
+    data: { hasAccess: access.hasAccess, tier: access.tier },
+  });
+}
 
 // Buyer tier filters — anything not in this set is silently dropped for BUYER
 // callers so the client can't sneak in advanced filters by hand-rolling the URL.

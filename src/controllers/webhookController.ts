@@ -596,6 +596,45 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session):
     return;
   }
 
+  // Safety net for subscription checkouts. These are normally fulfilled by the
+  // customer.subscription.created event — but if that event isn't delivered
+  // (e.g. not subscribed on the Stripe webhook endpoint, or dropped), a paid
+  // user gets no access. For the 0-credit Lead Generator tool plans we fulfill
+  // here too: handleSubscriptionCreated upserts by userId (idempotent), and
+  // because these plans grant 0 credits there's no risk of double-granting
+  // credits if both events fire. We deliberately scope this to Lead Generator —
+  // the credit-granting marketplace plans (starter/premium/enterprise) keep
+  // their single fulfillment path so they can never double-grant credits.
+  if (session.mode === 'subscription') {
+    const planRaw = (session.metadata?.plan || '').toLowerCase();
+    const isLeadGen =
+      planRaw === 'lead_generator_buyer' || planRaw === 'lead_generator_broker';
+    if (isLeadGen && session.subscription) {
+      try {
+        const stripe = stripeService.getStripe();
+        const subId =
+          typeof session.subscription === 'string'
+            ? session.subscription
+            : session.subscription.id;
+        const sub = stripe ? await stripe.subscriptions.retrieve(subId) : null;
+        if (sub) {
+          await handleSubscriptionCreated(sub as Stripe.Subscription);
+          logger.info('Lead Generator subscription fulfilled via checkout.session.completed safety net', {
+            sessionId: session.id,
+            subscriptionId: subId,
+          });
+        }
+      } catch (err) {
+        logError('Failed to fulfill Lead Generator subscription from checkout.session.completed', err as Error, {
+          sessionId: session.id,
+        });
+      }
+    }
+    // Subscription-mode sessions never carry the one-time payment `type`s handled
+    // below, so we're done here regardless of plan.
+    return;
+  }
+
   const metadata = session.metadata;
   const type = metadata?.type;
 
