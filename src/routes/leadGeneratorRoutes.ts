@@ -3,7 +3,6 @@ import {
   authenticate,
   adminOnly,
   requireLeadGeneratorAccess,
-  requireLeadGeneratorBroker,
 } from '../middleware/auth';
 import {
   searchCarriers,
@@ -31,8 +30,9 @@ router.get('/search', requireLeadGeneratorAccess, searchCarriers);
 // Carrier contact (phone/email) for click-to-call — any LG tier (or admin)
 router.get('/carrier/:dot/contact', requireLeadGeneratorAccess, getCarrierContact);
 
-// CSV export — broker/admin only
-router.get('/export.csv', requireLeadGeneratorBroker, exportCsv);
+// CSV export — any tier. Buyer gets the current page (25 rows); broker/admin get
+// the full result set enriched with phone + email. Tier split is in the controller.
+router.get('/export.csv', requireLeadGeneratorAccess, exportCsv);
 
 // Saved leads — any LG tier (or admin); always scoped to the current user
 router.get('/saves', requireLeadGeneratorAccess, listSaves);

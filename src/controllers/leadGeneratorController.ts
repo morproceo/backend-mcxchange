@@ -207,60 +207,98 @@ export async function deleteSave(req: AuthRequest, res: Response) {
   res.json({ success: true });
 }
 
-// GET /api/lead-generator/export.csv — broker/admin only.
-// Walks paginated LINQ search until maxRows hit, streams CSV.
-export async function exportCsv(req: AuthRequest, res: Response) {
-  const tier = req.leadGenTier;
-  if (tier !== 'BROKER' && tier !== 'ADMIN') {
-    return res.status(403).json({
-      success: false,
-      error: 'Lead Generator Broker tier required for bulk export.',
-      code: 'LEAD_GENERATOR_BROKER_REQUIRED',
-    });
-  }
+// Bounded-concurrency map so enrichment doesn't fire hundreds of LINQ calls at once.
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let i = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length || 1) }, async () => {
+    while (i < items.length) {
+      const cur = i++;
+      results[cur] = await fn(items[cur]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
 
-  const maxRows = Math.min(5000, Math.max(1, parseInt10(req.query.limit, 1000)));
+const BASE_CSV_COLUMNS = [
+  'dot_number',
+  'legal_name',
+  'dba',
+  'state',
+  'total_power_units',
+  'total_drivers',
+  'authority_status',
+  'safety_rating',
+];
+
+function rowFromCarrier(c: any): Record<string, unknown> {
+  return {
+    dot_number: c.dot_number,
+    legal_name: c.legal_name,
+    dba: c.dba_name || '',
+    state: c.state,
+    total_power_units: c.power_units,
+    total_drivers: c.drivers || '',
+    authority_status: c.status,
+    safety_rating: c.safety_rating,
+  };
+}
+
+// GET /api/lead-generator/export.csv — available to any Lead Generator tier.
+//   Buyer ($49): downloads the current page only (25 carriers), core columns.
+//   Broker/Admin: downloads the full result set (paginated up to maxRows) and
+//   enriches each row with phone + email (fetched per-carrier from LINQ).
+export async function exportCsv(req: AuthRequest, res: Response) {
+  const tier = req.leadGenTier ?? 'BUYER';
+  const isBrokerTier = tier === 'BROKER' || tier === 'ADMIN';
+
   const allowedRaw = filterByTier(req.query as Record<string, unknown>, tier);
   const baseFilters = buildLinqFilters(allowedRaw);
 
   const collected: Array<Record<string, unknown>> = [];
-  let page = 1;
-  const pageSize = 100;
 
-  while (collected.length < maxRows) {
-    const filters: LinqSearchFilters = { ...baseFilters, page, limit: pageSize };
-    const result = await morproLinqService.searchCarriers(filters);
-    if (!result || (result.carriers || []).length === 0) break;
-
-    const remaining = maxRows - collected.length;
-    const slice = (result.carriers || []).slice(0, remaining);
-    for (const c of slice) {
-      collected.push({
-        dot_number: c.dot_number,
-        legal_name: c.legal_name,
-        dba: (c as any).dba_name || '',
-        state: c.state,
-        total_power_units: c.power_units,
-        total_drivers: (c as any).drivers || '',
-        authority_status: c.status,
-        safety_rating: c.safety_rating,
-      });
+  if (!isBrokerTier) {
+    // Buyer: just the page they're viewing (25 rows).
+    const page = Math.max(1, parseInt10(req.query.page, 1));
+    const result = await morproLinqService.searchCarriers({ ...baseFilters, page, limit: 25 });
+    if (!result) {
+      return res.status(502).json({ success: false, error: 'Carrier search unavailable' });
+    }
+    for (const c of (result.carriers || []).slice(0, 25)) collected.push(rowFromCarrier(c));
+  } else {
+    // Broker/Admin: walk pages up to maxRows.
+    const maxRows = Math.min(5000, Math.max(1, parseInt10(req.query.limit, 1000)));
+    let page = 1;
+    const pageSize = 100;
+    while (collected.length < maxRows) {
+      const filters: LinqSearchFilters = { ...baseFilters, page, limit: pageSize };
+      const result = await morproLinqService.searchCarriers(filters);
+      if (!result || (result.carriers || []).length === 0) break;
+      const remaining = maxRows - collected.length;
+      for (const c of (result.carriers || []).slice(0, remaining)) {
+        collected.push({ ...rowFromCarrier(c), phone: '', email: '' });
+      }
+      if (!result.has_more) break;
+      page++;
     }
 
-    if (!result.has_more) break;
-    page++;
+    // Enrich with phone + email from the per-carrier LINQ detail (not in search).
+    const contacts = await mapLimit(collected, 12, async (row) => {
+      try {
+        const d = (await morproLinqService.getCarrier(String(row.dot_number))) as any;
+        return { phone: d?.phone || d?.cell_phone || '', email: d?.email || '' };
+      } catch {
+        return { phone: '', email: '' };
+      }
+    });
+    contacts.forEach((c, idx) => {
+      collected[idx].phone = c.phone;
+      collected[idx].email = c.email;
+    });
   }
 
-  const headers = [
-    'dot_number',
-    'legal_name',
-    'dba',
-    'state',
-    'total_power_units',
-    'total_drivers',
-    'authority_status',
-    'safety_rating',
-  ];
+  const headers = isBrokerTier ? [...BASE_CSV_COLUMNS, 'phone', 'email'] : BASE_CSV_COLUMNS;
   const escape = (v: unknown) => {
     if (v == null) return '';
     const s = String(v);
