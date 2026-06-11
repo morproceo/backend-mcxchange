@@ -2998,23 +2998,64 @@ class AdminService {
       throw new BadRequestError('Subscription is not active');
     }
 
-    // Cancel in Stripe immediately (admin cancellation = immediate, not at period end)
-    let stripeCancelled = false;
+    // Cancel in Stripe immediately (admin cancellation = immediate, not at period end).
+    //
+    // Collect every Stripe subscription that needs cancelling. Our row's
+    // stripeSubId is frequently null (created via webhook/fulfillment paths that
+    // didn't persist it — ~1/3 of active rows), and skipping Stripe in that case
+    // leaves the customer being billed even though we mark the row CANCELLED. So
+    // when we don't have a linked id, fall back to looking up the customer's live
+    // Stripe subscriptions by stripeCustomerId and cancel those.
+    const subIdsToCancel = new Set<string>();
     if (subscription.stripeSubId) {
-      stripeCancelled = await stripeService.cancelSubscription(subscription.stripeSubId, true);
-      if (!stripeCancelled) {
-        // Stripe cancel failed (sub may already be cancelled or not exist in Stripe)
-        // Log warning but proceed — admin explicitly wants this cancelled in our DB
-        logger.warn('Stripe cancel failed or subscription not found in Stripe, proceeding with DB update', {
+      subIdsToCancel.add(subscription.stripeSubId);
+    } else {
+      const stripe = stripeService.getStripe();
+      const user = await User.findByPk(userId, { attributes: ['stripeCustomerId'] });
+      const customerId = subscription.stripeCustomerId || user?.stripeCustomerId || undefined;
+      if (stripe && customerId) {
+        try {
+          // 'active' and 'trialing' subs are the billable ones worth cancelling.
+          for (const status of ['active', 'trialing'] as const) {
+            const list = await stripe.subscriptions.list({ customer: customerId, status, limit: 100 });
+            for (const s of list.data) subIdsToCancel.add(s.id);
+          }
+          if (subIdsToCancel.size > 0) {
+            logger.info('Resolved Stripe subscriptions from customer for admin cancel (row had no stripeSubId)', {
+              userId,
+              customerId,
+              found: Array.from(subIdsToCancel),
+            });
+          }
+        } catch (err) {
+          logger.warn('Failed to list Stripe subscriptions for customer during admin cancel', {
+            userId,
+            customerId,
+            error: (err as Error).message,
+          });
+        }
+      } else {
+        logger.warn('No stripeSubId and no stripeCustomerId — cannot cancel in Stripe, DB only', {
           userId,
-          stripeSubId: subscription.stripeSubId,
+          subscriptionId: subscription.id,
         });
       }
-    } else {
-      logger.warn('No stripeSubId on subscription record, skipping Stripe cancellation', {
-        userId,
-        subscriptionId: subscription.id,
-      });
+    }
+
+    let stripeCancelled = false;
+    let stripeAttempted = false;
+    for (const subId of subIdsToCancel) {
+      stripeAttempted = true;
+      const ok = await stripeService.cancelSubscription(subId, true);
+      if (ok) stripeCancelled = true;
+      else {
+        // Sub may already be cancelled or not exist in Stripe. Log and proceed —
+        // admin explicitly wants this cancelled in our DB.
+        logger.warn('Stripe cancel failed or subscription not found in Stripe, proceeding with DB update', {
+          userId,
+          stripeSubId: subId,
+        });
+      }
     }
 
     // Update subscription status in DB
@@ -3032,10 +3073,19 @@ class AdminService {
       reason: 'Subscription cancelled by admin',
     });
 
+    let message: string;
+    if (stripeCancelled) {
+      message = 'Subscription cancelled immediately in Stripe and database';
+    } else if (stripeAttempted) {
+      message =
+        'Subscription marked as cancelled in database, but the Stripe cancellation failed (it may already be cancelled or no longer exist in Stripe). Verify in the Stripe dashboard.';
+    } else {
+      message =
+        'Subscription cancelled in database. No linked Stripe subscription was found for this customer, so nothing was cancelled in Stripe.';
+    }
+
     return {
-      message: stripeCancelled
-        ? 'Subscription cancelled immediately in Stripe and database'
-        : 'Subscription marked as cancelled in database (Stripe cancellation failed — subscription may not exist in Stripe or was already cancelled)',
+      message,
       stripeCancelled,
       subscription,
     };
