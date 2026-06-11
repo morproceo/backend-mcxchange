@@ -172,6 +172,8 @@ class TelegramService {
     contactEmail?: string;
     contactPhone?: string;
     amazonActive?: boolean;
+    highwaySetup?: boolean;
+    rmisSetup?: boolean;
   }, customMessage?: string): Promise<{ success: boolean; messageId?: number; error?: string }> {
     const frontendUrl = process.env.FRONTEND_URL || 'https://www.domilea.com';
     const listingUrl = `${frontendUrl}/mc/${listing.id}`;
@@ -195,9 +197,12 @@ class TelegramService {
     }
     message += `💰 Price: $${listing.listingPrice.toLocaleString()}\n`;
 
-    // Inspections (driver + vehicle) and OOS rates
+    // Inspections (total + driver/vehicle split) and OOS rates
+    if (listing.totalInspections !== undefined) {
+      message += `🔍 Total Inspections: ${listing.totalInspections}\n`;
+    }
     if (listing.driverInspections !== undefined) {
-      message += `🔍 Driver Inspections: ${listing.driverInspections}\n`;
+      message += `🧍 Driver Inspections: ${listing.driverInspections}\n`;
     }
     if (listing.vehicleInspections !== undefined) {
       message += `🚚 Vehicle Inspections: ${listing.vehicleInspections}\n`;
@@ -219,8 +224,14 @@ class TelegramService {
       message += `⭐ Safety Rating: ${escapeHtml(listing.safetyRating)}\n`;
     }
 
-    // Amazon Relay status
+    // Onboarding / platform setup
     message += `🅰️ Amazon Relay: ${listing.amazonActive ? 'Active ✅' : 'Not active ❌'}\n`;
+    if (listing.highwaySetup !== undefined) {
+      message += `🛣️ Highway: ${listing.highwaySetup ? 'Set up ✅' : 'Not set up ❌'}\n`;
+    }
+    if (listing.rmisSetup !== undefined) {
+      message += `📑 RMIS: ${listing.rmisSetup ? 'Set up ✅' : 'Not set up ❌'}\n`;
+    }
 
     // Contact / selling-with details
     if (listing.sellingWithEmail) {

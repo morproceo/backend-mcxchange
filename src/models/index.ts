@@ -700,6 +700,7 @@ export class Listing extends Model {
   declare amazonRelayScore?: string;
   declare authorityType: AuthorityType;
   declare highwaySetup: boolean;
+  declare rmisSetup: boolean;
   declare hasFactoring: boolean;
   declare factoringCompany?: string;
   declare factoringRate?: number;
@@ -857,6 +858,10 @@ Listing.init(
       comment: 'What type of authority is being sold (motor carrier, broker, both, or freight forwarder)',
     },
     highwaySetup: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    rmisSetup: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },

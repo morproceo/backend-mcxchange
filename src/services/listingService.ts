@@ -343,6 +343,7 @@ class ListingService {
       amazonRelayScore: data.amazonRelayScore,
       authorityType: normalizeAuthorityType(data.authorityType),
       highwaySetup: data.highwaySetup || false,
+      rmisSetup: data.rmisSetup || false,
       sellingWithEmail: data.sellingWithEmail || false,
       sellingWithPhone: data.sellingWithPhone || false,
       contactEmail: data.contactEmail,

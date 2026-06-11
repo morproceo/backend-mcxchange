@@ -199,6 +199,8 @@ export const shareListing = async (req: Request, res: Response) => {
         contactEmail: listing.contactEmail,
         contactPhone: listing.contactPhone,
         amazonActive: listing.amazonStatus === AmazonRelayStatus.ACTIVE,
+        highwaySetup: listing.highwaySetup,
+        rmisSetup: listing.rmisSetup,
       },
       customMessage
     );
