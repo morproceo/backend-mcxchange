@@ -11,6 +11,20 @@ interface SendMessageOptions {
   disableWebPreview?: boolean;
 }
 
+/** Escape characters that Telegram's HTML parse mode treats as markup. */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/** Format an OOS rate. Values may already be a percentage (e.g. 5.2) or a fraction (e.g. 0.052). */
+function formatRate(rate: number): string {
+  const pct = rate <= 1 ? rate * 100 : rate;
+  return `${pct.toFixed(1)}%`;
+}
+
 interface TelegramApiResponse {
   ok: boolean;
   description?: string;
@@ -144,9 +158,20 @@ class TelegramService {
     listingPrice: number;
     state?: string;
     yearsActive?: number;
+    yearsFromReinstatement?: boolean;
     fleetSize?: number;
     safetyRating?: string;
     totalInspections?: number;
+    driverInspections?: number;
+    vehicleInspections?: number;
+    driverOosRate?: number;
+    vehicleOosRate?: number;
+    description?: string;
+    sellingWithEmail?: boolean;
+    sellingWithPhone?: boolean;
+    contactEmail?: string;
+    contactPhone?: string;
+    amazonActive?: boolean;
   }, customMessage?: string): Promise<{ success: boolean; messageId?: number; error?: string }> {
     const frontendUrl = process.env.FRONTEND_URL || 'https://www.domilea.com';
     const listingUrl = `${frontendUrl}/mc/${listing.id}`;
@@ -163,24 +188,51 @@ class TelegramService {
       ? '***' + listing.mcNumber.slice(-3)
       : '***';
 
-    message += `🚛 <b>${listing.title}</b>\n\n`;
+    message += `🚛 <b>${escapeHtml(listing.title)}</b>\n\n`;
     message += `📋 MC# ${maskedMC}\n`;
-    message += `💰 Listing Price: $${listing.listingPrice.toLocaleString()}\n`;
-
-    if (listing.totalInspections !== undefined) {
-      message += `🔍 Inspections: ${listing.totalInspections}\n`;
-    }
     if (listing.state) {
-      message += `📍 State: ${listing.state}\n`;
+      message += `📍 State: ${escapeHtml(listing.state)}\n`;
     }
+    message += `💰 Price: $${listing.listingPrice.toLocaleString()}\n`;
+
+    // Inspections (driver + vehicle) and OOS rates
+    if (listing.driverInspections !== undefined) {
+      message += `🔍 Driver Inspections: ${listing.driverInspections}\n`;
+    }
+    if (listing.vehicleInspections !== undefined) {
+      message += `🚚 Vehicle Inspections: ${listing.vehicleInspections}\n`;
+    }
+    if (listing.driverOosRate !== undefined) {
+      message += `⚠️ Driver OOS Rate: ${formatRate(listing.driverOosRate)}\n`;
+    }
+    if (listing.vehicleOosRate !== undefined) {
+      message += `⚠️ Vehicle OOS Rate: ${formatRate(listing.vehicleOosRate)}\n`;
+    }
+
     if (listing.yearsActive) {
-      message += `📅 Years Active: ${listing.yearsActive}\n`;
+      message += `📅 Years Active: ${listing.yearsActive}${listing.yearsFromReinstatement ? ' (since reinstatement)' : ''}\n`;
     }
     if (listing.fleetSize) {
-      message += `🚚 Fleet Size: ${listing.fleetSize}\n`;
+      message += `🚛 Fleet Size: ${listing.fleetSize}\n`;
     }
     if (listing.safetyRating) {
-      message += `⭐ Safety Rating: ${listing.safetyRating}\n`;
+      message += `⭐ Safety Rating: ${escapeHtml(listing.safetyRating)}\n`;
+    }
+
+    // Amazon Relay status
+    message += `🅰️ Amazon Relay: ${listing.amazonActive ? 'Active ✅' : 'Not active ❌'}\n`;
+
+    // Contact / selling-with details
+    if (listing.sellingWithEmail) {
+      message += `✉️ Email: ${listing.contactEmail ? escapeHtml(listing.contactEmail) : 'Included'}\n`;
+    }
+    if (listing.sellingWithPhone) {
+      message += `📞 Phone: ${listing.contactPhone ? escapeHtml(listing.contactPhone) : 'Included'}\n`;
+    }
+
+    // Full listing description
+    if (listing.description && listing.description.trim()) {
+      message += `\n📝 ${escapeHtml(listing.description.trim())}\n`;
     }
 
     message += `\n🔗 <a href="${listingUrl}">View Listing</a>`;

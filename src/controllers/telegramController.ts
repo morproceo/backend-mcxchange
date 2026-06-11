@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { telegramService } from '../services/telegramService';
 import { fmcsaService } from '../services/fmcsaService';
-import { Listing } from '../models';
+import { Listing, AmazonRelayStatus } from '../models';
 
 /**
  * Get Telegram configuration (admin only)
@@ -144,27 +144,37 @@ export const shareListing = async (req: Request, res: Response) => {
       });
     }
 
-    // Fetch inspections from FMCSA SMS data (uses totalInspections, not sum of individual types)
-    let totalInspections: number = 0;
+    // Fetch FMCSA SMS data (inspections + OOS) and authority history (for accurate years active)
+    let smsData = null;
+    let authority = null;
     try {
-      const dotNumber = listing.dotNumber;
-      if (dotNumber) {
-        const smsData = await fmcsaService.getSMSData(dotNumber);
-        if (smsData) {
-          totalInspections = smsData.totalInspections || 0;
-        }
-      } else {
-        // Fallback: lookup by MC to get DOT, then get SMS data
+      // Resolve a DOT number first — use the listing's, else look it up by MC
+      let dotNumber = listing.dotNumber;
+      if (!dotNumber) {
         const fmcsaData = await fmcsaService.lookupByMC(listing.mcNumber);
-        if (fmcsaData?.dotNumber) {
-          const smsData = await fmcsaService.getSMSData(fmcsaData.dotNumber);
-          if (smsData) {
-            totalInspections = smsData.totalInspections || 0;
-          }
-        }
+        dotNumber = fmcsaData?.dotNumber || '';
+      }
+      if (dotNumber) {
+        [smsData, authority] = await Promise.all([
+          fmcsaService.getSMSData(dotNumber),
+          fmcsaService.getAuthorityHistory(dotNumber),
+        ]);
       }
     } catch (error) {
       console.error('Failed to fetch FMCSA data for Telegram share:', error);
+    }
+
+    // Count years from the reinstated date when the authority was reinstated,
+    // otherwise from the original grant date; fall back to the stored value.
+    const reinstatedDate = authority?.commonAuthorityReinstatedDate;
+    const startDate = reinstatedDate || authority?.commonAuthorityGrantDate || authority?.grantDate;
+    let yearsActive = listing.yearsActive;
+    if (startDate) {
+      const start = new Date(startDate);
+      if (!isNaN(start.getTime())) {
+        const years = Math.floor((Date.now() - start.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+        if (years >= 0) yearsActive = years;
+      }
     }
 
     const result = await telegramService.sendListingPromotion(
@@ -174,10 +184,21 @@ export const shareListing = async (req: Request, res: Response) => {
         title: listing.title,
         listingPrice: listing.listingPrice || listing.askingPrice,
         state: listing.state,
-        yearsActive: listing.yearsActive,
+        yearsActive,
+        yearsFromReinstatement: !!reinstatedDate,
         fleetSize: listing.fleetSize,
         safetyRating: listing.safetyRating,
-        totalInspections,
+        totalInspections: smsData?.totalInspections,
+        driverInspections: smsData?.totalDriverInspections,
+        vehicleInspections: smsData?.totalVehicleInspections,
+        driverOosRate: smsData?.driverOosRate,
+        vehicleOosRate: smsData?.vehicleOosRate,
+        description: listing.description,
+        sellingWithEmail: listing.sellingWithEmail,
+        sellingWithPhone: listing.sellingWithPhone,
+        contactEmail: listing.contactEmail,
+        contactPhone: listing.contactPhone,
+        amazonActive: listing.amazonStatus === AmazonRelayStatus.ACTIVE,
       },
       customMessage
     );
