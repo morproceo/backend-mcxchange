@@ -94,6 +94,35 @@ export const handleWebhook = async (req: Request, res: Response) => {
 };
 
 /**
+ * Verify a checkout session directly with Stripe (public - no auth required).
+ * Used by the consultation success page as a reliable fallback to the webhook:
+ * it confirms the payment with Stripe and marks the consultation PAID so the
+ * admin's red "Consultations" badge shows even if the webhook never fired.
+ */
+export const verifySession = async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    if (!sessionId) {
+      return res.status(400).json({ success: false, message: 'sessionId is required' });
+    }
+
+    const result = await consultationService.verifySession(sessionId);
+    if (!result) {
+      return res.status(404).json({ success: false, message: 'Consultation not found' });
+    }
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Error verifying consultation session:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to verify consultation payment',
+      error: error.message,
+    });
+  }
+};
+
+/**
  * Get all consultations (admin only)
  */
 export const getAll = async (req: Request, res: Response) => {

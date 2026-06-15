@@ -79,21 +79,40 @@ export const consultationService = {
   },
 
   /**
-   * Handle successful payment webhook
+   * Confirm a consultation payment directly with Stripe and mark it PAID.
+   *
+   * This is the single source of truth for "did they actually pay?" — it
+   * retrieves the checkout session from Stripe and only flips the consultation
+   * to PAID when Stripe reports `payment_status === 'paid'`. It is idempotent:
+   * once a consultation has left PENDING_PAYMENT it is returned untouched, so
+   * the webhook and the success-page verification can both call it safely
+   * without double-notifying admins.
+   *
+   * @returns the consultation (or null if no matching record was found)
    */
-  async handlePaymentSuccess(sessionId: string): Promise<void> {
+  async handlePaymentSuccess(sessionId: string): Promise<Consultation | null> {
     const consultation = await Consultation.findOne({
       where: { stripeSessionId: sessionId },
     });
 
     if (!consultation) {
-      console.error('Consultation not found for session:', sessionId);
-      return;
+      logger.error(`Consultation not found for session: ${sessionId}`);
+      return null;
     }
 
-    // Get payment intent from session
+    // Already processed (PAID/SCHEDULED/COMPLETED/REFUNDED) — nothing to do.
+    if (consultation.status !== ConsultationStatus.PENDING_PAYMENT) {
+      return consultation;
+    }
+
+    // Verify with Stripe that the payment actually succeeded.
     if (!stripe) throw new Error('Stripe is not configured');
     const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    if (session.payment_status !== 'paid') {
+      // Customer hasn't completed payment yet — leave as PENDING_PAYMENT.
+      return consultation;
+    }
 
     await consultation.update({
       status: ConsultationStatus.PAID,
@@ -112,6 +131,29 @@ export const consultationService = {
     }).catch(err => {
       logger.error('Failed to send admin notification for consultation', err);
     });
+
+    return consultation;
+  },
+
+  /**
+   * Verify a checkout session straight from Stripe (used by the success page as
+   * a fallback to the webhook). Marks the consultation PAID if Stripe confirms
+   * payment, then reports whether it is paid.
+   */
+  async verifySession(sessionId: string): Promise<{ paid: boolean; status: ConsultationStatus } | null> {
+    const consultation = await this.handlePaymentSuccess(sessionId);
+    if (!consultation) return null;
+
+    const paidStatuses = [
+      ConsultationStatus.PAID,
+      ConsultationStatus.SCHEDULED,
+      ConsultationStatus.COMPLETED,
+    ];
+
+    return {
+      paid: paidStatuses.includes(consultation.status),
+      status: consultation.status,
+    };
   },
 
   /**

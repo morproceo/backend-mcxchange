@@ -7,6 +7,8 @@ const router = Router();
 // Public routes (no auth required)
 router.get('/fee', consultationController.getConsultationFee);
 router.post('/checkout', consultationController.createCheckoutSession);
+// Verify a checkout session directly with Stripe (success page fallback to webhook)
+router.get('/verify/:sessionId', consultationController.verifySession);
 
 // Webhook route (no auth, but verified by Stripe)
 router.post('/webhook', consultationController.handleWebhook);
