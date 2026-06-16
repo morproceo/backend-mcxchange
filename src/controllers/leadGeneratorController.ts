@@ -256,35 +256,69 @@ export async function exportCsv(req: AuthRequest, res: Response) {
   const allowedRaw = filterByTier(req.query as Record<string, unknown>, tier);
   const baseFilters = buildLinqFilters(allowedRaw);
 
-  const collected: Array<Record<string, unknown>> = [];
+  const headers = isBrokerTier ? [...BASE_CSV_COLUMNS, 'phone', 'email'] : BASE_CSV_COLUMNS;
+  const escape = (v: unknown) => {
+    if (v == null) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const toLine = (r: Record<string, unknown>) => headers.map((h) => escape(r[h])).join(',');
 
   if (!isBrokerTier) {
-    // Buyer: just the page they're viewing (25 rows).
+    // Buyer: just the page they're viewing (25 rows). Fast enough to buffer, and
+    // fetching first lets us still return a clean 502 if the search backend is down.
     const page = Math.max(1, parseInt10(req.query.page, 1));
     const result = await morproLinqService.searchCarriers({ ...baseFilters, page, limit: 25 });
     if (!result) {
       return res.status(502).json({ success: false, error: 'Carrier search unavailable' });
     }
-    for (const c of (result.carriers || []).slice(0, 25)) collected.push(rowFromCarrier(c));
-  } else {
-    // Broker/Admin: walk pages up to maxRows.
-    const maxRows = Math.min(5000, Math.max(1, parseInt10(req.query.limit, 1000)));
-    let page = 1;
-    const pageSize = 100;
-    while (collected.length < maxRows) {
-      const filters: LinqSearchFilters = { ...baseFilters, page, limit: pageSize };
-      const result = await morproLinqService.searchCarriers(filters);
-      if (!result || (result.carriers || []).length === 0) break;
-      const remaining = maxRows - collected.length;
-      for (const c of (result.carriers || []).slice(0, remaining)) {
-        collected.push({ ...rowFromCarrier(c), phone: '', email: '' });
-      }
-      if (!result.has_more) break;
-      page++;
-    }
+    const lines = [headers.join(',')];
+    for (const c of (result.carriers || []).slice(0, 25)) lines.push(toLine(rowFromCarrier(c)));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="lead-generator-${new Date().toISOString().slice(0, 10)}.csv"`
+    );
+    return res.send(lines.join('\n'));
+  }
 
-    // Enrich with phone + email from the per-carrier LINQ detail (not in search).
-    const contacts = await mapLimit(collected, 12, async (row) => {
+  // Broker/Admin: large, slow export (up to maxRows + a per-carrier LINQ detail call
+  // each for phone/email). Stream the CSV page-by-page so the first byte goes out within
+  // a few seconds and rows keep flowing — otherwise the whole job runs past Heroku's hard
+  // 30s request timeout (H12), which drops the connection and surfaces in the browser as
+  // "Failed to fetch". With streaming, only the rolling 55s gap-between-writes limit applies.
+  const maxRows = Math.min(5000, Math.max(1, parseInt10(req.query.limit, 1000)));
+  const pageSize = 100;
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="lead-generator-${new Date().toISOString().slice(0, 10)}.csv"`
+  );
+  res.write(headers.join(',') + '\n');
+  // Force the compression middleware to flush so the header row hits the wire immediately.
+  if (typeof (res as any).flush === 'function') (res as any).flush();
+
+  let page = 1;
+  let written = 0;
+  while (written < maxRows) {
+    const filters: LinqSearchFilters = { ...baseFilters, page, limit: pageSize };
+    let result;
+    try {
+      result = await morproLinqService.searchCarriers(filters);
+    } catch {
+      // Headers already sent — can't switch to an error status. Stop with a partial file.
+      break;
+    }
+    if (!result || (result.carriers || []).length === 0) break;
+
+    const remaining = maxRows - written;
+    const rows: Array<Record<string, unknown>> = (result.carriers || [])
+      .slice(0, remaining)
+      .map((c) => ({ ...rowFromCarrier(c), phone: '', email: '' }));
+
+    // Enrich this page's rows with phone + email from the per-carrier LINQ detail.
+    const contacts = await mapLimit(rows, 12, async (row) => {
       try {
         const d = (await morproLinqService.getCarrier(String(row.dot_number))) as any;
         return { phone: d?.phone || d?.cell_phone || '', email: d?.email || '' };
@@ -292,29 +326,22 @@ export async function exportCsv(req: AuthRequest, res: Response) {
         return { phone: '', email: '' };
       }
     });
-    contacts.forEach((c, idx) => {
-      collected[idx].phone = c.phone;
-      collected[idx].email = c.email;
+
+    let chunk = '';
+    rows.forEach((row, idx) => {
+      row.phone = contacts[idx].phone;
+      row.email = contacts[idx].email;
+      chunk += toLine(row) + '\n';
     });
+    res.write(chunk);
+    if (typeof (res as any).flush === 'function') (res as any).flush();
+    written += rows.length;
+
+    if (!result.has_more) break;
+    page++;
   }
 
-  const headers = isBrokerTier ? [...BASE_CSV_COLUMNS, 'phone', 'email'] : BASE_CSV_COLUMNS;
-  const escape = (v: unknown) => {
-    if (v == null) return '';
-    const s = String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const lines = [headers.join(',')];
-  for (const r of collected) {
-    lines.push(headers.map((h) => escape(r[h])).join(','));
-  }
-
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename="lead-generator-${new Date().toISOString().slice(0, 10)}.csv"`
-  );
-  res.send(lines.join('\n'));
+  res.end();
 }
 
 // GET /api/admin/lead-generator/saves — admin only, all users' saves
