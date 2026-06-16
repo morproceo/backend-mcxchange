@@ -254,7 +254,13 @@ export async function exportCsv(req: AuthRequest, res: Response) {
   const isBrokerTier = tier === 'BROKER' || tier === 'ADMIN';
 
   const allowedRaw = filterByTier(req.query as Record<string, unknown>, tier);
-  const baseFilters = buildLinqFilters(allowedRaw);
+  const userFilters = buildLinqFilters(allowedRaw);
+  // Mirror the search endpoint's empty-filter default. LINQ returns nothing for an
+  // empty filter set, so a filterless export hit `!result` → 502, surfacing in the
+  // browser as "CSV export failed" (notably on the buyer path, which often exports
+  // the default ACTIVE list without applying any filters).
+  const baseFilters: LinqSearchFilters =
+    Object.keys(userFilters).length === 0 ? { status: 'ACTIVE' } : userFilters;
 
   const headers = isBrokerTier ? [...BASE_CSV_COLUMNS, 'phone', 'email'] : BASE_CSV_COLUMNS;
   const escape = (v: unknown) => {
