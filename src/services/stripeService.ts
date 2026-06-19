@@ -1188,6 +1188,40 @@ class StripeService {
   }
 
   /**
+   * Gather billing evidence for a customer for dispute/chargeback rebuttals:
+   * the active/most-recent subscription, all charges, and any disputes on those charges.
+   */
+  async getCustomerBillingEvidence(customerId: string): Promise<{
+    subscription: Stripe.Subscription | null;
+    charges: Stripe.Charge[];
+    disputes: Stripe.Dispute[];
+  }> {
+    if (!stripe || !customerId) return { subscription: null, charges: [], disputes: [] };
+    try {
+      const [subs, chargeList] = await Promise.all([
+        stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 1 }),
+        stripe.charges.list({ customer: customerId, limit: 100 }),
+      ]);
+      const charges = chargeList.data;
+      const chargeIds = new Set(charges.map((c) => c.id));
+
+      // Disputes can't be filtered by customer; pull recent and keep those on this customer's charges.
+      let disputes: Stripe.Dispute[] = [];
+      try {
+        const all = await stripe.disputes.list({ limit: 100 });
+        disputes = all.data.filter((d) => typeof d.charge === 'string' && chargeIds.has(d.charge));
+      } catch (e) {
+        logError('Failed to list disputes', e as Error, { customerId });
+      }
+
+      return { subscription: subs.data[0] || null, charges, disputes };
+    } catch (error) {
+      logError('Failed to gather billing evidence', error as Error, { customerId });
+      return { subscription: null, charges: [], disputes: [] };
+    }
+  }
+
+  /**
    * Get invoice by ID
    */
   async getInvoice(invoiceId: string): Promise<Stripe.Invoice | null> {

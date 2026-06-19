@@ -7,6 +7,7 @@ import { PremiumRequestStatus, Transaction, User, Listing, TransactionTimeline, 
 import { parseIntParam, parseBooleanParam } from '../utils/helpers';
 import { stripeService } from '../services/stripeService';
 import { pricingConfigService } from '../services/pricingConfigService';
+import { disputeEvidenceService } from '../services/disputeEvidenceService';
 import logger from '../utils/logger';
 
 // Validation rules
@@ -875,6 +876,17 @@ export const createUserWithListing = asyncHandler(async (req: AuthRequest, res: 
     },
     message: `Seller created${listing ? ' with listing' : ''}${stripeAccountId ? ' and Stripe account' : ''}`,
   });
+});
+
+// Download a full dispute-evidence PDF for any user (account + subscription +
+// real Stripe charges/disputes + credit usage + recorded Terms acceptance).
+export const getUserDisputeEvidence = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params;
+  const { buffer, filename } = await disputeEvidenceService.buildEvidencePdf(id);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Length', buffer.length);
+  res.end(buffer);
 });
 
 // ============================================
