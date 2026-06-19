@@ -16,6 +16,7 @@ export const registerValidation = [
     .isIn(['BUYER', 'SELLER', 'ADMIN', 'COMPLIANCE_MANAGER'])
     .withMessage('Role must be BUYER, SELLER, ADMIN, or COMPLIANCE_MANAGER'),
   body('phone').optional().isMobilePhone('any').withMessage('Invalid phone number'),
+  body('termsAccepted').optional().isBoolean().withMessage('termsAccepted must be a boolean'),
 ];
 
 export const loginValidation = [
@@ -35,7 +36,7 @@ export const switchRoleValidation = [
 
 // Register new user
 export const register = asyncHandler(async (req: Request, res: Response) => {
-  const { email, password, name, role, phone, companyName } = req.body;
+  const { email, password, name, role, phone, companyName, termsAccepted } = req.body;
 
   const result = await authService.register({
     email,
@@ -44,6 +45,9 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     role: role as UserRole,
     phone,
     companyName,
+    termsAccepted: termsAccepted === true || termsAccepted === 'true',
+    ipAddress: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip,
+    userAgent: req.headers['user-agent'],
   });
 
   res.status(201).json({

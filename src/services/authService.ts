@@ -7,6 +7,7 @@ import {
   RefreshToken,
   PasswordResetToken,
   EmailVerificationToken,
+  UserTermsAcceptance,
   UserRole,
   UserStatus
 } from '../models';
@@ -31,6 +32,11 @@ interface RegisterData {
   role: UserRole;
   phone?: string;
   companyName?: string;
+  // Captured when the user ticks the mandatory "I agree to the Terms" box at signup.
+  termsAccepted?: boolean;
+  termsVersion?: string;
+  ipAddress?: string;
+  userAgent?: string;
 }
 
 type RoleHint = 'buyer' | 'seller' | 'compliance_manager';
@@ -110,6 +116,25 @@ class AuthService {
       usedCredits: 0,
       emailVerified: false,
     });
+
+    // Record Terms of Service acceptance from the mandatory signup checkbox.
+    // Stored with timestamp + IP + user-agent as proof of agreement (dispute evidence).
+    // Uses a distinct termsVersion so it never collides with the typed-signature NDA ('1.0').
+    if (data.termsAccepted) {
+      try {
+        await UserTermsAcceptance.create({
+          userId: user.id,
+          signatureName: user.name,
+          termsVersion: data.termsVersion || 'register-checkbox-1.0',
+          acceptedAt: new Date(),
+          ipAddress: data.ipAddress,
+          userAgent: data.userAgent,
+        });
+      } catch (err) {
+        // Never block registration on this — just log it.
+        logger.error('Failed to record terms acceptance at registration', { userId: user.id, error: err });
+      }
+    }
 
     // Create Stripe customer for the user (async, don't block registration)
     this.createStripeCustomer(user).catch(err => {

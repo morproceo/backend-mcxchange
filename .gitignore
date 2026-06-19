@@ -6,3 +6,8 @@ dist/
 uploads/*
 !uploads/.gitkeep
 .vercel
+
+# Dispute evidence exports (contain buyer PII — never commit)
+dispute-bundle-*.json
+dispute-evidence-*.pdf
+terms-acceptance-*.pdf
