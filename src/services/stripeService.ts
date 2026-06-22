@@ -1222,6 +1222,50 @@ class StripeService {
   }
 
   /**
+   * List open disputes (awaiting merchant response), enriched with the charge's
+   * customer + billing details. Used by the admin dispute monitor so deadlines
+   * are never missed. Sorted/mapped to users by the caller.
+   */
+  async listOpenDisputes(): Promise<Array<{
+    id: string; amount: number; currency: string; reason: string; status: string;
+    created: number; dueBy: number | null; submissionCount: number; charge?: string;
+    customerId?: string; billingEmail?: string; billingName?: string;
+  }>> {
+    if (!stripe) return [];
+    try {
+      const res = await stripe.disputes.list({ limit: 100 });
+      const open = res.data.filter((d) => d.status === 'needs_response' || d.status === 'warning_needs_response');
+      const out = [];
+      for (const d of open) {
+        let customerId: string | undefined;
+        let billingEmail: string | undefined;
+        let billingName: string | undefined;
+        const chargeId = typeof d.charge === 'string' ? d.charge : d.charge?.id;
+        if (chargeId) {
+          try {
+            const ch = await stripe.charges.retrieve(chargeId);
+            customerId = typeof ch.customer === 'string' ? ch.customer : ch.customer?.id || undefined;
+            billingEmail = ch.billing_details?.email || ch.receipt_email || undefined;
+            billingName = ch.billing_details?.name || undefined;
+          } catch (e) {
+            logError('Failed to retrieve charge for dispute', e as Error, { disputeId: d.id });
+          }
+        }
+        out.push({
+          id: d.id, amount: d.amount, currency: d.currency, reason: d.reason, status: d.status,
+          created: d.created, dueBy: d.evidence_details?.due_by ?? null,
+          submissionCount: d.evidence_details?.submission_count ?? 0,
+          charge: chargeId, customerId, billingEmail, billingName,
+        });
+      }
+      return out;
+    } catch (error) {
+      logError('Failed to list open disputes', error as Error);
+      return [];
+    }
+  }
+
+  /**
    * Get invoice by ID
    */
   async getInvoice(invoiceId: string): Promise<Stripe.Invoice | null> {

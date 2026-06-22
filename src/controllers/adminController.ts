@@ -878,6 +878,29 @@ export const createUserWithListing = asyncHandler(async (req: AuthRequest, res: 
   });
 });
 
+// Live monitor of open Stripe disputes (needs_response) with evidence deadlines,
+// matched to the Domilea user so admins can act before each due date.
+export const getOpenStripeDisputes = asyncHandler(async (_req: AuthRequest, res: Response) => {
+  const disputes = await stripeService.listOpenDisputes();
+  const customerIds = [...new Set(disputes.map((d) => d.customerId).filter(Boolean))] as string[];
+  const users = customerIds.length
+    ? await User.findAll({ where: { stripeCustomerId: customerIds }, attributes: ['id', 'name', 'email', 'stripeCustomerId'] })
+    : [];
+  const byCustomer = new Map(users.map((u: any) => [u.stripeCustomerId, u]));
+  const enriched = disputes
+    .map((d) => {
+      const u: any = d.customerId ? byCustomer.get(d.customerId) : null;
+      return {
+        ...d,
+        userId: u?.id || null,
+        userName: u?.name || d.billingName || null,
+        userEmail: u?.email || d.billingEmail || null,
+      };
+    })
+    .sort((a, b) => (a.dueBy ?? Infinity) - (b.dueBy ?? Infinity));
+  res.json({ success: true, data: enriched });
+});
+
 // Download a full dispute-evidence PDF for any user (account + subscription +
 // real Stripe charges/disputes + credit usage + recorded Terms acceptance).
 export const getUserDisputeEvidence = asyncHandler(async (req: AuthRequest, res: Response) => {
