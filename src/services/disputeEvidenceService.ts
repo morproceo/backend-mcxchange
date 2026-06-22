@@ -187,10 +187,33 @@ class DisputeEvidenceService {
         P('At the point of subscribing, the following was also displayed and agreed to:');
         doc.moveDown(0.2);
         doc.font('Helvetica-Oblique').fontSize(9.5).fillColor('#444').text(`“${CHECKOUT_CONSENT}”`, { indent: 15 });
+
+        // Prominent electronic signature block — the customer's recorded signature.
+        doc.moveDown(0.6);
+        doc.font('Helvetica-Bold').fontSize(11).fillColor('#111').text('ELECTRONIC SIGNATURE');
         if (terms.length) {
-          doc.moveDown(0.4);
-          KV('Recorded acceptance', `"${terms[0].signatureName}" v${terms[0].termsVersion} at ${fmt(terms[0].acceptedAt)} (IP ${terms[0].ipAddress || 'n/a'})`);
+          const t: any = terms[0];
+          doc.moveDown(0.3);
+          // Render the typed signature in a signature-style (italic) face.
+          doc.font('Helvetica-Oblique').fontSize(24).fillColor('#0f172a').text(t.signatureName || '(unnamed)');
+          const sigY = doc.y + 2;
+          doc.moveTo(50, sigY).lineTo(320, sigY).strokeColor('#94a3b8').stroke();
+          doc.moveDown(0.5);
+          doc.font('Helvetica').fontSize(9).fillColor('#444')
+            .text(`Signed electronically by: ${t.signatureName || '—'}`)
+            .text(`Date signed: ${fmt(t.acceptedAt)}    ·    IP address: ${t.ipAddress || 'n/a'}`)
+            .text(`Terms version: ${t.termsVersion}    ·    Document ID: ${t.id}`);
+          if (terms.length > 1) {
+            doc.moveDown(0.2);
+            doc.fillColor('#666').fontSize(8).text(`(${terms.length} acceptance records on file; most recent shown above.)`);
+          }
+        } else {
+          doc.moveDown(0.2);
+          doc.font('Helvetica').fontSize(9.5).fillColor('#b45309').text(
+            'No stored electronic signature on record for this account (it predates signature capture). The customer ' +
+            'still could not create the account without checking the mandatory Terms-acceptance box quoted above.');
         }
+        doc.fillColor('#222');
 
         // 6. Summary
         H('6. Summary');
