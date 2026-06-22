@@ -5,6 +5,7 @@ import {
   UnlockedListing,
   Listing,
   UserTermsAcceptance,
+  UserAccessLog,
 } from '../models';
 import { stripeService } from './stripeService';
 import { NotFoundError } from '../middleware/errorHandler';
@@ -41,11 +42,12 @@ class DisputeEvidenceService {
     const user = await User.findByPk(userId);
     if (!user) throw new NotFoundError('User');
 
-    const [subscription, ledger, unlocked, terms] = await Promise.all([
+    const [subscription, ledger, unlocked, terms, accessLog] = await Promise.all([
       Subscription.findOne({ where: { userId } }),
       CreditTransaction.findAll({ where: { userId }, order: [['createdAt', 'ASC']] }),
       UnlockedListing.findAll({ where: { userId }, order: [['createdAt', 'ASC']] }),
       UserTermsAcceptance.findAll({ where: { userId }, order: [['acceptedAt', 'DESC']] }),
+      UserAccessLog.findAll({ where: { userId }, order: [['createdAt', 'ASC']], limit: 500 }),
     ]);
 
     // Join unlocked listings to listing details (proof of value consumed).
@@ -67,7 +69,7 @@ class DisputeEvidenceService {
       }
     }
 
-    const buffer = await this.renderPdf({ user, subscription, ledger, unlocked, listingById, terms, stripe: stripeData });
+    const buffer = await this.renderPdf({ user, subscription, ledger, unlocked, listingById, terms, accessLog, stripe: stripeData });
     const safeName = String((user as any).name || 'user').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
     return { buffer, filename: `dispute-evidence-${safeName}-${userId}.pdf` };
   }
@@ -76,7 +78,7 @@ class DisputeEvidenceService {
     return new Promise(async (resolve, reject) => {
       try {
         const PDFDocument = (await import('pdfkit')).default;
-        const { user, subscription, ledger, unlocked, listingById, terms, stripe } = data;
+        const { user, subscription, ledger, unlocked, listingById, terms, accessLog, stripe } = data;
 
         const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
         const chunks: Buffer[] = [];
@@ -156,6 +158,17 @@ class DisputeEvidenceService {
             `   ${i + 1}.  ${fmt(u.createdAt)}   —   MC ${l?.mcNumber || '—'}   ${l?.legalName || l?.title || '(listing ' + u.listingId + ')'}   (−${u.creditsUsed} credit)`);
         });
         if (!unlocked.length) P('   (no listings unlocked)');
+
+        // 3b. Access activity log (with IP) — Stripe's "access activity log" evidence.
+        if (accessLog?.length) {
+          H('3b. Access Activity Log (IP + timestamp)');
+          P('Authenticated access events recorded by the platform:');
+          doc.moveDown(0.2);
+          accessLog.forEach((a: any) => {
+            doc.font('Helvetica').fontSize(9).fillColor('#222').text(
+              `   ${fmt(a.createdAt)}   ${String(a.event).padEnd(7)}   IP ${a.ipAddress || '—'}   ${a.detail || ''}`);
+          });
+        }
 
         // 4. Credit ledger
         H('4. Account Credit Ledger');

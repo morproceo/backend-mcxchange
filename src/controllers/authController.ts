@@ -4,6 +4,7 @@ import { authService } from '../services/authService';
 import { asyncHandler } from '../middleware/errorHandler';
 import { AuthRequest } from '../types';
 import { UserRole } from '../models';
+import { recordAccess } from '../utils/accessLog';
 
 // Validation rules
 export const registerValidation = [
@@ -62,6 +63,9 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   const { email, password, roleHint } = req.body;
 
   const result = await authService.login({ email, password, roleHint });
+
+  // Access log: record the authenticated login with IP for dispute evidence.
+  recordAccess(result.user.id, 'LOGIN', req);
 
   res.json({
     success: true,

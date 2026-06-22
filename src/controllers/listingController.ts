@@ -7,6 +7,7 @@ import { parseBooleanParam, parseIntParam } from '../utils/helpers';
 import { Subscription, SubscriptionPlan, SubscriptionStatus, UserRole, UnlockedListing } from '../models';
 import { buyerPreferencesService } from '../services/buyerPreferencesService';
 import { scoreListing, hasAnyCriteria } from '../services/matchService';
+import { recordAccess } from '../utils/accessLog';
 
 // Mask an MC/DOT number: show first half, replace rest with bullets
 function maskNumber(num: string): string {
@@ -296,6 +297,9 @@ export const unlockListing = asyncHandler(async (req: AuthRequest, res: Response
   const { id } = req.params;
 
   const result = await listingService.unlockListing(id, req.user.id);
+
+  // Access log: record the listing access with IP for dispute evidence.
+  recordAccess(req.user.id, 'UNLOCK', req, `listing ${id}${result.alreadyUnlocked ? ' (re-access)' : ''}`);
 
   res.json({
     success: true,

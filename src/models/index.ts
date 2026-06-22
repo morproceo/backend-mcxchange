@@ -2688,6 +2688,60 @@ UserTermsAcceptance.init(
   }
 );
 
+// ==================== USER ACCESS LOG MODEL ====================
+// Records authenticated access events (login, listing unlock) with IP + timestamp.
+// Used as "access activity log" evidence for chargeback/dispute rebuttals.
+
+export class UserAccessLog extends Model {
+  declare id: string;
+  declare userId: string;
+  declare event: string; // 'LOGIN' | 'UNLOCK' | ...
+  declare ipAddress?: string;
+  declare userAgent?: string;
+  declare detail?: string;
+  declare readonly createdAt: Date;
+}
+
+UserAccessLog.init(
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+    },
+    event: {
+      type: DataTypes.STRING(32),
+      allowNull: false,
+    },
+    ipAddress: {
+      type: DataTypes.STRING(45),
+      allowNull: true,
+    },
+    userAgent: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    detail: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+  },
+  {
+    sequelize,
+    tableName: 'user_access_logs',
+    updatedAt: false,
+    indexes: [
+      { fields: ['userId'] },
+      { fields: ['event'] },
+      { fields: ['createdAt'] },
+    ],
+  }
+);
+
 // ==================== PDF PURCHASE MODEL ====================
 // Tracks one-time PDF / bundle purchases via Stripe Payment Links
 
