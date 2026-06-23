@@ -85,6 +85,20 @@ function buildLinqFilters(q: Record<string, unknown>): LinqSearchFilters {
   return f;
 }
 
+// Map a raw LINQ carrier record to the light row shape we return to the client.
+function toRow(c: any) {
+  return {
+    dotNumber: String(c.dot_number),
+    legalName: c.legal_name,
+    dba: c.dba_name || null,
+    state: c.state,
+    totalPowerUnits: c.power_units,
+    totalDrivers: c.drivers || null,
+    authorityStatus: c.status,
+    safetyRating: c.safety_rating,
+  };
+}
+
 // GET /api/lead-generator/search
 export async function searchCarriers(req: AuthRequest, res: Response) {
   const tier = req.leadGenTier ?? 'BUYER';
@@ -104,16 +118,14 @@ export async function searchCarriers(req: AuthRequest, res: Response) {
     return res.status(502).json({ success: false, error: 'Carrier search unavailable' });
   }
 
-  const carriers = (result.carriers || []).map((c) => ({
-    dotNumber: String(c.dot_number),
-    legalName: c.legal_name,
-    dba: (c as any).dba_name || null,
-    state: c.state,
-    totalPowerUnits: c.power_units,
-    totalDrivers: (c as any).drivers || null,
-    authorityStatus: c.status,
-    safetyRating: c.safety_rating,
-  }));
+  // LINQ /v1/carriers/search can return the same DOT multiple times (one row per
+  // insurance policy / authority record), so collapse to one row per DOT here.
+  const byDot = new Map<string, ReturnType<typeof toRow>>();
+  for (const c of result.carriers || []) {
+    const row = toRow(c);
+    if (!byDot.has(row.dotNumber)) byDot.set(row.dotNumber, row);
+  }
+  const carriers = [...byDot.values()];
 
   res.json({
     success: true,
