@@ -56,11 +56,21 @@ function rowToListShape(c: LinqCarrierRow, insuranceCancel: string | null = null
 }
 
 // Used by CSV export (small, bounded). NEVER use on the list page —
-// the per-row /insurance hydration is the slowness culprit.
-async function hydrateInsuranceOnly(rows: LinqCarrierRow[]) {
+// the per-row /insurance + /carrier hydration is the slowness culprit.
+// Fetches insurance (cancellation date) and carrier detail (phone/email) in
+// parallel per row; phone/email live on the LINQ detail record, not /search.
+async function hydrateForCsv(rows: LinqCarrierRow[]) {
   return Promise.all(rows.map(async (c) => {
-    const ins = await morproLinqService.getInsurance(String(c.dot_number));
-    return rowToListShape(c, ins?.summary?.earliest_cancellation_date || null);
+    const dot = String(c.dot_number);
+    const [ins, carrier] = await Promise.all([
+      morproLinqService.getInsurance(dot),
+      morproLinqService.getCarrier(dot) as Promise<any>,
+    ]);
+    return {
+      ...rowToListShape(c, ins?.summary?.earliest_cancellation_date || null),
+      phone: carrier?.phone || carrier?.cell_phone || null,
+      email: carrier?.email || null,
+    };
   }));
 }
 
@@ -136,7 +146,7 @@ export async function exportCarriersCsv(req: Request, res: Response) {
   const maxRows = Math.min(1000, Math.max(1, parseInt10(req.query.limit, 200)));
   const baseFilters = buildLinqFilters(req.query);
 
-  const collected: Awaited<ReturnType<typeof hydrateInsuranceOnly>> = [];
+  const collected: Awaited<ReturnType<typeof hydrateForCsv>> = [];
   let page = 1;
   const pageSize = 50;
 
@@ -147,7 +157,7 @@ export async function exportCarriersCsv(req: Request, res: Response) {
 
     const remaining = maxRows - collected.length;
     const slice = (result.carriers || []).slice(0, remaining);
-    const hydrated = await hydrateInsuranceOnly(slice);
+    const hydrated = await hydrateForCsv(slice);
     collected.push(...hydrated);
 
     if (!result.has_more) break;
@@ -156,7 +166,7 @@ export async function exportCarriersCsv(req: Request, res: Response) {
 
   const csvHeaders = [
     'dot_number', 'legal_name', 'dba', 'state', 'total_power_units', 'total_drivers',
-    'authority_status', 'safety_rating', 'insurance_cancellation_date',
+    'authority_status', 'safety_rating', 'insurance_cancellation_date', 'phone', 'email',
   ];
   const escape = (v: unknown) => {
     if (v == null) return '';
@@ -167,7 +177,7 @@ export async function exportCarriersCsv(req: Request, res: Response) {
   for (const r of collected) {
     lines.push([
       r.dotNumber, r.legalName, r.dba, r.state, r.totalPowerUnits, r.totalDrivers,
-      r.authorityStatus, r.safetyRating, r.insuranceCancellationDate,
+      r.authorityStatus, r.safetyRating, r.insuranceCancellationDate, r.phone, r.email,
     ].map(escape).join(','));
   }
 
