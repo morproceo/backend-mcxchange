@@ -7,9 +7,14 @@ import {
 import cacheService from './cacheService';
 import logger from '../utils/logger';
 
+// Carrier data is served by the MorPro LINQ API (api.morprolinq.com). It exposes
+// the same /carriers/:dot/* endpoints as the legacy MorPro API, under the
+// /api/v1 prefix, authenticated with the X-Manifest-Key header.
+const CARRIER_PATH_PREFIX = '/api/v1';
+
 function morproHeaders(): Record<string, string> {
-  const key = config.morproCarrier.apiKey;
-  return key ? { 'X-API-Key': key } : {};
+  const key = config.morproLinq.apiKey;
+  return key ? { 'X-Manifest-Key': key } : {};
 }
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 10000): Promise<Response> {
@@ -22,7 +27,7 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 10
 // Fetch a single endpoint, return null on failure
 async function fetchEndpoint(baseUrl: string, dotNumber: string, endpoint: string): Promise<any> {
   try {
-    const url = `${baseUrl}/api/carriers/${dotNumber}/${endpoint}`;
+    const url = `${baseUrl}${CARRIER_PATH_PREFIX}/carriers/${dotNumber}/${endpoint}`;
     const response = await fetchWithTimeout(url);
     if (!response.ok) return null;
     return await response.json();
@@ -35,7 +40,7 @@ class CarrierDataService {
   private baseUrl: string;
 
   constructor() {
-    this.baseUrl = config.morproCarrier.baseUrl;
+    this.baseUrl = config.morproLinq.baseUrl;
   }
 
   /**
@@ -72,7 +77,7 @@ class CarrierDataService {
         // Base carrier endpoint: /api/carriers/:dot (no sub-path)
         (async () => {
           try {
-            const url = `${this.baseUrl}/api/carriers/${dotNumber}`;
+            const url = `${this.baseUrl}${CARRIER_PATH_PREFIX}/carriers/${dotNumber}`;
             const res = await fetchWithTimeout(url);
             if (!res.ok) return null;
             return await res.json();
@@ -160,7 +165,7 @@ class CarrierDataService {
         return cached;
       }
 
-      const url = `${this.baseUrl}/api/carriers/search?${query}`;
+      const url = `${this.baseUrl}${CARRIER_PATH_PREFIX}/carriers/search?${query}`;
       const res = await fetchWithTimeout(url);
       if (!res.ok) {
         logger.warn(`MorPro insurance lead search failed: ${res.status} (${query})`);
