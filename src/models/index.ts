@@ -2688,6 +2688,101 @@ UserTermsAcceptance.init(
   }
 );
 
+// Affirmative payment-terms consent captured at the moment of checkout.
+// Unlike UserTermsAcceptance (one row per version), a customer subscribes/renews
+// many times, so this table holds ONE row per checkout event (no unique index on
+// user). Each row is the customer's electronic signature agreeing to the exact
+// payment terms shown — proof for Stripe dispute evidence (customer_signature).
+export class PaymentConsent extends Model {
+  declare id: string;
+  declare userId: string;
+  declare signatureName: string;
+  declare consentText: string;
+  declare consentVersion: string;
+  declare plan?: string;
+  declare amountCents?: number;
+  declare currency?: string;
+  declare stripeSessionId?: string;
+  declare stripeSubId?: string;
+  declare ipAddress?: string;
+  declare userAgent?: string;
+  declare acceptedAt: Date;
+  declare readonly createdAt: Date;
+
+  // Associations
+  declare readonly user?: User;
+}
+
+PaymentConsent.init(
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+    },
+    signatureName: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    consentText: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    consentVersion: {
+      type: DataTypes.STRING(40),
+      allowNull: false,
+      defaultValue: 'checkout-payment-1.0',
+    },
+    plan: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+    },
+    amountCents: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    currency: {
+      type: DataTypes.STRING(10),
+      allowNull: true,
+    },
+    stripeSessionId: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    stripeSubId: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
+    ipAddress: {
+      type: DataTypes.STRING(45),
+      allowNull: true,
+    },
+    userAgent: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    acceptedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    sequelize,
+    tableName: 'payment_consents',
+    updatedAt: false,
+    indexes: [
+      { fields: ['userId'] },
+      { fields: ['acceptedAt'] },
+      { fields: ['stripeSessionId'] },
+    ],
+  }
+);
+
 // ==================== USER ACCESS LOG MODEL ====================
 // Records authenticated access events (login, listing unlock) with IP + timestamp.
 // Used as "access activity log" evidence for chargeback/dispute rebuttals.
@@ -3883,6 +3978,10 @@ User.hasMany(AccountDispute, { foreignKey: 'userId', as: 'accountDisputes' });
 UserTermsAcceptance.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 User.hasMany(UserTermsAcceptance, { foreignKey: 'userId', as: 'termsAcceptances' });
 
+// PaymentConsent associations
+PaymentConsent.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+User.hasMany(PaymentConsent, { foreignKey: 'userId', as: 'paymentConsents' });
+
 // Lead associations
 Lead.belongsTo(User, { foreignKey: 'assignedToUserId', as: 'assignee' });
 Lead.belongsTo(User, { foreignKey: 'createdByUserId', as: 'creator' });
@@ -3959,6 +4058,7 @@ export default {
   AccountDispute,
   ProcessedWebhookEvent,
   UserTermsAcceptance,
+  PaymentConsent,
   PdfPurchase,
   Lead,
   AgentCatalog,

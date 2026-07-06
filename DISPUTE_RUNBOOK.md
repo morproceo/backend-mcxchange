@@ -33,6 +33,31 @@ no evidence was submitted before the deadline. This runbook + the in-app monitor
 - **Credit usage** — which carriers were unlocked, when (proof of value consumed).
 - **Access activity log** — login + unlock events with **IP + timestamp** (from June 2026 forward).
 - **Terms acceptance** — the signup checkbox consent (with IP/timestamp for accounts created after June 2026).
+- **§5b Signed Payment Agreement (at checkout)** — the customer's typed-name electronic
+  signature agreeing to the exact payment terms, captured at the moment of paying, with
+  IP + timestamp (for checkouts after payment-signature capture went live).
+- **§5c Stripe-native Terms-of-Service acceptance** — the ToS acceptance Stripe itself
+  records on its hosted checkout page (once `STRIPE_TOS_CONSENT_ENABLED` is on).
+- **Last page — "Signed Payment Authorization"** — a standalone one-page signature record.
+
+## 4b. Fill Stripe's evidence FILE fields (customer_signature + terms_of_service)
+Stripe's dispute form has file fields it specifically asks for. Populate them:
+- **`customer_signature`** ← the evidence PDF (its last page is the standalone signed
+  authorization), or a split-out single page of it.
+- **`terms_of_service`** ← **Admin → Download Terms of Service** (`GET /admin/terms-of-service.pdf`)
+  — the payment & dispute provisions (Article 7) the customer agreed to.
+- **`customer_purchase_ip`** ← the IP shown in §3b / §5b.
+
+Either upload these manually in the Stripe Dashboard, or run:
+```
+STRIPE_SECRET_KEY=<key> node scripts/submitDisputeEvidence.js \
+  --dispute dp_123 --evidence ./evidence.pdf --terms ./terms.pdf
+```
+(uploads + fills the fields but does NOT submit; add `--submit` to submit).
+
+> Setup note: the Stripe-native ToS checkbox on hosted checkout requires a Terms-of-Service
+> URL set in the Stripe Dashboard (Settings → Public details / Checkout branding). Only after
+> that is set, turn on `STRIPE_TOS_CONSENT_ENABLED=true` on the backend.
 
 ## 5. Reduce disputes at the source
 - Clear billing descriptor + reminder emails before renewal.

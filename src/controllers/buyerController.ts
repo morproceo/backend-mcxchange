@@ -6,7 +6,9 @@ import { asyncHandler, BadRequestError, ForbiddenError } from '../middleware/err
 import { AuthRequest } from '../types';
 import { parseIntParam } from '../utils/helpers';
 import { config } from '../config';
-import { User, UnlockedListing, Listing, Subscription, SubscriptionPlan, SubscriptionStatus, UserRole, CreditTransaction, CreditTransactionType, ListingStatus, BrokerOutreachRequest } from '../models';
+import { User, UnlockedListing, Listing, Subscription, SubscriptionPlan, SubscriptionStatus, UserRole, CreditTransaction, CreditTransactionType, ListingStatus, BrokerOutreachRequest, PaymentConsent } from '../models';
+import { CHECKOUT_CONSENT, CHECKOUT_CONSENT_VERSION } from '../constants/legal';
+import logger from '../utils/logger';
 import { adminNotificationService } from '../services/adminNotificationService';
 import { creditService } from '../services/creditService';
 import { buyerPreferencesService } from '../services/buyerPreferencesService';
@@ -25,6 +27,54 @@ function maskNumber(num: string | null | undefined): string | null | undefined {
   if (!num) return num;
   const half = Math.ceil(num.length / 2);
   return num.substring(0, half) + '•'.repeat(num.length - half);
+}
+
+// Validate a typed payment-terms signature (customer's full legal name).
+// Throws a 400 if it's missing or too short. Returns the trimmed value.
+function requireSignature(signature: unknown): string {
+  if (typeof signature !== 'string' || signature.trim().length < 2) {
+    throw new BadRequestError(
+      'A signature (your full legal name) is required to agree to the payment terms.'
+    );
+  }
+  return signature.trim();
+}
+
+// Record the customer's affirmative payment-terms consent before creating a
+// Stripe checkout session. Returns the consent id so the caller can stamp the
+// Stripe session id onto it afterward. Never throws — a logging failure must not
+// block checkout.
+async function recordPaymentConsent(req: AuthRequest, params: {
+  signatureName: string;
+  plan?: string;
+}): Promise<string | null> {
+  try {
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
+    const consent = await PaymentConsent.create({
+      userId: req.user!.id,
+      signatureName: params.signatureName,
+      consentText: CHECKOUT_CONSENT,
+      consentVersion: CHECKOUT_CONSENT_VERSION,
+      plan: params.plan,
+      ipAddress,
+      userAgent: req.headers['user-agent'],
+      acceptedAt: new Date(),
+    });
+    return consent.id;
+  } catch (err) {
+    logger.error('Failed to record payment consent at checkout', { userId: req.user?.id, error: err });
+    return null;
+  }
+}
+
+// Stamp the Stripe session id onto a recorded consent (best-effort).
+async function attachSessionToConsent(consentId: string | null, stripeSessionId?: string): Promise<void> {
+  if (!consentId || !stripeSessionId) return;
+  try {
+    await PaymentConsent.update({ stripeSessionId }, { where: { id: consentId } });
+  } catch (err) {
+    logger.error('Failed to attach Stripe session to payment consent', { consentId, error: err });
+  }
 }
 
 // Get buyer dashboard stats
@@ -141,7 +191,11 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
     return;
   }
 
-  const { plan, isYearly } = req.body;
+  const { plan, isYearly, signature } = req.body;
+
+  // Require an affirmative payment-terms signature (customer's full legal name)
+  // before any paid checkout — recorded as Stripe dispute evidence.
+  const signatureName = requireSignature(signature);
 
   // Validate plan. VIP / Deal Access Pass is a one-time payment (handled below).
   const validPlans = [
@@ -181,6 +235,7 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
 
   // VIP / Deal Access Pass — one-time payment, not a subscription
   if (plan === 'vip_access') {
+    const vipConsentId = await recordPaymentConsent(req, { signatureName, plan });
     const vipResult = await stripeService.createVipPassCheckout({
       customerId: customer.id,
       userId: req.user.id,
@@ -191,6 +246,7 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
     if (!vipResult.success) {
       throw new BadRequestError(vipResult.error || 'Failed to create VIP checkout session');
     }
+    await attachSessionToConsent(vipConsentId, vipResult.sessionId);
 
     res.json({
       success: true,
@@ -220,6 +276,9 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
         : `${frontendUrl}/lead-generator?success=true`)
     : `${frontendUrl}/buyer/subscription?success=true`;
 
+  // Record the affirmative payment-terms consent before creating the session.
+  const consentId = await recordPaymentConsent(req, { signatureName, plan });
+
   // Create checkout session
   const result = await stripeService.createCheckoutSession({
     customerId: customer.id,
@@ -240,6 +299,7 @@ export const createSubscriptionCheckout = asyncHandler(async (req: AuthRequest, 
   if (!result.success) {
     throw new BadRequestError(result.error || 'Failed to create checkout session');
   }
+  await attachSessionToConsent(consentId, result.sessionId);
 
   res.json({
     success: true,
@@ -304,6 +364,9 @@ export const createCarrierPulseCheckout = asyncHandler(async (req: AuthRequest, 
     return;
   }
 
+  // Require an affirmative payment-terms signature before paid checkout.
+  const signatureName = requireSignature(req.body?.signature);
+
   // Check if user already has CarrierPulse access
   const user = await User.findByPk(req.user.id);
   const subscription = await Subscription.findOne({ where: { userId: req.user.id } });
@@ -334,6 +397,8 @@ export const createCarrierPulseCheckout = asyncHandler(async (req: AuthRequest, 
   const frontendUrl = config.frontendUrl || 'http://localhost:5173';
   const carrierPulsePriceId = process.env.STRIPE_PRICE_CARRIER_PULSE || 'price_1TC6kqFnDj2YhGIWZjMc7hWD';
 
+  const consentId = await recordPaymentConsent(req, { signatureName, plan: 'carrier_pulse' });
+
   const result = await stripeService.createCheckoutSession({
     customerId: customer.id,
     priceId: carrierPulsePriceId,
@@ -348,6 +413,7 @@ export const createCarrierPulseCheckout = asyncHandler(async (req: AuthRequest, 
   if (!result.success) {
     throw new BadRequestError(result.error || 'Failed to create checkout session');
   }
+  await attachSessionToConsent(consentId, result.sessionId);
 
   res.json({
     success: true,

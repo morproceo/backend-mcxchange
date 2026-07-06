@@ -912,6 +912,16 @@ export const getUserDisputeEvidence = asyncHandler(async (req: AuthRequest, res:
   res.end(buffer);
 });
 
+// Download the Terms of Service PDF (payment & dispute provisions) to upload into
+// Stripe's `terms_of_service` dispute-evidence field.
+export const getTermsOfServicePdf = asyncHandler(async (_req: AuthRequest, res: Response) => {
+  const { buffer, filename } = await disputeEvidenceService.buildTermsOfServicePdf();
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Length', buffer.length);
+  res.end(buffer);
+});
+
 // ============================================
 // Pricing Configuration
 // ============================================

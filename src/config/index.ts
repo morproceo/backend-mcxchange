@@ -53,6 +53,12 @@ export const config = {
     secretKey: process.env.STRIPE_SECRET_KEY || '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
     publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
+    // Enable Stripe-native Terms-of-Service consent collection on hosted checkout.
+    // REQUIRES a Terms-of-Service URL configured in the Stripe Dashboard
+    // (Settings → Public details / Checkout branding) — otherwise session
+    // creation fails. Keep OFF until that URL is confirmed set, so a bad config
+    // can never take checkout down.
+    tosConsentEnabled: process.env.STRIPE_TOS_CONSENT_ENABLED === 'true',
   },
 
   // SMTP Email Configuration (Nodemailer)

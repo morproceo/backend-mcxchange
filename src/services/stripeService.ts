@@ -13,6 +13,20 @@ const stripe = config.stripe.secretKey
     })
   : null;
 
+// Stripe-native Terms-of-Service consent collection. When enabled, Stripe renders
+// a mandatory "I agree to the Terms of Service" checkbox on the hosted checkout
+// page and records `consent.terms_of_service = accepted` on the session — which
+// Stripe automatically includes in dispute evidence.
+//
+// REQUIRES a Terms-of-Service URL configured in the Stripe Dashboard; otherwise
+// session creation fails. Gated behind config.stripe.tosConsentEnabled so it can
+// never take checkout down before that URL is confirmed set. Spread into every
+// checkout.sessions.create call.
+function tosConsentOptions(): Pick<Stripe.Checkout.SessionCreateParams, 'consent_collection'> {
+  if (!config.stripe.tosConsentEnabled) return {};
+  return { consent_collection: { terms_of_service: 'required' } };
+}
+
 // ============================================
 // Types
 // ============================================
@@ -359,6 +373,20 @@ class StripeService {
   }
 
   /**
+   * Retrieve a charge (used to resolve the customer + cardholder name on a dispute)
+   */
+  async getCharge(chargeId: string): Promise<Stripe.Charge | null> {
+    if (!stripe) return null;
+
+    try {
+      return await stripe.charges.retrieve(chargeId);
+    } catch (error) {
+      logError('Failed to retrieve charge', error as Error, { chargeId });
+      return null;
+    }
+  }
+
+  /**
    * Confirm a payment intent (server-side confirmation)
    */
   async confirmPaymentIntent(paymentIntentId: string): Promise<PaymentResult> {
@@ -464,6 +492,7 @@ class StripeService {
 
     try {
       const session = await stripe.checkout.sessions.create({
+        ...tosConsentOptions(),
         customer: params.customerId,
         mode: 'payment',
         payment_method_types: ['card'],
@@ -536,6 +565,7 @@ class StripeService {
 
     try {
       const session = await stripe.checkout.sessions.create({
+        ...tosConsentOptions(),
         customer: params.customerId,
         mode: 'payment',
         payment_method_types: ['us_bank_account'],
@@ -609,6 +639,7 @@ class StripeService {
 
     try {
       const session = await stripe.checkout.sessions.create({
+        ...tosConsentOptions(),
         customer: params.customerId,
         mode: 'payment',
         payment_method_types: ['card'],
@@ -670,6 +701,7 @@ class StripeService {
 
     try {
       const session = await stripe.checkout.sessions.create({
+        ...tosConsentOptions(),
         customer: params.customerId,
         mode: 'payment',
         payment_method_types: ['card'],
@@ -736,6 +768,7 @@ class StripeService {
     try {
       const priceId = SUBSCRIPTION_PRICE_IDS.vip_access.onetime;
       const session = await stripe.checkout.sessions.create({
+        ...tosConsentOptions(),
         customer: params.customerId,
         mode: 'payment',
         payment_method_types: ['card'],
@@ -786,6 +819,7 @@ class StripeService {
 
     try {
       const session = await stripe.checkout.sessions.create({
+        ...tosConsentOptions(),
         customer: params.customerId,
         mode: 'subscription',
         payment_method_types: ['card'],
@@ -1195,8 +1229,9 @@ class StripeService {
     subscription: Stripe.Subscription | null;
     charges: Stripe.Charge[];
     disputes: Stripe.Dispute[];
+    checkoutSessions: Stripe.Checkout.Session[];
   }> {
-    if (!stripe || !customerId) return { subscription: null, charges: [], disputes: [] };
+    if (!stripe || !customerId) return { subscription: null, charges: [], disputes: [], checkoutSessions: [] };
     try {
       const [subs, chargeList] = await Promise.all([
         stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 1 }),
@@ -1214,10 +1249,20 @@ class StripeService {
         logError('Failed to list disputes', e as Error, { customerId });
       }
 
-      return { subscription: subs.data[0] || null, charges, disputes };
+      // Checkout sessions carry Stripe's own Terms-of-Service acceptance record
+      // (session.consent.terms_of_service = 'accepted') — strong dispute evidence.
+      let checkoutSessions: Stripe.Checkout.Session[] = [];
+      try {
+        const sessions = await stripe.checkout.sessions.list({ customer: customerId, limit: 100 });
+        checkoutSessions = sessions.data;
+      } catch (e) {
+        logError('Failed to list checkout sessions', e as Error, { customerId });
+      }
+
+      return { subscription: subs.data[0] || null, charges, disputes, checkoutSessions };
     } catch (error) {
       logError('Failed to gather billing evidence', error as Error, { customerId });
-      return { subscription: null, charges: [], disputes: [] };
+      return { subscription: null, charges: [], disputes: [], checkoutSessions: [] };
     }
   }
 
@@ -1857,6 +1902,7 @@ class StripeService {
 
     try {
       const session = await stripe.checkout.sessions.create({
+        ...tosConsentOptions(),
         customer: params.customerId,
         mode: 'payment',
         payment_method_types: ['us_bank_account'],
