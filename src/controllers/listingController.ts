@@ -122,7 +122,13 @@ export const getListing = asyncHandler(async (req: AuthRequest, res: Response) =
   // VIP listings are only accessible to Premium subscribers (and grandfathered Enterprise),
   // VIP / Deal Access Pass holders, admins, and the listing owner.
   if (listing.isVip && !isOwner && !isAdmin) {
-    const subscription = await Subscription.findOne({ where: { userId: req.user!.id } });
+    // Anonymous viewers (optional auth) can never satisfy the subscription check —
+    // reject cleanly instead of dereferencing a missing user.
+    if (!req.user) {
+      res.status(403).json({ success: false, error: 'Premium subscription required to view VIP listings.', code: 'PREMIUM_REQUIRED' });
+      return;
+    }
+    const subscription = await Subscription.findOne({ where: { userId: req.user.id } });
     if (
       !subscription ||
       subscription.status !== SubscriptionStatus.ACTIVE ||

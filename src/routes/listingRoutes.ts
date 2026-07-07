@@ -29,8 +29,9 @@ router.get('/saved', authenticate, getSavedListings);
 router.get('/my-listings', authenticate, sellerOnly, getMyListings);
 router.get('/unlocked', authenticate, buyerOnly, getUnlockedListings);
 
-// Single listing (requires auth; identity verification checked in controller with owner bypass)
-router.get('/:id', authenticate, getListing);
+// Single listing — optional auth: anonymous viewers get a masked public preview,
+// authenticated users get personalized/unlocked data (handled in the controller).
+router.get('/:id', optionalAuth, getListing);
 
 // Seller routes
 router.post('/', authenticate, sellerOnly, validate(createListingValidation), createListing);
