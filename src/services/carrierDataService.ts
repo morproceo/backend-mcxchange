@@ -87,7 +87,7 @@ const REPORT_SECTIONS = [
 // timeout: on LINQ, `related` (~10s) and `percentiles` (~17s) are far slower
 // than the rest (~1s), so without a cap they would stall the whole report.
 // Anything exceeding this degrades to null rather than blocking the response.
-const SECTION_TIMEOUT_MS = 5000;
+const SECTION_TIMEOUT_MS = 3000;
 
 class CarrierDataService {
   /**
@@ -189,12 +189,12 @@ class CarrierDataService {
   }
 
   /**
-   * Get full carrier report — checks Redis first, then fetches from the legacy
-   * MorPro box (the source that worked before the LINQ repoint) with a short
-   * timeout, falling back to LINQ if legacy is down/slow. Both use the fast
-   * parallel fan-out. Returns null only when both upstreams report the carrier
-   * does not exist; throws with an accurate status when both fail otherwise, so
-   * a rate-limit or outage is never masked as a 404.
+   * Get full carrier report — checks Redis first, then fetches from LINQ
+   * (reachable from prod), falling back to the legacy box if LINQ fails. Both
+   * use the fast parallel fan-out with a short per-section cap. Returns null
+   * only when both upstreams report the carrier does not exist; throws with an
+   * accurate status when both fail otherwise, so a rate-limit or outage is
+   * never masked as a 404.
    */
   async getFullReport(dotNumber: string): Promise<MorProCarrierReport | null> {
     // 1. Check Redis cache
@@ -210,10 +210,13 @@ class CarrierDataService {
     let otherStatus = 0;
     let notFoundCount = 0;
 
-    // Legacy primary (short timeout so a down box fails over fast), LINQ fallback.
+    // LINQ primary — it is reliably reachable from the production dyno, whereas
+    // the legacy box is not (Heroku cannot route to it, so making it primary
+    // added a ~5s timeout to every request). Legacy stays as a short fallback
+    // for the case where it is reachable and LINQ is failing.
     const attempts: Array<{ up: CarrierUpstream; timeoutMs: number }> = [
-      { up: legacyUpstream, timeoutMs: 5000 },
-      { up: linqUpstream, timeoutMs: 12000 },
+      { up: linqUpstream, timeoutMs: 8000 },
+      { up: legacyUpstream, timeoutMs: 3000 },
     ];
 
     for (const { up, timeoutMs } of attempts) {
