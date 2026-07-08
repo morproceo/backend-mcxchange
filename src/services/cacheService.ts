@@ -28,18 +28,26 @@ export const CacheTTL = {
 } as const;
 
 class CacheService {
-  private enabled: boolean = true;
+  private enabled: boolean = false;
 
   constructor() {
-    // Check if Redis is available on initialization
-    this.checkAvailability();
-  }
-
-  private async checkAvailability(): Promise<void> {
-    this.enabled = await isRedisHealthy();
-    if (!this.enabled) {
-      logger.warn('Cache service running in degraded mode (Redis unavailable)');
-    }
+    // Track availability off the client's live connection state rather than a
+    // one-time boot check — so caching turns back ON automatically once Redis
+    // recovers (e.g. after its maintenance window) instead of staying degraded
+    // until the next dyno restart.
+    const client = getRedisClient();
+    this.enabled = client.status === 'ready';
+    client.on('ready', () => {
+      if (!this.enabled) logger.info('Cache service: Redis ready — caching enabled');
+      this.enabled = true;
+    });
+    const disable = () => {
+      if (this.enabled) logger.warn('Cache service: Redis unavailable — running in degraded mode');
+      this.enabled = false;
+    };
+    client.on('end', disable);
+    client.on('close', disable);
+    client.on('reconnecting', disable);
   }
 
   /**
