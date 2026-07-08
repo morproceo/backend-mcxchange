@@ -42,10 +42,6 @@ const linqUpstream: CarrierUpstream = {
   },
 };
 
-// Priority order for full carrier reports: legacy first (has the marketplace
-// data, no quota), LINQ as the resilient fallback if the legacy box is down.
-const REPORT_UPSTREAMS: CarrierUpstream[] = [legacyUpstream, linqUpstream];
-
 function fetchWithTimeout(
   url: string,
   headers: Record<string, string> = {},
@@ -66,73 +62,139 @@ async function readUpstreamCode(res: Response): Promise<string | undefined> {
   }
 }
 
-// Normalize any provider's report body into the full MorProCarrierReport shape.
-// The legacy report includes all 14 keys; LINQ's bundled report omits
-// fleet/cargo/documents/related, which fall back to null (the UI degrades
-// gracefully rather than breaking).
-function normalizeReport(raw: any): MorProCarrierReport {
-  return {
-    carrier: raw.carrier ?? null,
-    authority: raw.authority ?? null,
-    safety: raw.safety ?? null,
-    inspections: raw.inspections ?? null,
-    violations: raw.violations ?? null,
-    crashes: raw.crashes ?? null,
-    insurance: raw.insurance ?? null,
-    fleet: raw.fleet ?? null,
-    cargo: raw.cargo ?? null,
-    documents: raw.documents ?? null,
-    related: raw.related ?? null,
-    percentiles: raw.percentiles ?? null,
-    monitoring: raw.monitoring ?? null,
-    compliance: raw.compliance ?? null,
-  };
-}
-
 type ReportFetch =
   | { kind: 'ok'; report: MorProCarrierReport }
   | { kind: 'notFound' }
   | { kind: 'error'; status: number };
 
+// Report sections fetched alongside the base carrier profile. Each is an
+// independent /carriers/:dot/<section> endpoint.
+const REPORT_SECTIONS = [
+  'authority',
+  'safety',
+  'inspections',
+  'violations',
+  'crashes',
+  'insurance',
+  'fleet',
+  'cargo',
+  'documents',
+  'related',
+  'percentiles',
+] as const;
+
+// Section endpoints are non-critical enrichment and are capped with a short
+// timeout: on LINQ, `related` (~10s) and `percentiles` (~17s) are far slower
+// than the rest (~1s), so without a cap they would stall the whole report.
+// Anything exceeding this degrades to null rather than blocking the response.
+const SECTION_TIMEOUT_MS = 5000;
+
 class CarrierDataService {
   /**
-   * Fetch the bundled /report from a single upstream. One call replaces the
-   * previous 12-endpoint fan-out. Distinguishes a genuine "carrier not found"
-   * (404) from an upstream failure (429/401/5xx/unreachable) so the caller can
-   * fail over and surface an accurate status instead of masking it as a 404.
+   * Fetch a full report from one upstream by calling the base carrier endpoint
+   * plus every section endpoint in PARALLEL. This is deliberately a fan-out,
+   * not the bundled /report endpoint: on LINQ, /report takes 16-23s (it times
+   * out), while the individual endpoints each return in ~0.5s, so the parallel
+   * fan-out is both faster and more reliable.
+   *
+   * The base carrier response drives the outcome — a 404 there means the
+   * carrier genuinely does not exist; a 429/401/5xx/timeout is an upstream
+   * failure the caller can fail over on. Section endpoints degrade to null on
+   * failure (non-critical enrichment).
    */
-  private async fetchBundledReport(up: CarrierUpstream, dotNumber: string): Promise<ReportFetch> {
-    const url = `${up.baseUrl}${up.prefix}/carriers/${dotNumber}/report`;
+  private async fetchReport(
+    up: CarrierUpstream,
+    dotNumber: string,
+    timeoutMs: number
+  ): Promise<ReportFetch> {
+    const headers = up.headers();
+    const baseUrl = `${up.baseUrl}${up.prefix}/carriers/${dotNumber}`;
 
-    let res: Response;
+    let baseRes: Response;
     try {
-      res = await fetchWithTimeout(url, up.headers());
+      baseRes = await fetchWithTimeout(baseUrl, headers, timeoutMs);
     } catch {
-      logger.warn(`Carrier report upstream '${up.name}' unreachable for DOT ${dotNumber}`);
+      logger.warn(`Carrier upstream '${up.name}' unreachable for DOT ${dotNumber}`);
       return { kind: 'error', status: 503 };
     }
 
-    if (res.ok) {
-      const raw: any = await res.json().catch(() => null);
-      if (!raw || !raw.carrier) return { kind: 'notFound' };
-      return { kind: 'ok', report: normalizeReport(raw) };
+    if (baseRes.status === 404) return { kind: 'notFound' };
+    if (!baseRes.ok) {
+      const code = await readUpstreamCode(baseRes);
+      logger.warn(
+        `Carrier upstream '${up.name}' ${baseRes.status} for DOT ${dotNumber}${code ? ` (${code})` : ''}`
+      );
+      return { kind: 'error', status: baseRes.status };
     }
 
-    if (res.status === 404) return { kind: 'notFound' };
+    const carrier: any = await baseRes.json().catch(() => null);
+    if (!carrier) return { kind: 'notFound' };
 
-    const code = await readUpstreamCode(res);
-    logger.warn(
-      `Carrier report upstream '${up.name}' ${res.status} for DOT ${dotNumber}${code ? ` (${code})` : ''}`
+    // Base carrier exists — fetch the rest in parallel, each capped by a short
+    // timeout and failing to null so slow enrichment endpoints can't stall it.
+    const sections = await Promise.all(
+      REPORT_SECTIONS.map((ep) =>
+        this.fetchSection(baseUrl, headers, ep, Math.min(timeoutMs, SECTION_TIMEOUT_MS))
+      )
     );
-    return { kind: 'error', status: res.status };
+    const [
+      authority,
+      safety,
+      inspections,
+      violations,
+      crashes,
+      insurance,
+      fleet,
+      cargo,
+      documents,
+      related,
+      percentiles,
+    ] = sections;
+
+    return {
+      kind: 'ok',
+      report: {
+        carrier,
+        authority,
+        safety,
+        inspections,
+        violations,
+        crashes,
+        insurance,
+        fleet,
+        cargo,
+        documents,
+        related,
+        percentiles,
+        monitoring: null,
+        compliance: null,
+      },
+    };
+  }
+
+  // Fetch a single section endpoint; return null on any failure (graceful).
+  private async fetchSection(
+    baseUrl: string,
+    headers: Record<string, string>,
+    endpoint: string,
+    timeoutMs: number
+  ): Promise<any> {
+    try {
+      const res = await fetchWithTimeout(`${baseUrl}/${endpoint}`, headers, timeoutMs);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
   }
 
   /**
-   * Get full carrier report — checks Redis first, then fetches the bundled
-   * /report from each upstream in priority order (legacy → LINQ).
-   * Returns null only when every upstream reports the carrier does not exist.
-   * Throws (with an accurate status) when all upstreams fail for other reasons,
-   * so a rate-limit or outage is no longer reported to the client as a 404.
+   * Get full carrier report — checks Redis first, then fetches from the legacy
+   * MorPro box (the source that worked before the LINQ repoint) with a short
+   * timeout, falling back to LINQ if legacy is down/slow. Both use the fast
+   * parallel fan-out. Returns null only when both upstreams report the carrier
+   * does not exist; throws with an accurate status when both fail otherwise, so
+   * a rate-limit or outage is never masked as a 404.
    */
   async getFullReport(dotNumber: string): Promise<MorProCarrierReport | null> {
     // 1. Check Redis cache
@@ -146,33 +208,35 @@ class CarrierDataService {
     let sawRateLimit = false;
     let sawOtherError = false;
     let otherStatus = 0;
+    let notFoundCount = 0;
 
-    // 2. Try each upstream's bundled /report until one returns data.
-    for (const up of REPORT_UPSTREAMS) {
-      const result = await this.fetchBundledReport(up, dotNumber);
+    // Legacy primary (short timeout so a down box fails over fast), LINQ fallback.
+    const attempts: Array<{ up: CarrierUpstream; timeoutMs: number }> = [
+      { up: legacyUpstream, timeoutMs: 5000 },
+      { up: linqUpstream, timeoutMs: 12000 },
+    ];
+
+    for (const { up, timeoutMs } of attempts) {
+      const result = await this.fetchReport(up, dotNumber, timeoutMs);
 
       if (result.kind === 'ok') {
-        // 3. Cache in Redis (24hr TTL)
         await cacheService.cacheCarrierReport(dotNumber, result.report);
         logger.info(
-          `Carrier report for DOT ${dotNumber} served by '${up.name}' in ${Date.now() - startTime}ms (1 upstream call)`
+          `Carrier report for DOT ${dotNumber} served by '${up.name}' in ${Date.now() - startTime}ms`
         );
         return result.report;
       }
 
-      if (result.kind === 'error') {
-        if (result.status === 429) sawRateLimit = true;
-        else {
-          sawOtherError = true;
-          otherStatus = result.status;
-        }
+      if (result.kind === 'notFound') notFoundCount++;
+      else if (result.status === 429) sawRateLimit = true;
+      else {
+        sawOtherError = true;
+        otherStatus = result.status;
       }
-      // notFound → fall through to the next upstream
     }
 
-    // 4. No upstream returned data — surface the real reason.
-    if (!sawRateLimit && !sawOtherError) {
-      // Every upstream returned 404 — carrier genuinely does not exist.
+    // Neither upstream returned data — surface the real reason.
+    if (notFoundCount === attempts.length && !sawRateLimit && !sawOtherError) {
       logger.warn(`Carrier not found for DOT ${dotNumber} on any upstream`);
       return null;
     }
