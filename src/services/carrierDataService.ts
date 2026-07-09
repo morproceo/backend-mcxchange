@@ -23,7 +23,9 @@ interface CarrierUpstream {
 const legacyUpstream: CarrierUpstream = {
   name: 'legacy',
   baseUrl: config.morproCarrier.baseUrl,
-  prefix: '',
+  // The legacy box serves carriers under /api/carriers/:dot (no version segment);
+  // MORPRO_CARRIER_API_URL is just the host, so the prefix supplies /api.
+  prefix: '/api',
   headers(): Record<string, string> {
     const key = config.morproCarrier.apiKey;
     return key ? { 'X-API-Key': key } : {};
