@@ -8,13 +8,14 @@ const redisOptions: RedisOptions = {
   port: config.redis?.port || 6379,
   password: config.redis?.password || undefined,
   db: config.redis?.db || 0,
+  connectTimeout: 15000,
   retryStrategy: (times: number) => {
-    if (times > 10) {
-      logger.error('Redis connection failed after 10 retries');
-      return null; // Stop retrying
+    // Never give up — reconnect with capped backoff so a transient outage
+    // self-heals instead of leaving the client permanently dead.
+    const delay = Math.min(times * 200, 5000);
+    if (times === 1 || times % 15 === 0) {
+      logger.warn(`Redis reconnecting (attempt ${times}), next try in ${delay}ms`);
     }
-    const delay = Math.min(times * 100, 3000);
-    logger.warn(`Redis connection attempt ${times}, retrying in ${delay}ms`);
     return delay;
   },
   maxRetriesPerRequest: 3,
@@ -35,14 +36,16 @@ export const getRedisClient = (): Redis => {
 
       redis = new Redis(url, {
         tls: useTls ? { rejectUnauthorized: false } : undefined,
+        connectTimeout: 15000,
         maxRetriesPerRequest: 3,
+        // Never give up: a transient outage (e.g. the addon's maintenance
+        // window) must self-heal rather than leaving the client permanently
+        // dead. Reconnect with capped backoff, logging occasionally.
         retryStrategy: (times: number) => {
-          if (times > 10) {
-            logger.error('Redis connection failed after 10 retries');
-            return null;
+          const delay = Math.min(times * 200, 5000);
+          if (times === 1 || times % 15 === 0) {
+            logger.warn(`Redis reconnecting (attempt ${times}), next try in ${delay}ms`);
           }
-          const delay = Math.min(times * 100, 3000);
-          logger.warn(`Redis connection attempt ${times}, retrying in ${delay}ms`);
           return delay;
         },
       });
