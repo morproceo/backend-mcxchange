@@ -189,12 +189,66 @@ class CarrierDataService {
   }
 
   /**
-   * Get full carrier report — checks Redis first, then fetches from LINQ
-   * (reachable from prod), falling back to the legacy box if LINQ fails. Both
-   * use the fast parallel fan-out with a short per-section cap. Returns null
-   * only when both upstreams report the carrier does not exist; throws with an
-   * accurate status when both fail otherwise, so a rate-limit or outage is
-   * never masked as a 404.
+   * Fetch a full report from one upstream via its bundled /report endpoint —
+   * ONE call that returns every section. Used for the legacy box, whose /report
+   * returns the complete report in ~1s. Same outcome semantics as fetchReport
+   * (404 → notFound; 429/401/5xx/timeout → error the caller fails over on).
+   */
+  private async fetchBundledReport(
+    up: CarrierUpstream,
+    dotNumber: string,
+    timeoutMs: number
+  ): Promise<ReportFetch> {
+    const url = `${up.baseUrl}${up.prefix}/carriers/${dotNumber}/report`;
+
+    let res: Response;
+    try {
+      res = await fetchWithTimeout(url, up.headers(), timeoutMs);
+    } catch {
+      logger.warn(`Carrier upstream '${up.name}' unreachable for DOT ${dotNumber}`);
+      return { kind: 'error', status: 503 };
+    }
+
+    if (res.status === 404) return { kind: 'notFound' };
+    if (!res.ok) {
+      const code = await readUpstreamCode(res);
+      logger.warn(
+        `Carrier upstream '${up.name}' ${res.status} for DOT ${dotNumber}${code ? ` (${code})` : ''}`
+      );
+      return { kind: 'error', status: res.status };
+    }
+
+    const raw: any = await res.json().catch(() => null);
+    if (!raw || !raw.carrier) return { kind: 'notFound' };
+
+    return {
+      kind: 'ok',
+      report: {
+        carrier: raw.carrier ?? null,
+        authority: raw.authority ?? null,
+        safety: raw.safety ?? null,
+        inspections: raw.inspections ?? null,
+        violations: raw.violations ?? null,
+        crashes: raw.crashes ?? null,
+        insurance: raw.insurance ?? null,
+        fleet: raw.fleet ?? null,
+        cargo: raw.cargo ?? null,
+        documents: raw.documents ?? null,
+        related: raw.related ?? null,
+        percentiles: raw.percentiles ?? null,
+        monitoring: raw.monitoring ?? null,
+        compliance: raw.compliance ?? null,
+      },
+    };
+  }
+
+  /**
+   * Get full carrier report — checks Redis first, then fetches from the legacy
+   * box via its fast bundled /report (~1s, one call, all sections), falling back
+   * to LINQ (per-section fan-out) if legacy is down/slow. Returns null only when
+   * both upstreams report the carrier does not exist; throws with an accurate
+   * status when both fail otherwise, so a rate-limit or outage is never masked
+   * as a 404.
    */
   async getFullReport(dotNumber: string): Promise<MorProCarrierReport | null> {
     // 1. Check Redis cache
@@ -210,17 +264,23 @@ class CarrierDataService {
     let otherStatus = 0;
     let notFoundCount = 0;
 
-    // LINQ primary — it is reliably reachable from the production dyno, whereas
-    // the legacy box is not (Heroku cannot route to it, so making it primary
-    // added a ~5s timeout to every request). Legacy stays as a short fallback
-    // for the case where it is reachable and LINQ is failing.
-    const attempts: Array<{ up: CarrierUpstream; timeoutMs: number }> = [
-      { up: linqUpstream, timeoutMs: 8000 },
-      { up: legacyUpstream, timeoutMs: 3000 },
+    // Legacy box primary — reachable from the production dyno again and fastest
+    // by far: its bundled /report returns the full report in ~1s (one call).
+    // LINQ is the fallback (per-section fan-out) for when legacy is down/slow.
+    const attempts: Array<{
+      up: CarrierUpstream;
+      timeoutMs: number;
+      mode: 'bundled' | 'sections';
+    }> = [
+      { up: legacyUpstream, timeoutMs: 6000, mode: 'bundled' },
+      { up: linqUpstream, timeoutMs: 8000, mode: 'sections' },
     ];
 
-    for (const { up, timeoutMs } of attempts) {
-      const result = await this.fetchReport(up, dotNumber, timeoutMs);
+    for (const { up, timeoutMs, mode } of attempts) {
+      const result =
+        mode === 'bundled'
+          ? await this.fetchBundledReport(up, dotNumber, timeoutMs)
+          : await this.fetchReport(up, dotNumber, timeoutMs);
 
       if (result.kind === 'ok') {
         await cacheService.cacheCarrierReport(dotNumber, result.report);
