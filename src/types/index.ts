@@ -264,8 +264,8 @@ export const SUBSCRIPTION_PLANS = {
   LEAD_GENERATOR_BROKER: {
     name: 'Lead Generator — Broker',
     credits: 0,
-    priceMonthly: 299,
-    priceYearly: 299,
+    priceMonthly: 499,
+    priceYearly: 499,
     stripePriceIdMonthly: process.env.STRIPE_PRICE_LEAD_GENERATOR_BROKER_MONTHLY || '',
     stripePriceIdYearly: '',
   },
