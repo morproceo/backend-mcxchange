@@ -24,6 +24,11 @@ export async function getAccess(req: AuthRequest, res: Response) {
   });
 }
 
+// Upper bound on a single batch-contact request. The results table asks for the
+// 25 rows it is showing; this only exists so a hand-rolled request can't fan out
+// into an unbounded number of per-carrier LINQ calls.
+const MAX_CONTACT_BATCH = 100;
+
 // Buyer tier filters — anything not in this set is silently dropped for BUYER
 // callers so the client can't sneak in advanced filters by hand-rolling the URL.
 const BUYER_FILTER_KEYS = new Set([
@@ -166,6 +171,49 @@ export async function getCarrierContact(req: AuthRequest, res: Response) {
       email: carrier.email || null,
     },
   });
+}
+
+// POST /api/lead-generator/contacts — phone/email for a batch of DOTs.
+// Broker/Admin only (see requireLeadGeneratorBroker on the route): the Buyer tier
+// still reveals one carrier at a time through the endpoint above. Contact data is
+// not in the search response, so the table would otherwise need one round-trip per
+// row to show it; this collapses a page of rows into a single request, enriched
+// with the same bounded concurrency the CSV export uses.
+export async function getCarrierContactsBatch(req: AuthRequest, res: Response) {
+  const raw = (req.body || {}).dots;
+  if (!Array.isArray(raw)) {
+    return res.status(400).json({ success: false, error: 'dots must be an array' });
+  }
+
+  if (!morproLinqService.isConfigured()) {
+    return res.status(502).json({ success: false, error: 'Carrier data unavailable' });
+  }
+
+  // De-dupe and cap. MAX_CONTACT_BATCH is well above the 25-row page the UI asks
+  // for, but keeps a hand-rolled request from fanning out into thousands of LINQ
+  // detail calls.
+  const dots = [...new Set(raw.map((d: unknown) => String(d).trim()).filter(Boolean))].slice(
+    0,
+    MAX_CONTACT_BATCH
+  );
+
+  // One carrier failing (or missing at LINQ) must not fail the whole page — those
+  // rows come back with nulls and the UI just shows no contact for them.
+  const results = await mapLimit(dots, 12, async (dot) => {
+    try {
+      const c = (await morproLinqService.getCarrier(dot)) as any;
+      return { dot, phone: c?.phone || c?.cell_phone || null, email: c?.email || null };
+    } catch {
+      return { dot, phone: null, email: null };
+    }
+  });
+
+  const contacts: Record<string, { phone: string | null; email: string | null }> = {};
+  for (const r of results) {
+    contacts[r.dot] = { phone: r.phone, email: r.email };
+  }
+
+  res.json({ success: true, data: { contacts } });
 }
 
 // GET /api/lead-generator/saves — current user's own saves

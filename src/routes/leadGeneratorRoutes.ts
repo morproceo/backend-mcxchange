@@ -3,10 +3,12 @@ import {
   authenticate,
   adminOnly,
   requireLeadGeneratorAccess,
+  requireLeadGeneratorBroker,
 } from '../middleware/auth';
 import {
   searchCarriers,
   getCarrierContact,
+  getCarrierContactsBatch,
   listSaves,
   createSave,
   deleteSave,
@@ -29,6 +31,10 @@ router.get('/search', requireLeadGeneratorAccess, searchCarriers);
 
 // Carrier contact (phone/email) for click-to-call — any LG tier (or admin)
 router.get('/carrier/:dot/contact', requireLeadGeneratorAccess, getCarrierContact);
+
+// Batch contact lookup — BROKER/ADMIN only. Powers the phone + email columns,
+// which are shown filled in for broker tier instead of one-at-a-time reveal.
+router.post('/contacts', requireLeadGeneratorBroker, getCarrierContactsBatch);
 
 // CSV export — any tier. Buyer gets the current page (25 rows); broker/admin get
 // the full result set enriched with phone + email. Tier split is in the controller.
