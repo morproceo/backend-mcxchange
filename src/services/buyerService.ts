@@ -22,6 +22,7 @@ import {
 } from '../models';
 import { getPaginationInfo } from '../utils/helpers';
 import { stripeService } from './stripeService';
+import { creditService } from './creditService';
 import { fulfillVipPassPurchase } from './vipPassService';
 import { NotFoundError, BadRequestError } from '../middleware/errorHandler';
 import { SUBSCRIPTION_PLANS } from '../types';
@@ -417,6 +418,24 @@ class BuyerService {
       isYearly,
     });
 
+    // Repair a subscription whose credits never reached the user row. Credits are
+    // normally granted by the customer.subscription.created webhook (see the note
+    // in the sync block below); when that webhook is dropped — or the subscription
+    // row is written straight into the DB — the buyer is left paying for a plan
+    // whose credits every unlock refuses to spend. Runs before the already-active
+    // early return below, because that is exactly the state such an account is in.
+    // No-op unless the balance is exhausted AND no grant exists for this period.
+    const periodStartTs = (stripeSubscription as any).current_period_start;
+    const periodStart =
+      periodStartTs && typeof periodStartTs === 'number'
+        ? new Date(periodStartTs * 1000)
+        : new Date(renewalDate.getTime() - (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000);
+    const creditsRepaired = await creditService.ensureSubscriptionCreditsGranted(
+      buyerId,
+      plan,
+      periodStart
+    );
+
     // Check if we already have this subscription in our database
     let subscription = await Subscription.findOne({
       where: { userId: buyerId },
@@ -424,10 +443,12 @@ class BuyerService {
 
     // If subscription already active with credits, don't fulfill again
     if (subscription && subscription.status === SubscriptionStatus.ACTIVE && subscription.stripeSubId === stripeSubscription.id) {
-      logger.info('Subscription already fulfilled', { buyerId, subscriptionId: subscription.id });
+      logger.info('Subscription already fulfilled', { buyerId, subscriptionId: subscription.id, creditsRepaired });
       return {
         fulfilled: true,
-        message: 'Subscription already active',
+        message: creditsRepaired
+          ? 'Subscription active — your missing credits have been added'
+          : 'Subscription already active',
         subscription: await this.getSubscription(buyerId),
       };
     }

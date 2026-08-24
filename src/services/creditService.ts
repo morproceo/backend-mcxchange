@@ -1,3 +1,4 @@
+import { Op } from 'sequelize';
 import sequelize from '../config/database';
 import {
   User,
@@ -1057,6 +1058,62 @@ class CreditService {
       await t.rollback();
       throw error;
     }
+  }
+
+  /**
+   * Self-heal for a subscription whose credits never landed on the user row.
+   *
+   * Credits live in two places that must agree: `subscriptions.creditsRemaining`
+   * (the plan's allowance, display only) and `users.totalCredits/usedCredits`
+   * (the balance every unlock actually spends). Only the Stripe
+   * `customer.subscription.created` webhook writes the second one — so when that
+   * webhook is delayed, dropped, or the subscription row is written directly in
+   * the DB, a paying buyer ends up with a healthy-looking subscription and zero
+   * spendable credits. They then see "You don't have a subscription yet" on
+   * every listing they try to unlock.
+   *
+   * Called from the verify/sync path so hitting "Verify subscription" repairs it.
+   * Two guards keep this from handing out free credits:
+   *   1. Only when the spendable balance is already exhausted (<= 0), so a manual
+   *      admin top-up is never clobbered back down to the plan default.
+   *   2. Only when no SUBSCRIPTION credit grant exists for the current period, so
+   *      a buyer who legitimately spent this month's credits can't refill by
+   *      pressing verify.
+   *
+   * Returns true when credits were granted.
+   */
+  async ensureSubscriptionCreditsGranted(
+    userId: string,
+    plan: SubscriptionPlan,
+    periodStart: Date
+  ): Promise<boolean> {
+    const planDetails = await this.getSubscriptionPlanConfig(plan);
+    if (!planDetails || planDetails.credits <= 0) return false;
+
+    const user = await User.findByPk(userId);
+    if (!user) return false;
+
+    const availableCredits = (user.totalCredits || 0) - (user.usedCredits || 0);
+    if (availableCredits > 0) return false;
+
+    const grantedThisPeriod = await CreditTransaction.findOne({
+      where: {
+        userId,
+        type: CreditTransactionType.SUBSCRIPTION,
+        createdAt: { [Op.gte]: periodStart },
+      },
+    });
+    if (grantedThisPeriod) return false;
+
+    logger.warn('Subscription credits missing on user row — granting via verify', {
+      userId,
+      plan,
+      periodStart,
+      totalCredits: user.totalCredits,
+      usedCredits: user.usedCredits,
+    });
+    await this.grantSubscriptionCredits(userId, plan);
+    return true;
   }
 
   /**
