@@ -4,6 +4,7 @@ import { AuthRequest } from '../types';
 import { LeadGeneratorSave, User, UserRole } from '../models';
 import morproLinqService, { type LinqSearchFilters } from '../services/morproLinqService';
 import { getLeadGeneratorAccess } from '../services/entitlementService';
+import logger from '../utils/logger';
 
 // GET /api/lead-generator/access — authoritative access check for the UI.
 // Resolves access purely from the user's subscription/entitlement, with NO
@@ -338,6 +339,11 @@ export async function exportCsv(req: AuthRequest, res: Response) {
     if (!result) {
       return res.status(502).json({ success: false, error: 'Carrier search unavailable' });
     }
+    if ((result.carriers || []).length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, error: 'No carriers matched those filters. Try widening them.' });
+    }
     const lines = [headers.join(',')];
     for (const c of (result.carriers || []).slice(0, 25)) lines.push(toLine(rowFromCarrier(c)));
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -354,7 +360,40 @@ export async function exportCsv(req: AuthRequest, res: Response) {
   // 30s request timeout (H12), which drops the connection and surfaces in the browser as
   // "Failed to fetch". With streaming, only the rolling 55s gap-between-writes limit applies.
   const maxRows = Math.min(5000, Math.max(1, parseInt10(req.query.limit, 1000)));
-  const pageSize = 100;
+
+  // Fetch page 1 BEFORE sending any bytes. Once the CSV headers are on the wire we
+  // can no longer switch to an error status, so a first-page failure used to be
+  // indistinguishable from "no matches" — the browser saved a file containing just
+  // the header row. Probing first means a broken/empty search returns a real 502
+  // and the UI shows "CSV export failed" instead of downloading an empty sheet.
+  //
+  // LINQ has rejected large page sizes in the past, so fall back to the same size
+  // the search UI uses (25) before giving up.
+  let pageSize = 100;
+  let firstPage = await morproLinqService.searchCarriers({
+    ...baseFilters,
+    page: 1,
+    limit: pageSize,
+  });
+  if (!firstPage || (firstPage.carriers || []).length === 0) {
+    logger.warn('LG export: first page empty at limit=100, retrying at 25', {
+      filters: baseFilters,
+    });
+    pageSize = 25;
+    firstPage = await morproLinqService.searchCarriers({
+      ...baseFilters,
+      page: 1,
+      limit: pageSize,
+    });
+  }
+  if (!firstPage) {
+    return res.status(502).json({ success: false, error: 'Carrier search unavailable' });
+  }
+  if ((firstPage.carriers || []).length === 0) {
+    return res
+      .status(404)
+      .json({ success: false, error: 'No carriers matched those filters. Try widening them.' });
+  }
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader(
@@ -371,7 +410,8 @@ export async function exportCsv(req: AuthRequest, res: Response) {
     const filters: LinqSearchFilters = { ...baseFilters, page, limit: pageSize };
     let result;
     try {
-      result = await morproLinqService.searchCarriers(filters);
+      // Page 1 is already in hand from the probe above — don't fetch it twice.
+      result = page === 1 ? firstPage : await morproLinqService.searchCarriers(filters);
     } catch {
       // Headers already sent — can't switch to an error status. Stop with a partial file.
       break;
