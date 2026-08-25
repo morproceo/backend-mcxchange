@@ -8,6 +8,7 @@ import { Subscription, SubscriptionPlan, SubscriptionStatus, UserRole, UnlockedL
 import { buyerPreferencesService } from '../services/buyerPreferencesService';
 import { scoreListing, hasAnyCriteria } from '../services/matchService';
 import { recordAccess } from '../utils/accessLog';
+import { AUTHORITY_TYPE_VALUES, requiresDotNumber } from '../utils/authority';
 
 // Mask an MC/DOT number: show first half, replace rest with bullets
 function maskNumber(num: string): string {
@@ -19,7 +20,24 @@ function maskNumber(num: string): string {
 // Validation rules
 export const createListingValidation = [
   body('mcNumber').trim().notEmpty().withMessage('MC number is required'),
-  body('dotNumber').trim().notEmpty().withMessage('DOT number is required'),
+  body('authorityType')
+    .optional({ values: 'falsy' })
+    // Match normalizeAuthorityType's case-insensitivity so a client sending
+    // "broker" isn't rejected by a rule the service layer would have accepted
+    .customSanitizer((value) => String(value).toUpperCase().trim())
+    .isIn(AUTHORITY_TYPE_VALUES)
+    .withMessage('Invalid authority type'),
+  // DOT is required for motor carrier authorities only. Brokers and freight
+  // forwarders commonly hold a docket (MC) number with no USDOT. Read the raw
+  // body rather than using .if() — validate() runs chains through Promise.all,
+  // so cross-field predicates on sanitized values are order-sensitive.
+  body('dotNumber')
+    .trim()
+    .custom((value, { req }) => {
+      if (!requiresDotNumber(req.body?.authorityType)) return true;
+      if (!value) throw new Error('DOT number is required for motor carrier authority');
+      return true;
+    }),
   body('legalName').trim().notEmpty().withMessage('Legal name is required'),
   body('title').trim().notEmpty().withMessage('Title is required'),
   body('askingPrice').isNumeric().withMessage('Asking price must be a number'),

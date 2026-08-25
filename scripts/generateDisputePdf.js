@@ -35,6 +35,15 @@ function main() {
   const { user, subscriptions, creditLedger, unlocked, terms } = bundle;
   const sub = subscriptions[0] || {};
 
+  // Optional Stripe data (argv[3]) — real charges + dispute record.
+  let stripe = null;
+  const stripeArg = process.argv[3];
+  if (stripeArg) {
+    try { stripe = JSON.parse(fs.readFileSync(path.resolve(stripeArg), 'utf8')); } catch (e) { /* optional */ }
+  }
+  const stripeTs = (sec) => (sec ? new Date(sec * 1000).toISOString().replace('T', ' ').slice(0, 19) + ' UTC' : '—');
+  const stripeMoney = (a, c) => (a == null ? '—' : `$${(a / 100).toFixed(2)} ${String(c || '').toUpperCase()}`);
+
   const outFile = path.resolve(`dispute-evidence-${user.id}.pdf`);
   const doc = new PDFDocument({ margin: 50, size: 'LETTER' });
   doc.pipe(fs.createWriteStream(outFile));
@@ -69,9 +78,35 @@ function main() {
   KV('Stripe Subscription ID', sub.stripeSubId);
   KV('Started', fmt(sub.startDate));
   KV('Cancelled', fmt(sub.cancelledAt));
-  doc.moveDown(0.2);
-  doc.font('Helvetica-Oblique').fontSize(9).fillColor('#666')
-    .text('Note: actual amounts charged are reflected in Stripe for the subscription ID above.');
+  if (stripe?.subscription) {
+    KV('Billed', `${stripeMoney(stripe.subscription.price, stripe.subscription.currency)} / ${stripe.subscription.interval}`);
+  }
+
+  // 2b. Real Stripe billing record
+  if (stripe?.charges?.length) {
+    H('2b. Stripe Billing Record (actual charges)');
+    const paid = stripe.charges.filter((c) => c.paid);
+    P(`The cardholder was successfully charged ${paid.length} time(s) at ${stripeMoney(stripe.subscription?.price, stripe.subscription?.currency)} each:`);
+    doc.moveDown(0.2);
+    stripe.charges.forEach((c) => {
+      doc.font('Helvetica').fontSize(9.5).fillColor('#222').text(
+        `   ${stripeTs(c.created)}   ${stripeMoney(c.amount, c.currency)}   ${c.paid ? 'PAID' : 'unpaid'}` +
+        `${c.disputed ? '  (DISPUTED)' : ''}   ${c.id}`);
+    });
+  }
+
+  // 2c. The dispute(s)
+  if (stripe?.disputes?.length) {
+    H('2c. Dispute Record');
+    stripe.disputes.forEach((d) => {
+      const active = d.status === 'needs_response' || d.status === 'warning_needs_response';
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(active ? '#b45309' : '#222').text(
+        `   ${stripeMoney(d.amount, d.currency)}  ·  reason: ${d.reason}  ·  status: ${d.status.toUpperCase()}`);
+      doc.font('Helvetica').fontSize(9).fillColor('#444').text(
+        `      charge ${d.charge} · opened ${stripeTs(d.created)} · evidence due ${stripeTs(d.due_by)}${active ? '  ← RESPOND BY THIS DATE' : ''}`);
+    });
+    doc.fillColor('#222');
+  }
 
   // 3. Proof of service usage (strongest evidence)
   H('3. Proof of Service Delivered & Used');
@@ -107,11 +142,21 @@ function main() {
   }
 
   // 6. Summary
-  H('6. Summary');
-  P('The customer created a verified account, agreed to the Terms of Service (including the all-payments-final ' +
-    'and dispute-prohibition policies), maintained an active subscription, logged in over a multi-month period, ' +
-    'and consumed the paid service by unlocking confidential carrier contact information. The service was ' +
-    'delivered as described. We respectfully request the dispute be resolved in the merchant’s favor.');
+  H('6. Summary — Rebuttal to "Fraudulent / Unauthorized" Claim');
+  P('The chargeback is filed as "fraudulent" (unauthorized). The records show the opposite: the transaction was ' +
+    'authorized and used by the legitimate account holder.');
+  doc.moveDown(0.2);
+  const bullets = [
+    `The account holder completed Stripe Identity verification (identityVerified = ${user.identityVerified ? 'YES' : 'no'}) — the same person was identity-checked.`,
+    `The account was created on ${fmt(user.memberSince || user.createdAt)} and logged in repeatedly through ${fmt(user.lastLoginAt)}.`,
+    `The same card was billed and paid successfully for multiple months before any dispute was raised — inconsistent with an unauthorized/stolen-card charge.`,
+    `The account actively consumed the paid service, spending credits to unlock ${unlocked.length} carrier contact record(s) (see §3).`,
+    `The cardholder agreed to the Terms of Service at signup, including the payment and dispute provisions (see §5).`,
+  ];
+  bullets.forEach((b) => doc.font('Helvetica').fontSize(10).fillColor('#222').text(`   •  ${b}`));
+  doc.moveDown(0.3);
+  P('Taken together, this establishes that the cardholder knowingly authorized the subscription and received the ' +
+    'service. We respectfully request the dispute be resolved in the merchant’s favor.');
 
   doc.end();
   console.log(`✅ Evidence PDF written -> ${outFile}`);

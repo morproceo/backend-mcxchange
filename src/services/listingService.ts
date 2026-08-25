@@ -12,13 +12,13 @@ import {
   ListingVisibility,
   SafetyRating,
   AmazonRelayStatus,
-  AuthorityType,
   CreditTransactionType,
   SubscriptionStatus,
 } from '../models';
 import { ListingQueryParams, CreateListingData, PaginationInfo } from '../types';
 import { NotFoundError, ForbiddenError } from '../middleware/errorHandler';
 import { getPaginationInfo } from '../utils/helpers';
+import { normalizeAuthorityType } from '../utils/authority';
 import { cacheService, CacheKeys, CacheTTL } from './cacheService';
 import logger from '../utils/logger';
 
@@ -41,16 +41,6 @@ function normalizeSafetyRating(rating: string | undefined | null): SafetyRating 
 
   // Default to NONE for any other value (including "None", "N/A", "NOT RATED", etc.)
   return SafetyRating.NONE;
-}
-
-// Normalize authority type to valid enum value, defaulting to MOTOR_CARRIER
-function normalizeAuthorityType(type: string | undefined | null): AuthorityType {
-  if (!type) return AuthorityType.MOTOR_CARRIER;
-  const normalized = type.toUpperCase().trim();
-  if (normalized === AuthorityType.BROKER) return AuthorityType.BROKER;
-  if (normalized === AuthorityType.MOTOR_CARRIER_AND_BROKER) return AuthorityType.MOTOR_CARRIER_AND_BROKER;
-  if (normalized === AuthorityType.FREIGHT_FORWARDER) return AuthorityType.FREIGHT_FORWARDER;
-  return AuthorityType.MOTOR_CARRIER;
 }
 
 // Helper function to normalize Amazon relay status to valid enum value
@@ -322,7 +312,9 @@ class ListingService {
     const listing = await Listing.create({
       sellerId,
       mcNumber: data.mcNumber,
-      dotNumber: data.dotNumber,
+      // Broker/freight-forwarder dockets often have no USDOT — store '' (the
+      // column is NOT NULL and every reader falsy-checks it).
+      dotNumber: data.dotNumber || '',
       legalName: data.legalName,
       dbaName: data.dbaName,
       title: data.title,

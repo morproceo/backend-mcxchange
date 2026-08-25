@@ -93,6 +93,11 @@ export const connectDatabase = async (): Promise<void> => {
     await addColumnIfMissing('listings', 'rmisSetup', 'TINYINT(1) NOT NULL DEFAULT 0');
     await addColumnIfMissing('listings', 'setupWithBrokers', 'TINYINT(1) NOT NULL DEFAULT 0');
     await addColumnIfMissing('listings', 'freeToUnlock', 'TINYINT(1) NOT NULL DEFAULT 0');
+    await addColumnIfMissing(
+      'listings',
+      'authorityType',
+      "ENUM('MOTOR_CARRIER','BROKER','MOTOR_CARRIER_AND_BROKER','FREIGHT_FORWARDER') NOT NULL DEFAULT 'MOTOR_CARRIER'"
+    );
 
     // Escrow columns for transaction payment tracking
     await addColumnIfMissing('transactions', 'escrowAmount', 'DECIMAL(12,2) NULL');

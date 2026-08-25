@@ -37,6 +37,7 @@ import {
 } from '../models';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../middleware/errorHandler';
 import { getPaginationInfo, calculateDeposit, calculatePlatformFee } from '../utils/helpers';
+import { normalizeAuthorityType } from '../utils/authority';
 import { emailService } from './emailService';
 import { adminNotificationService } from './adminNotificationService';
 import { config } from '../config';
@@ -920,6 +921,7 @@ class AdminService {
     monthlyInsurancePremium?: number;
     amazonStatus?: string;
     amazonRelayScore?: string;
+    authorityType?: string;
     highwaySetup?: boolean;
     sellingWithEmail?: boolean;
     sellingWithPhone?: boolean;
@@ -993,6 +995,7 @@ class AdminService {
     if (data.highwaySetup !== undefined) updateData.highwaySetup = data.highwaySetup;
     if (data.sellingWithEmail !== undefined) updateData.sellingWithEmail = data.sellingWithEmail;
     if (data.sellingWithPhone !== undefined) updateData.sellingWithPhone = data.sellingWithPhone;
+    if (data.authorityType !== undefined) updateData.authorityType = normalizeAuthorityType(data.authorityType);
     if (data.contactEmail !== undefined) updateData.contactEmail = data.contactEmail;
     if (data.contactPhone !== undefined) updateData.contactPhone = data.contactPhone;
     if (data.cargoTypes !== undefined) updateData.cargoTypes = JSON.stringify(data.cargoTypes);
@@ -1470,6 +1473,13 @@ class AdminService {
           model: User,
           as: 'buyer',
           attributes: ['id', 'name', 'email', 'phone', 'verified', 'trustScore'],
+          include: [
+            {
+              model: Subscription,
+              as: 'subscription',
+              attributes: ['plan', 'status'],
+            },
+          ],
         },
         {
           model: User,
@@ -2199,6 +2209,7 @@ class AdminService {
     monthlyInsurancePremium?: number;
     amazonStatus?: string;
     amazonRelayScore?: string;
+    authorityType?: string;
     highwaySetup?: boolean;
     sellingWithEmail?: boolean;
     sellingWithPhone?: boolean;
@@ -2257,6 +2268,7 @@ class AdminService {
       monthlyInsurancePremium: data.monthlyInsurancePremium || 0,
       amazonStatus: data.amazonStatus || 'NONE',
       amazonRelayScore: data.amazonRelayScore || '',
+      authorityType: normalizeAuthorityType(data.authorityType),
       highwaySetup: data.highwaySetup || false,
       sellingWithEmail: data.sellingWithEmail || false,
       sellingWithPhone: data.sellingWithPhone || false,
@@ -2389,6 +2401,82 @@ class AdminService {
       disputeType: 'blocked',
     }).catch(err => {
       logger.error('Failed to send admin notification for user block', err);
+    });
+
+    return { user, dispute, alreadyExists: false };
+  }
+
+  // Block a user because a Stripe chargeback/dispute was opened against them.
+  // Mirrors blockUserForMismatch: sets status=BLOCKED, kills sessions, opens an
+  // AccountDispute record, and notifies the user + admins. Restoring access is a
+  // manual admin decision (chargeback blocks are not auto-reversed).
+  async blockUserForChargeback(data: {
+    userId: string;
+    stripeTransactionId: string;
+    cardholderName: string;
+    userName: string;
+    disputeReason?: string;
+  }) {
+    const user = await User.findByPk(data.userId);
+    if (!user) {
+      throw new NotFoundError('User');
+    }
+
+    const existingDispute = await AccountDispute.findOne({
+      where: {
+        userId: data.userId,
+        status: { [Op.in]: [AccountDisputeStatus.PENDING, AccountDisputeStatus.SUBMITTED] },
+      },
+    });
+
+    // Block the user (idempotent — re-running for the same dispute is harmless)
+    await user.update({ status: UserStatus.BLOCKED });
+    await RefreshToken.destroy({ where: { userId: data.userId } });
+
+    if (existingDispute) {
+      return { user, dispute: existingDispute, alreadyExists: true };
+    }
+
+    const dispute = await AccountDispute.create({
+      userId: data.userId,
+      stripeTransactionId: data.stripeTransactionId,
+      cardholderName: data.cardholderName,
+      userName: data.userName,
+      disputeReason: data.disputeReason,
+      status: AccountDisputeStatus.PENDING,
+    } as any);
+
+    const frontendUrl = config.frontendUrl || 'http://localhost:5173';
+    const disputeUrl = `${frontendUrl}/dispute/${dispute.id}`;
+
+    await emailService.sendAccountBlockedEmail(user.email, {
+      userName: user.name,
+      cardholderName: data.cardholderName,
+      accountName: data.userName,
+      disputeUrl,
+    });
+
+    await Notification.create({
+      userId: data.userId,
+      type: NotificationType.SYSTEM,
+      title: 'Account Blocked',
+      message: 'Your account has been blocked because a payment dispute (chargeback) was opened. Please check your email for instructions.',
+      link: `/dispute/${dispute.id}`,
+    });
+
+    adminNotificationService.notifyDispute({
+      userName: data.userName,
+      userEmail: user.email,
+      cardholderName: data.cardholderName,
+      accountName: data.userName,
+      disputeType: 'blocked',
+    }).catch(err => {
+      logger.error('Failed to send admin notification for chargeback block', err);
+    });
+
+    logger.warn('User blocked for chargeback', {
+      userId: data.userId,
+      stripeTransactionId: data.stripeTransactionId,
     });
 
     return { user, dispute, alreadyExists: false };

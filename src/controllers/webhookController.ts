@@ -4,6 +4,7 @@ import { stripeService } from '../services/stripeService';
 import { creditService } from '../services/creditService';
 import { emailService } from '../services/emailService';
 import { notificationService } from '../services/notificationService';
+import { adminService } from '../services/adminService';
 import {
   processPdfPurchase,
   processBundlePurchase,
@@ -504,6 +505,23 @@ async function handleInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
 
   if (!dbSubscription) return;
 
+  // A successful charge clears any failed-payment suspension — restore access.
+  // (customer.subscription.updated normally also reports 'active', but we set it
+  // here so recovery doesn't depend on event ordering.)
+  if (dbSubscription.status === SubscriptionStatus.PAST_DUE) {
+    await dbSubscription.update({ status: SubscriptionStatus.ACTIVE });
+    logger.info('Subscription reactivated after successful payment', {
+      userId: dbSubscription.userId,
+      subscriptionId: dbSubscription.stripeSubId,
+    });
+    await notificationService.create({
+      userId: dbSubscription.userId,
+      type: 'PAYMENT' as any,
+      title: 'Payment Received — Access Restored',
+      message: 'Your payment was successful and full access to your account has been restored.',
+    });
+  }
+
   // If this is a renewal (not first invoice), grant monthly credits
   if (invoice.billing_reason === 'subscription_cycle') {
     await creditService.grantSubscriptionCredits(
@@ -535,12 +553,26 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
   });
 
   if (dbSubscription) {
+    // Suspend access immediately: a failed renewal charge means the subscription is
+    // no longer paid for. Mark it PAST_DUE so requireActiveBilling / requireSubscription
+    // block MC unlocks, CarrierPulse, and other gated features until the card succeeds.
+    // (customer.subscription.updated normally also reports this, but we set it here so
+    // suspension doesn't depend on event ordering.) Restored by handleInvoicePaid.
+    if (dbSubscription.status === SubscriptionStatus.ACTIVE) {
+      await dbSubscription.update({ status: SubscriptionStatus.PAST_DUE });
+    }
+
+    logger.warn('Subscription suspended for failed payment', {
+      userId: dbSubscription.userId,
+      subscriptionId: dbSubscription.stripeSubId,
+    });
+
     // Notify user
     await notificationService.create({
       userId: dbSubscription.userId,
       type: 'PAYMENT' as any,
-      title: 'Payment Failed',
-      message: 'Your subscription payment failed. Please update your payment method to avoid service interruption.',
+      title: 'Payment Failed — Account Suspended',
+      message: 'Your subscription payment failed and your account access has been suspended. Please update your payment method to restore access.',
     });
   }
 }
@@ -576,8 +608,52 @@ async function handleChargeDisputeCreated(dispute: Stripe.Dispute): Promise<void
     amount: dispute.amount,
   });
 
-  // This is a serious event - notify admin
-  // TODO: Implement admin notification system
+  // A chargeback was opened — block the account immediately. Resolve the user from
+  // the disputed charge: prefer the Payment row tied to the payment intent, then fall
+  // back to matching the Stripe customer on the charge.
+  const chargeId = typeof dispute.charge === 'string' ? dispute.charge : dispute.charge?.id;
+  const charge = chargeId ? await stripeService.getCharge(chargeId) : null;
+
+  let user: InstanceType<typeof User> | null = null;
+  let cardholderName = '';
+
+  if (charge) {
+    cardholderName = charge.billing_details?.name || '';
+
+    const paymentIntentId = typeof charge.payment_intent === 'string'
+      ? charge.payment_intent
+      : charge.payment_intent?.id;
+
+    if (paymentIntentId) {
+      const payment = await Payment.findOne({ where: { stripePaymentIntentId: paymentIntentId } });
+      if (payment) {
+        user = await User.findByPk(payment.userId);
+      }
+    }
+
+    if (!user) {
+      const customerId = typeof charge.customer === 'string' ? charge.customer : charge.customer?.id;
+      if (customerId) {
+        user = await User.findOne({ where: { stripeCustomerId: customerId } });
+      }
+    }
+  }
+
+  if (!user) {
+    logger.error('Could not resolve user for chargeback — manual review required', {
+      disputeId: dispute.id,
+      chargeId,
+    });
+    return;
+  }
+
+  await adminService.blockUserForChargeback({
+    userId: user.id,
+    stripeTransactionId: chargeId || dispute.id,
+    cardholderName: cardholderName || user.name,
+    userName: user.name,
+    disputeReason: dispute.reason,
+  });
 }
 
 // ============================================

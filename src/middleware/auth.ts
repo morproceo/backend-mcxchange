@@ -1,4 +1,5 @@
 import { Response, NextFunction } from 'express';
+import { Op } from 'sequelize';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { AuthRequest, JWTPayload } from '../types';
@@ -241,6 +242,58 @@ export const requireSubscription = async (
     res.status(500).json({
       success: false,
       error: 'Error checking subscription status.',
+    });
+  }
+};
+
+// Block value-delivering actions when the user's subscription has fallen behind on
+// payment (PAST_DUE) or lapsed (EXPIRED). Stripe flips the subscription to past_due
+// the moment a renewal charge fails, and our webhooks mirror that onto the DB row.
+// The account can still log in and reach billing to fix their card — access is
+// restored automatically once Stripe reports a successful payment (invoice.paid or
+// subscription back to active). Prepaid credit buyers with no subscription row are
+// unaffected, since their payment is already final.
+export const requireActiveBilling = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: 'Not authenticated.',
+      });
+      return;
+    }
+
+    // Admins bypass billing checks
+    if (req.user.role === UserRole.ADMIN) {
+      next();
+      return;
+    }
+
+    const delinquent = await Subscription.findOne({
+      where: {
+        userId: req.user.id,
+        status: { [Op.in]: ['PAST_DUE', 'EXPIRED'] },
+      },
+    });
+
+    if (delinquent) {
+      res.status(403).json({
+        success: false,
+        error: 'Your account is suspended due to a failed payment. Please update your payment method to restore access.',
+        code: 'PAYMENT_SUSPENDED',
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Error checking billing status.',
     });
   }
 };
@@ -498,6 +551,69 @@ export const requireIdentityVerification = async (
     }
 
     next();
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Error checking identity verification status.',
+    });
+  }
+};
+
+// Require identity verification, unless the buyer is already a paying customer.
+//
+// Identity verification exists as chargeback defense, but it was locking out
+// buyers who had already paid: a dropped `identity.verification_session.verified`
+// webhook (or a session still under review at Stripe) leaves identityVerified
+// false forever, so a subscriber sitting on unspent credits could not unlock
+// anything. An active subscription is itself a verified Stripe payment, so it
+// stands in for the identity check on unlock. The credit balance is still
+// enforced downstream by listingService.unlockListing.
+export const requireIdentityVerificationOrActiveSubscription = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: 'Not authenticated.',
+      });
+      return;
+    }
+
+    // Admins bypass identity verification
+    if (req.user.role === UserRole.ADMIN) {
+      next();
+      return;
+    }
+
+    if (req.user.identityVerified) {
+      next();
+      return;
+    }
+
+    const subscription = await Subscription.findOne({
+      where: {
+        userId: req.user.id,
+        status: 'ACTIVE',
+      },
+    });
+
+    const subscriptionUsable =
+      !!subscription &&
+      (!subscription.endDate || new Date(subscription.endDate) >= new Date());
+
+    if (subscriptionUsable) {
+      next();
+      return;
+    }
+
+    res.status(403).json({
+      success: false,
+      error: 'Identity verification required to access this feature.',
+      code: 'IDENTITY_VERIFICATION_REQUIRED',
+    });
   } catch (error) {
     res.status(500).json({
       success: false,

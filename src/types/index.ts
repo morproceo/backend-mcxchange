@@ -174,7 +174,8 @@ export interface CreateOfferData {
 // Listing Data
 export interface CreateListingData {
   mcNumber: string;
-  dotNumber: string;
+  // Optional: broker / freight-forwarder authorities may have no USDOT number
+  dotNumber?: string;
   legalName: string;
   dbaName?: string;
   title: string;

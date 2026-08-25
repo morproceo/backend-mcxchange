@@ -11,3 +11,4 @@ uploads/*
 dispute-bundle-*.json
 dispute-evidence-*.pdf
 terms-acceptance-*.pdf
+stripe-cus_*.json
