@@ -1,5 +1,6 @@
 import { config } from '../config';
 import { FMCSACarrierData, FMCSAAuthorityHistory, FMCSAInsuranceHistory } from '../types';
+import carrierDataService from './carrierDataService';
 import logger from '../utils/logger';
 
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> {
@@ -263,52 +264,81 @@ class FMCSAService {
   }
 
   // Get insurance history
+  //
+  // FMCSA's QCMobile API has no insurance endpoint — filings live in the
+  // separate L&I system, which exposes no JSON API — so this sources from the
+  // MorPro carrier report (its insurance section is itself derived from L&I)
+  // and normalizes it into the FMCSA-shaped history clients already consume.
+  // getFullReport is Redis-cached for 24h and the pages calling this have
+  // usually fetched the same report already, so this is normally a cache hit.
   async getInsuranceHistory(dotNumber: string): Promise<FMCSAInsuranceHistory[] | null> {
+    let report;
     try {
-      const url = `${this.baseUrl}/carriers/${dotNumber}/insurance?webKey=${this.apiKey}`;
-      const response = await fetchWithTimeout(url);
-
-      if (!response.ok) {
-        return null;
-      }
-
-      interface InsuranceItem {
-        insurerName: string;
-        policyNumber: string;
-        insuranceType: string;
-        coverageAmount: number;
-        effectiveDate: string;
-        cancellationDate?: string;
-        status: string;
-      }
-
-      const data = await response.json() as { content?: InsuranceItem[] };
-
-      if (!data.content || !Array.isArray(data.content)) {
-        return null;
-      }
-
-      return data.content.map((insurance: {
-        insurerName: string;
-        policyNumber: string;
-        insuranceType: string;
-        coverageAmount: number;
-        effectiveDate: string;
-        cancellationDate?: string;
-        status: string;
-      }) => ({
-        insurerName: insurance.insurerName,
-        policyNumber: insurance.policyNumber,
-        insuranceType: insurance.insuranceType,
-        coverageAmount: insurance.coverageAmount,
-        effectiveDate: insurance.effectiveDate,
-        cancellationDate: insurance.cancellationDate,
-        status: insurance.status,
-      }));
+      report = await carrierDataService.getFullReport(dotNumber);
     } catch (error) {
-      logger.warn('FMCSA insurance history error:', error);
+      logger.warn('Insurance history lookup failed:', error);
       return null;
     }
+
+    // Only a missing carrier report is a "not found" — a carrier with no
+    // filings on record legitimately has an empty history.
+    if (!report) {
+      return null;
+    }
+
+    interface MorProPolicy {
+      insurer?: string;
+      insurerName?: string;
+      policyNumber?: string;
+      type?: string;
+      typeLabel?: string;
+      insuranceType?: string;
+      coverage?: number;
+      coverageAmount?: number;
+      effectiveDate?: string;
+      expirationDate?: string;
+      cancelDate?: string;
+      cancellationDate?: string;
+      status?: string;
+    }
+
+    interface MorProPolicyEvent extends MorProPolicy {
+      date?: string;
+      event?: string;
+    }
+
+    const insurance = (report.insurance || {}) as {
+      activePolicies?: MorProPolicy[];
+      history?: MorProPolicyEvent[];
+    };
+    const activePolicies = Array.isArray(insurance.activePolicies) ? insurance.activePolicies : [];
+    const history = Array.isArray(insurance.history) ? insurance.history : [];
+
+    const active: FMCSAInsuranceHistory[] = activePolicies.map((p) => ({
+      insurerName: p.insurerName || p.insurer || '',
+      policyNumber: p.policyNumber || '',
+      insuranceType: p.insuranceType || p.typeLabel || p.type || '',
+      coverageAmount: p.coverageAmount ?? p.coverage ?? 0,
+      effectiveDate: p.effectiveDate || '',
+      // A cancel date on an active policy is a *pending* cancellation — the
+      // signal buyers care about most.
+      cancellationDate: p.cancelDate || p.cancellationDate || p.expirationDate || undefined,
+      status: p.status || 'active',
+    }));
+
+    // Past filings: every history entry is a closed policy, so it carries the
+    // date it was cancelled/replaced.
+    const past: FMCSAInsuranceHistory[] = history.map((h) => ({
+      insurerName: h.insurerName || h.insurer || '',
+      policyNumber: h.policyNumber || '',
+      insuranceType: h.insuranceType || h.typeLabel || h.type || '',
+      coverageAmount: h.coverageAmount ?? h.coverage ?? 0,
+      effectiveDate: h.effectiveDate || h.date || '',
+      cancellationDate: h.cancelDate || h.cancellationDate || undefined,
+      status: (h.event || h.status || 'cancelled').toLowerCase(),
+    }));
+
+    return [...active, ...past];
   }
 
   // Get SMS (Safety Measurement System) data - includes inspections, crashes, and BASIC scores
